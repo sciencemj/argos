@@ -238,3 +238,4 @@ data/
 
 # macOS
 .DS_Store
+/backend/seed.toml

@@ -201,7 +201,7 @@ flowchart LR
 | `channel` | area_id, name, kind(`course`/`project`/`system`), default_agent_id, vault_path | 과목·프로젝트 채널. `#today`, `#inbox`는 system |
 | `message` | channel_id, thread_root_id, author_type(`user`/`agent`/`system`), author_id, body, ref_type, ref_id, run_id | 채팅 메시지. `ref_*`로 객체를 참조 |
 | `task` | channel_id, title, description, status, position(float), due_at, priority | 할 일이자 칸반 카드 |
-| `event` | channel_id, title, starts_at, ends_at, all_day, location, rrule, calendar_id | 일정 |
+| `event` | channel_id, title, starts_at, ends_at, start_date, end_date, location, rrule, calendar_id | 일정. 시간 일정은 starts_at/ends_at, 종일 일정은 start_date/end_date(끝 날짜 미포함). all_day는 파생값 |
 | `inbox_item` | raw_text, captured_via, status(`new`/`suggested`/`accepted`/`dismissed`), suggestion_json, confidence | 원본 입력과 AI 분류 제안 |
 | `note_ref` | vault_path, title, channel_id, tags, content_hash, indexed_at | 옵시디언 노트 색인 (본문 저장 안 함, 검색용 텍스트 인덱스는 FTS5 별도 테이블) |
 | `source_link` | object_type, object_id, source, external_id, etag, content_hash, last_synced_at | 외부 출처 추적 (P3) |

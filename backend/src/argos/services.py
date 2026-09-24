@@ -1,0 +1,488 @@
+"""Domain services. Every write in the app goes through here (PLAN §4) and leaves an
+activity_log row in the same transaction."""
+
+import tomllib
+from collections.abc import Sequence
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from argos.models import (
+    ActivityLog,
+    Area,
+    Channel,
+    ChannelKind,
+    Event,
+    InboxItem,
+    InboxStatus,
+    Record,
+    Task,
+    TaskStatus,
+)
+
+POSITION_STEP = 1024.0
+MIN_POSITION_GAP = 1e-6
+SYSTEM_CHANNELS = ("today", "inbox")
+
+
+class NotFoundError(Exception):
+    def __init__(self, object_type: str, object_id: str) -> None:
+        super().__init__(f"{object_type} {object_id} not found")
+        self.object_type = object_type
+
+
+class InvalidError(Exception):
+    pass
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return value
+
+
+def snapshot(obj: Record) -> dict[str, Any]:
+    return {c.key: _jsonable(getattr(obj, c.key)) for c in obj.__table__.columns}
+
+
+def _log(
+    session: AsyncSession,
+    obj: Record,
+    action: str,
+    actor: str,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+) -> None:
+    session.add(
+        ActivityLog(
+            object_type=obj.__tablename__,
+            object_id=obj.id,
+            action=action,
+            before_json=before,
+            after_json=after,
+            actor=actor,
+        )
+    )
+
+
+async def _get[T: Record](session: AsyncSession, model: type[T], object_id: str) -> T:
+    obj = await session.get(model, object_id)
+    if obj is None:
+        raise NotFoundError(model.__tablename__, object_id)
+    return obj
+
+
+async def _create[T: Record](session: AsyncSession, obj: T, actor: str) -> T:
+    session.add(obj)
+    await session.flush()
+    _log(session, obj, "created", actor, after=snapshot(obj))
+    await session.commit()
+    return obj
+
+
+async def _update[T: Record](
+    session: AsyncSession,
+    obj: T,
+    changes: dict[str, Any],
+    actor: str,
+    action: str = "updated",
+) -> T:
+    before = snapshot(obj)
+    for key, value in changes.items():
+        setattr(obj, key, value)
+    await session.flush()
+    after = snapshot(obj)
+    diff = {k for k in after if after[k] != before[k] and k != "updated_at"}
+    if diff:
+        _log(
+            session,
+            obj,
+            action,
+            actor,
+            before={k: before[k] for k in diff},
+            after={k: after[k] for k in diff},
+        )
+    await session.commit()
+    return obj
+
+
+async def _delete(session: AsyncSession, obj: Record, actor: str) -> None:
+    _log(session, obj, "deleted", actor, before=snapshot(obj))
+    await session.delete(obj)
+    await session.commit()
+
+
+# --- channels -----------------------------------------------------------------
+
+
+async def list_areas(session: AsyncSession) -> Sequence[Area]:
+    return (await session.scalars(select(Area).order_by(Area.sort_order, Area.name))).all()
+
+
+async def list_channels(session: AsyncSession) -> Sequence[Channel]:
+    query = select(Channel).order_by(Channel.sort_order, Channel.name)
+    return (await session.scalars(query)).all()
+
+
+async def get_channel(session: AsyncSession, channel_id: str) -> Channel:
+    return await _get(session, Channel, channel_id)
+
+
+# --- tasks --------------------------------------------------------------------
+
+
+async def _column(session: AsyncSession, channel_id: str, status: TaskStatus) -> list[Task]:
+    query = (
+        select(Task)
+        .where(Task.channel_id == channel_id, Task.status == status)
+        .order_by(Task.position, Task.id)
+    )
+    return list((await session.scalars(query)).all())
+
+
+async def _end_position(session: AsyncSession, channel_id: str, status: TaskStatus) -> float:
+    query = select(func.max(Task.position)).where(
+        Task.channel_id == channel_id, Task.status == status
+    )
+    last = (await session.execute(query)).scalar_one_or_none()
+    return (last or 0.0) + POSITION_STEP
+
+
+async def list_tasks(
+    session: AsyncSession, channel_id: str | None = None, status: TaskStatus | None = None
+) -> Sequence[Task]:
+    query = select(Task).order_by(Task.status, Task.position, Task.id)
+    if channel_id is not None:
+        query = query.where(Task.channel_id == channel_id)
+    if status is not None:
+        query = query.where(Task.status == status)
+    return (await session.scalars(query)).all()
+
+
+async def get_task(session: AsyncSession, task_id: str) -> Task:
+    return await _get(session, Task, task_id)
+
+
+async def create_task(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    title: str,
+    actor: str,
+    description: str | None = None,
+    status: TaskStatus = TaskStatus.TODO,
+    due_at: datetime | None = None,
+    priority: int | None = None,
+) -> Task:
+    await get_channel(session, channel_id)
+    task = Task(
+        channel_id=channel_id,
+        title=title,
+        description=description,
+        status=status,
+        position=await _end_position(session, channel_id, status),
+        due_at=due_at,
+        priority=priority,
+    )
+    return await _create(session, task, actor)
+
+
+async def update_task(
+    session: AsyncSession, task_id: str, changes: dict[str, Any], actor: str
+) -> Task:
+    """Field edits. A status or channel change appends the card to the end of its new
+    column; use move_task to place it precisely."""
+    task = await get_task(session, task_id)
+    if "channel_id" in changes:
+        await get_channel(session, changes["channel_id"])
+    new_channel = changes.get("channel_id", task.channel_id)
+    new_status = changes.get("status", task.status)
+    if (new_channel, new_status) != (task.channel_id, task.status):
+        changes = {**changes, "position": await _end_position(session, new_channel, new_status)}
+    return await _update(session, task, changes, actor)
+
+
+async def move_task(
+    session: AsyncSession,
+    task_id: str,
+    *,
+    status: TaskStatus,
+    actor: str,
+    after_id: str | None = None,
+    before_id: str | None = None,
+) -> Task:
+    """Place a card in `status` right below `after_id` or right above `before_id`
+    (neither: end of column). Position is the midpoint of its neighbours; when the gap
+    gets too narrow the column is renumbered first."""
+    if after_id is not None and before_id is not None:
+        raise InvalidError("give after_id or before_id, not both")
+    task = await get_task(session, task_id)
+    column = [t for t in await _column(session, task.channel_id, status) if t.id != task.id]
+    ids = [t.id for t in column]
+    anchor = after_id or before_id
+    if anchor is not None and anchor not in ids:
+        raise InvalidError(f"anchor task {anchor} is not in column {status}")
+    if after_id is not None:
+        index = ids.index(after_id) + 1
+    elif before_id is not None:
+        index = ids.index(before_id)
+    else:
+        index = len(column)
+
+    def neighbours() -> tuple[float | None, float | None]:
+        prev = column[index - 1].position if index > 0 else None
+        nxt = column[index].position if index < len(column) else None
+        return prev, nxt
+
+    prev, nxt = neighbours()
+    if prev is not None and nxt is not None and nxt - prev <= MIN_POSITION_GAP:
+        for i, t in enumerate(column, start=1):
+            t.position = i * POSITION_STEP
+        prev, nxt = neighbours()
+
+    if nxt is None:
+        position = (prev or 0.0) + POSITION_STEP
+    elif prev is None:
+        position = nxt - POSITION_STEP
+    else:
+        position = (prev + nxt) / 2
+
+    return await _update(
+        session, task, {"status": status, "position": position}, actor, action="moved"
+    )
+
+
+async def delete_task(session: AsyncSession, task_id: str, actor: str) -> None:
+    await _delete(session, await get_task(session, task_id), actor)
+
+
+# --- events -------------------------------------------------------------------
+
+
+EVENT_TIME_FIELDS = ("starts_at", "ends_at", "start_date", "end_date")
+
+
+def _check_event_times(
+    starts_at: datetime | None,
+    ends_at: datetime | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> dict[str, Any]:
+    """Validates one of the two event shapes and returns the normalized time fields
+    (an all-day event without end_date lasts one day)."""
+    if starts_at is not None:
+        if start_date is not None or end_date is not None:
+            raise InvalidError("timed event cannot have start_date/end_date")
+        if ends_at is not None and ends_at < starts_at:
+            raise InvalidError("ends_at is before starts_at")
+    elif start_date is not None:
+        if ends_at is not None:
+            raise InvalidError("all-day event cannot have ends_at")
+        end_date = end_date or start_date + timedelta(days=1)
+        if end_date <= start_date:
+            raise InvalidError("end_date must be after start_date (end is exclusive)")
+    else:
+        raise InvalidError("event needs either starts_at (timed) or start_date (all-day)")
+    return {
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
+async def get_event(session: AsyncSession, event_id: str) -> Event:
+    return await _get(session, Event, event_id)
+
+
+async def create_event(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    title: str,
+    actor: str,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    location: str | None = None,
+    rrule: str | None = None,
+    calendar_id: str | None = None,
+) -> Event:
+    await get_channel(session, channel_id)
+    times = _check_event_times(starts_at, ends_at, start_date, end_date)
+    event = Event(
+        channel_id=channel_id,
+        title=title,
+        location=location,
+        rrule=rrule,
+        calendar_id=calendar_id,
+        **times,
+    )
+    return await _create(session, event, actor)
+
+
+async def update_event(
+    session: AsyncSession, event_id: str, changes: dict[str, Any], actor: str
+) -> Event:
+    event = await get_event(session, event_id)
+    if "channel_id" in changes:
+        await get_channel(session, changes["channel_id"])
+    if any(key in changes for key in EVENT_TIME_FIELDS):
+        current = {key: getattr(event, key) for key in EVENT_TIME_FIELDS}
+        changes = changes | _check_event_times(**(current | changes))
+    return await _update(session, event, changes, actor)
+
+
+async def delete_event(session: AsyncSession, event_id: str, actor: str) -> None:
+    await _delete(session, await get_event(session, event_id), actor)
+
+
+async def list_events(
+    session: AsyncSession,
+    *,
+    start: datetime,
+    end: datetime,
+    tz: ZoneInfo,
+    channel_id: str | None = None,
+) -> Sequence[Event]:
+    """Events overlapping [start, end). All-day events compare by local date."""
+    first_day = start.astimezone(tz).date()
+    last_day = (end - timedelta(microseconds=1)).astimezone(tz).date()
+    timed = (
+        Event.starts_at < end,
+        or_(Event.ends_at > start, Event.ends_at.is_(None) & (Event.starts_at >= start)),
+    )
+    all_day = (Event.start_date <= last_day, Event.end_date > first_day)
+    query = (
+        select(Event)
+        .where(or_(timed[0] & timed[1], all_day[0] & all_day[1]))
+        .order_by(Event.start_date, Event.starts_at)
+    )
+    if channel_id is not None:
+        query = query.where(Event.channel_id == channel_id)
+    return (await session.scalars(query)).all()
+
+
+# --- inbox --------------------------------------------------------------------
+
+
+async def get_inbox_item(session: AsyncSession, item_id: str) -> InboxItem:
+    return await _get(session, InboxItem, item_id)
+
+
+async def create_inbox_item(
+    session: AsyncSession, *, raw_text: str, captured_via: str, actor: str
+) -> InboxItem:
+    return await _create(session, InboxItem(raw_text=raw_text, captured_via=captured_via), actor)
+
+
+async def update_inbox_item(
+    session: AsyncSession, item_id: str, changes: dict[str, Any], actor: str
+) -> InboxItem:
+    return await _update(session, await get_inbox_item(session, item_id), changes, actor)
+
+
+async def delete_inbox_item(session: AsyncSession, item_id: str, actor: str) -> None:
+    await _delete(session, await get_inbox_item(session, item_id), actor)
+
+
+async def list_inbox(
+    session: AsyncSession,
+    *,
+    statuses: Sequence[InboxStatus] | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
+) -> tuple[Sequence[InboxItem], str | None]:
+    """Newest first. `cursor` is the opaque value returned as next_cursor."""
+    query = select(InboxItem).order_by(InboxItem.created_at.desc(), InboxItem.id.desc())
+    if statuses:
+        query = query.where(InboxItem.status.in_(statuses))
+    if cursor is not None:
+        try:
+            raw_ts, last_id = cursor.split("|", 1)
+            last_ts = datetime.fromisoformat(raw_ts)
+        except ValueError as exc:
+            raise InvalidError("malformed cursor") from exc
+        query = query.where(
+            or_(
+                InboxItem.created_at < last_ts,
+                (InboxItem.created_at == last_ts) & (InboxItem.id < last_id),
+            )
+        )
+    items = (await session.scalars(query.limit(limit + 1))).all()
+    if len(items) <= limit:
+        return items, None
+    last = items[limit - 1]
+    return items[:limit], f"{last.created_at.isoformat()}|{last.id}"
+
+
+# --- today --------------------------------------------------------------------
+
+OPEN_INBOX = (InboxStatus.NEW, InboxStatus.SUGGESTED)
+
+
+async def get_today(
+    session: AsyncSession, *, now: datetime, tz: ZoneInfo, due_soon_days: int
+) -> dict[str, Any]:
+    """Today's events, open tasks overdue or due within `due_soon_days`, open inbox count."""
+    day_start = datetime.combine(now.astimezone(tz).date(), time(), tzinfo=tz)
+    events = await list_events(session, start=day_start, end=day_start + timedelta(days=1), tz=tz)
+    due_query = (
+        select(Task)
+        .where(
+            Task.status != TaskStatus.DONE,
+            Task.due_at.is_not(None),
+            Task.due_at < day_start + timedelta(days=due_soon_days + 1),
+        )
+        .order_by(Task.due_at)
+    )
+    due_tasks = (await session.scalars(due_query)).all()
+    count_query = select(func.count()).where(InboxItem.status.in_(OPEN_INBOX))
+    inbox_count = (await session.execute(count_query)).scalar_one()
+    return {"events": events, "due_tasks": due_tasks, "inbox_count": inbox_count}
+
+
+# --- seed ---------------------------------------------------------------------
+
+
+def load_seed(seed_path: Path) -> dict[str, Any]:
+    if not seed_path.exists():
+        return {}
+    return tomllib.loads(seed_path.read_text(encoding="utf-8"))
+
+
+async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
+    """Idempotent: creates system channels, then areas/channels from the seed config
+    (PLAN §9: the course list is user config, never hard-coded)."""
+    for order, name in enumerate(SYSTEM_CHANNELS, start=-len(SYSTEM_CHANNELS)):
+        await _upsert_channel(session, name=name, kind=ChannelKind.SYSTEM, sort_order=order)
+
+    for area_order, area_cfg in enumerate(config.get("area", [])):
+        area = await session.scalar(select(Area).where(Area.name == area_cfg["name"]))
+        if area is None:
+            area = await _create(
+                session,
+                Area(name=area_cfg["name"], icon=area_cfg.get("icon"), sort_order=area_order),
+                "system",
+            )
+        for order, ch in enumerate(area_cfg.get("channel", [])):
+            await _upsert_channel(
+                session,
+                name=ch["name"],
+                kind=ChannelKind(ch.get("kind", ChannelKind.COURSE)),
+                sort_order=order,
+                area_id=area.id,
+                vault_path=ch.get("vault_path"),
+            )
+
+
+async def _upsert_channel(session: AsyncSession, *, name: str, **fields: Any) -> Channel:
+    channel = await session.scalar(select(Channel).where(Channel.name == name))
+    if channel is None:
+        return await _create(session, Channel(name=name, **fields), "system")
+    return await _update(session, channel, fields, "system")

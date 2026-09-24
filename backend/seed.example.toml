@@ -1,0 +1,24 @@
+# Copy to seed.toml and edit. Loaded on every startup; existing channels are
+# matched by name and updated, never duplicated. #today and #inbox always exist.
+#
+# kind: "course" (default) or "project". vault_path is used from Phase 8.
+
+[[area]]
+name = "학업"
+icon = "📚"
+
+[[area.channel]]
+name = "컴퓨터구조"
+vault_path = "강의/컴퓨터구조/"
+
+[[area.channel]]
+name = "운영체제"
+vault_path = "강의/운영체제/"
+
+[[area]]
+name = "프로젝트"
+icon = "🛠"
+
+[[area.channel]]
+name = "argos"
+kind = "project"

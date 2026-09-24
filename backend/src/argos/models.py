@@ -1,0 +1,162 @@
+import uuid
+from datetime import UTC, date, datetime
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import JSON, Date, DateTime, Dialect, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
+
+from argos.db import Base
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Stores aware datetimes as naive UTC (SQLite has no tz) and returns them aware."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetime; pass a timezone-aware value")
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        return value.replace(tzinfo=UTC) if value is not None else None
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def new_id() -> str:
+    return str(uuid.uuid4())
+
+
+class ChannelKind(StrEnum):
+    COURSE = "course"
+    PROJECT = "project"
+    SYSTEM = "system"
+
+
+class TaskStatus(StrEnum):
+    BACKLOG = "backlog"
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    DONE = "done"
+
+
+class InboxStatus(StrEnum):
+    NEW = "new"
+    SUGGESTED = "suggested"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
+
+
+class AuthorType(StrEnum):
+    USER = "user"
+    AGENT = "agent"
+    SYSTEM = "system"
+
+
+class Record(Base):
+    __abstract__ = True
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class Area(Record):
+    __tablename__ = "area"
+
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    icon: Mapped[str | None] = mapped_column(String(20))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Channel(Record):
+    __tablename__ = "channel"
+
+    area_id: Mapped[str | None] = mapped_column(ForeignKey("area.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    kind: Mapped[ChannelKind] = mapped_column(String(20))
+    default_agent_id: Mapped[str | None] = mapped_column(String(36))
+    vault_path: Mapped[str | None] = mapped_column(String(500))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Task(Record):
+    __tablename__ = "task"
+
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[TaskStatus] = mapped_column(String(20), default=TaskStatus.TODO)
+    position: Mapped[float] = mapped_column(Float)
+    due_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
+    priority: Mapped[int | None] = mapped_column(Integer)
+
+
+class Event(Record):
+    """Timed events use starts_at/ends_at; all-day events use start_date/end_date
+    (end exclusive, like iCalendar) so no timezone shift can move them a day."""
+
+    __tablename__ = "event"
+
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    starts_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
+    ends_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    start_date: Mapped[date | None] = mapped_column(Date, index=True)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    location: Mapped[str | None] = mapped_column(String(500))
+    rrule: Mapped[str | None] = mapped_column(String(500))
+    calendar_id: Mapped[str | None] = mapped_column(String(200))
+
+    @property
+    def all_day(self) -> bool:
+        return self.start_date is not None
+
+
+class InboxItem(Record):
+    __tablename__ = "inbox_item"
+
+    raw_text: Mapped[str] = mapped_column(Text)
+    captured_via: Mapped[str] = mapped_column(String(50))
+    status: Mapped[InboxStatus] = mapped_column(String(20), default=InboxStatus.NEW, index=True)
+    suggestion_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    confidence: Mapped[float | None] = mapped_column(Float)
+
+
+class Message(Record):
+    __tablename__ = "message"
+
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), index=True
+    )
+    thread_root_id: Mapped[str | None] = mapped_column(ForeignKey("message.id"), index=True)
+    author_type: Mapped[AuthorType] = mapped_column(String(20))
+    author_id: Mapped[str | None] = mapped_column(String(36))
+    body: Mapped[str] = mapped_column(Text)
+    ref_type: Mapped[str | None] = mapped_column(String(50))
+    ref_id: Mapped[str | None] = mapped_column(String(36))
+    run_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class ActivityLog(Record):
+    __tablename__ = "activity_log"
+
+    object_type: Mapped[str] = mapped_column(String(50))
+    object_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(50))
+    before_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    after_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    actor: Mapped[str] = mapped_column(String(100))

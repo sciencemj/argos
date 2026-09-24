@@ -1,4 +1,6 @@
+from functools import cached_property
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,10 +12,19 @@ class Settings(BaseSettings):
     port: int = 8000
     db_path: Path = Path("data/argos.db")
     vault_path: Path | None = None
+    # Areas and course/project channels to create on startup (PLAN §9).
+    seed_path: Path = Path("seed.toml")
+    timezone: str = "Asia/Seoul"
+    # "Today" lists open tasks that are overdue or due within this many days.
+    due_soon_days: int = 3
 
     @property
     def db_url(self) -> str:
         return f"sqlite+aiosqlite:///{self.db_path}"
+
+    @cached_property
+    def zoneinfo(self) -> ZoneInfo:
+        return ZoneInfo(self.timezone)
 
 
 settings = Settings()

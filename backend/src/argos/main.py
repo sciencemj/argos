@@ -1,13 +1,13 @@
-from collections.abc import AsyncGenerator, AsyncIterator
+import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI
 
+from argos import services
+from argos.api import install_error_handlers, router
 from argos.config import Settings, settings
-from argos.db import make_engine, make_sessionmaker, session_scope
+from argos.db import make_engine, make_sessionmaker
 
 
 def create_app(config: Settings = settings) -> FastAPI:
@@ -15,21 +15,17 @@ def create_app(config: Settings = settings) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
         engine = make_engine(config.db_url)
+        app.state.settings = config
         app.state.sessionmaker = make_sessionmaker(engine)
+        async with app.state.sessionmaker() as session:
+            seed = await asyncio.to_thread(services.load_seed, config.seed_path)
+            await services.seed_defaults(session, seed)
         yield
         await engine.dispose()
 
     app = FastAPI(title="Argos", lifespan=lifespan)
-
-    async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-        async for session in session_scope(request.app.state.sessionmaker):
-            yield session
-
-    @app.get("/api/v1/health")
-    async def health(session: Annotated[AsyncSession, Depends(get_session)]) -> dict[str, str]:
-        journal_mode = (await session.execute(text("PRAGMA journal_mode"))).scalar_one()
-        return {"status": "ok", "db": "ok", "journal_mode": journal_mode}
-
+    app.include_router(router)
+    install_error_handlers(app)
     return app
 
 
