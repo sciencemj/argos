@@ -85,24 +85,34 @@ Claude Code·Codex 사용량 파일, CLI 출력 포맷처럼 공식 계약이 �
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 패키지 관리 | `uv` | 백엔드 단일 Python 패키지 |
-| 백엔드 | FastAPI (+ WebSocket) | async 기반 |
-| DB | SQLite + SQLAlchemy 2.x (또는 SQLModel) + Alembic | WAL 모드 사용 |
-| 백그라운드 작업 | APScheduler 또는 asyncio 태스크 | 동기화 폴링, 알림 |
-| 파일 감시 | `watchdog` | 옵시디언 볼트, 사용량 파일 |
-| 캘린더 | `caldav`, `icalendar` | iCloud CalDAV, ICS 피드 |
-| MCP | 공식 Python MCP SDK | 앱 기능을 도구로 노출 |
-| 프론트엔드 | React + TypeScript + Vite | 상태 관리는 Zustand 또는 TanStack Query |
-| 드래그앤드롭 | dnd-kit | 칸반 |
-| 테스트 | pytest, pytest-asyncio / Vitest, Playwright(선택) | |
-| 린트·포맷 | ruff, mypy(또는 pyright) / ESLint, Prettier | |
+| 패키지 관리 | `uv` (Python 3.13) / `pnpm` | 백엔드 단일 Python 패키지 |
+| 백엔드 | `fastapi`, `uvicorn[standard]` (+ WebSocket) | async 기반 |
+| DB | SQLite + `sqlalchemy[asyncio]` 2.x + `aiosqlite` + `alembic` | WAL 모드. SQLModel 사용 안 함. 검색은 내장 FTS5 |
+| 설정 | `pydantic-settings` | `.env` |
+| 백그라운드 작업 | asyncio 태스크 (FastAPI `lifespan`) | 동기화 폴링, 알림. APScheduler 사용 안 함 |
+| 파일 감시 | `watchfiles` | 옵시디언 볼트, 사용량 파일. `uvicorn[standard]`에 포함 |
+| 캘린더 | `caldav`, `icalendar`, `recurring-ical-events` | iCloud CalDAV, ICS 피드, RRULE 전개 |
+| 옵시디언 | `python-frontmatter` | 프론트매터 파싱. 체크박스는 정규식 |
+| MCP | 공식 `mcp` SDK (FastMCP) | Streamable HTTP를 FastAPI 앱에 마운트 (같은 프로세스, 같은 domain 서비스) |
+| LLM (분류·일반) | `openai` SDK + 설정의 `base_url` | provider는 `ollama` / `hermes` 두 개만 구현. 클라우드 API 직접 호출은 아직 만들지 않음 |
+| 코딩 에이전트 | `claude-agent-sdk` / `codex exec --json` subprocess | Phase 5 |
+| 프론트엔드 | React + TypeScript + Vite, `@tanstack/react-query`, `react-router` | 전역 상태 라이브러리 없음 |
+| UI | Tailwind + shadcn/ui, `cmdk`(⌘K) | |
+| 드래그앤드롭 | `@dnd-kit/core`, `@dnd-kit/sortable` | 칸반 |
+| 캘린더 뷰 | `@fullcalendar/react` (daygrid, timegrid) | 주간·월간 |
+| 기타 프론트 | `react-markdown` + `remark-gfm`, `date-fns` + `@date-fns/tz` | 노트 렌더링, Asia/Seoul 표시 |
+| API 타입 | `openapi-typescript` + `openapi-fetch` | FastAPI OpenAPI에서 생성. WS 타입은 수동 |
+| 테스트 | `pytest`, `pytest-asyncio`, `httpx` / `vitest` | |
+| 린트·포맷 | `ruff`, `pyright` / Biome | |
+| 개발 실행 | 루트 `Makefile`의 `make dev` | Vite proxy로 `/api`, `/ws` 연결. 운영 시 FastAPI가 빌드된 프론트를 서빙 |
 
 ### 3.2 저장소 구조 (제안)
 
 ```
 argos/
-├── PLAN.md                  # 이 문서
-├── docs/decisions.md        # 설계 결정 로그
+├── docs/
+│   ├── PLAN.md              # 이 문서
+│   └── decisions.md         # 설계 결정 로그
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic/
@@ -263,6 +273,9 @@ flowchart LR
 - **리액션 = 빠른 액션**: ✅ 완료, 📅 일정으로, 🗂 칸반으로, 📌 고정
 - 스레드: 모든 메시지·카드에 스레드 열기
 - 분류용 LLM 호출은 `agents/` 어댑터를 쓰지 말고 우선 단순 클라이언트로 구현하되, Phase 5에서 기본 에이전트 설정으로 교체 가능하게 인터페이스를 둔다
+  - 설정: `classifier.provider`(`ollama` | `hermes`), `model`, `base_url`, `api_key`(hermes만). 두 provider 모두 `openai` SDK의 OpenAI 호환 API로 호출
+  - 구조화 출력: JSON 스키마 `response_format`을 우선 사용하고, 지원하지 않으면 프롬프트로 JSON 요청 후 Pydantic으로 검증. 검증 실패 시 원본은 인박스에 남긴다
+  - 클라우드 API(Claude 등) 직접 호출 provider는 **아직 만들지 않는다**. 설정값만 확장 가능하게 둔다
 
 **완료 기준**: `#컴퓨터구조`에서 "금요일까지 과제2"를 입력하면 제안 카드가 뜨고, 승인 시 해당 채널 task가 생성되어 칸반에 보인다 / 분류 실패해도 원본은 인박스에 남는다.
 
@@ -493,7 +506,8 @@ flowchart LR
 | 항목 | 필요한 시점 |
 |---|---|
 | 초기 영역·과목 채널 목록 | Phase 1 |
-| 인박스 분류와 기본 에이전트에 쓸 모델·공급자 | Phase 3, 5 |
+| 인박스 분류 모델 이름 (provider는 `ollama`/`hermes` 중 설정으로 선택. 결정됨) | Phase 3 |
+| 기본 에이전트에 쓸 모델·공급자 | Phase 5 |
 | 인박스 자동 반영 확신도 임계값 | Phase 3 |
 | Hermes 설치 위치, API 서버 포트·키 | Phase 5 |
 | 코딩 에이전트 잡 허용 작업 디렉터리 | Phase 6 |
