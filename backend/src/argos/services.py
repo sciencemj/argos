@@ -24,6 +24,8 @@ from argos.models import (
     InboxStatus,
     Message,
     Record,
+    Routine,
+    RoutineCheck,
     Task,
     TaskStatus,
 )
@@ -31,6 +33,7 @@ from argos.models import (
 POSITION_STEP = 1024.0
 MIN_POSITION_GAP = 1e-6
 SYSTEM_CHANNELS = ("today", "inbox")
+PERSONAL_CHANNEL = "일상"
 
 
 class NotFoundError(Exception):
@@ -223,8 +226,8 @@ async def create_channel(
     kind: ChannelKind = ChannelKind.COURSE,
     vault_path: str | None = None,
 ) -> Channel:
-    if kind == ChannelKind.SYSTEM:
-        raise InvalidError("system channels cannot be created")
+    if kind in (ChannelKind.SYSTEM, ChannelKind.PERSONAL):
+        raise InvalidError(f"{kind} channels are built in and cannot be created")
     await _get(session, Area, area_id)
     await _check_unique_name(session, Channel, name)
     order = await session.scalar(
@@ -246,8 +249,10 @@ async def update_channel(
     channel = await get_channel(session, channel_id)
     if channel.kind == ChannelKind.SYSTEM:
         raise InvalidError("system channels cannot be changed")
-    if changes.get("kind") == ChannelKind.SYSTEM:
-        raise InvalidError("cannot turn a channel into a system channel")
+    if changes.get("kind") in (ChannelKind.SYSTEM, ChannelKind.PERSONAL) or (
+        channel.kind == ChannelKind.PERSONAL and changes.get("kind", channel.kind) != channel.kind
+    ):
+        raise InvalidError("built-in channel kinds cannot be changed")
     if "name" in changes:
         await _check_unique_name(session, Channel, changes["name"], channel.id)
     if changes.get("area_id") is not None:
@@ -261,8 +266,8 @@ async def delete_channel(
     """Refuses while the channel still holds tasks or events unless `force`; forced
     deletes log each contained object so nothing disappears without a trace."""
     channel = await get_channel(session, channel_id)
-    if channel.kind == ChannelKind.SYSTEM:
-        raise InvalidError("system channels cannot be deleted")
+    if channel.kind in (ChannelKind.SYSTEM, ChannelKind.PERSONAL):
+        raise InvalidError("built-in channels cannot be deleted")
     tasks = (await session.scalars(select(Task).where(Task.channel_id == channel.id))).all()
     events = (await session.scalars(select(Event).where(Event.channel_id == channel.id))).all()
     if (tasks or events) and not force:
@@ -630,7 +635,8 @@ async def _resolve_channel(
     session: AsyncSession, fields: dict[str, Any], captured_in: str | None
 ) -> str:
     """Explicit channel_id, else the classifier's channel_hint by name, else the channel
-    the text was typed in unless that is a system channel (#today, #inbox)."""
+    the text was typed in; text typed into #today/#inbox with no better guess goes to
+    the personal #일상 channel."""
     if fields.get("channel_id"):
         return (await get_channel(session, fields["channel_id"])).id
     if hint := fields.get("channel_hint"):
@@ -641,7 +647,14 @@ async def _resolve_channel(
         channel = await session.get(Channel, captured_in)
         if channel is not None and channel.kind != ChannelKind.SYSTEM:
             return channel.id
+    personal = await get_personal_channel(session)
+    if personal is not None:
+        return personal.id
     raise InvalidError("어느 채널에 넣을지 골라 주세요")
+
+
+async def get_personal_channel(session: AsyncSession) -> Channel | None:
+    return await session.scalar(select(Channel).where(Channel.kind == ChannelKind.PERSONAL))
 
 
 def _as_datetime(value: Any) -> datetime | None:
@@ -835,6 +848,105 @@ async def get_today(
     return {"events": events, "due_tasks": due_tasks, "inbox_count": inbox_count}
 
 
+# --- routines -------------------------------------------------------------------
+
+STREAK_LOOKBACK_DAYS = 400
+
+
+def _weekdays(value: str) -> str:
+    digits = sorted(set(value))
+    if not digits or any(d not in "0123456" for d in digits):
+        raise InvalidError("weekdays must be digits 0 (Mon) … 6 (Sun), e.g. 01234")
+    return "".join(digits)
+
+
+def _scheduled(routine: Routine, day: date) -> bool:
+    return str(day.weekday()) in routine.weekdays
+
+
+def streak(routine: Routine, done_days: set[date], today: date) -> int:
+    """Consecutive scheduled days done, counting back from today. Days the routine
+    rests (weekdays not listed) are skipped; today not done yet does not break it."""
+    count = 0
+    day = today
+    first = routine.created_at.date() - timedelta(days=STREAK_LOOKBACK_DAYS)
+    while day >= first:
+        if _scheduled(routine, day):
+            if day in done_days:
+                count += 1
+            elif day != today:
+                break
+        day -= timedelta(days=1)
+    return count
+
+
+async def list_routines(
+    session: AsyncSession, *, day: date, today: date
+) -> list[tuple[Routine, bool, bool, int]]:
+    """(routine, scheduled on `day`, done on `day`, streak as of `today`) per routine."""
+    routines = (
+        await session.scalars(select(Routine).order_by(Routine.sort_order, Routine.created_at))
+    ).all()
+    since = today - timedelta(days=STREAK_LOOKBACK_DAYS)
+    checks = (
+        await session.execute(
+            select(RoutineCheck.routine_id, RoutineCheck.day).where(
+                RoutineCheck.day >= min(since, day)
+            )
+        )
+    ).all()
+    done: dict[str, set[date]] = {}
+    for routine_id, check_day in checks:
+        done.setdefault(routine_id, set()).add(check_day)
+    return [
+        (
+            r,
+            _scheduled(r, day),
+            day in done.get(r.id, set()),
+            streak(r, done.get(r.id, set()), today),
+        )
+        for r in routines
+    ]
+
+
+async def create_routine(
+    session: AsyncSession, *, title: str, actor: str, weekdays: str = "0123456"
+) -> Routine:
+    order = (await session.scalar(select(func.max(Routine.sort_order)))) or 0
+    routine = Routine(title=title, weekdays=_weekdays(weekdays), sort_order=order + 1)
+    return await _create(session, routine, actor)
+
+
+async def update_routine(
+    session: AsyncSession, routine_id: str, changes: dict[str, Any], actor: str
+) -> Routine:
+    if "weekdays" in changes:
+        changes = changes | {"weekdays": _weekdays(changes["weekdays"])}
+    return await _update(session, await _get(session, Routine, routine_id), changes, actor)
+
+
+async def delete_routine(session: AsyncSession, routine_id: str, actor: str) -> None:
+    """Also drops its check history (FK cascade)."""
+    await _delete(session, await _get(session, Routine, routine_id), actor)
+
+
+async def set_routine_check(
+    session: AsyncSession, routine_id: str, *, day: date, done: bool, today: date, actor: str
+) -> None:
+    routine = await _get(session, Routine, routine_id)
+    if day > today:
+        raise InvalidError("미래 날짜는 체크할 수 없어요")
+    if not _scheduled(routine, day):
+        raise InvalidError("이 루틴을 쉬는 요일이에요")
+    check = await session.scalar(
+        select(RoutineCheck).where(RoutineCheck.routine_id == routine.id, RoutineCheck.day == day)
+    )
+    if done and check is None:
+        await _create(session, RoutineCheck(routine_id=routine.id, day=day), actor)
+    elif not done and check is not None:
+        await _delete(session, check, actor)
+
+
 # --- seed ---------------------------------------------------------------------
 
 
@@ -853,6 +965,13 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
         if exists is None:
             channel = Channel(name=name, kind=ChannelKind.SYSTEM, sort_order=order)
             await _create(session, channel, "system")
+    # Found by kind, not name, so renaming #일상 sticks across restarts.
+    if await get_personal_channel(session) is None:
+        taken = await session.scalar(select(Channel.id).where(Channel.name == PERSONAL_CHANNEL))
+        name = PERSONAL_CHANNEL if taken is None else f"{PERSONAL_CHANNEL} (개인)"
+        await _create(
+            session, Channel(name=name, kind=ChannelKind.PERSONAL, sort_order=0), "system"
+        )
 
     has_user_data = await session.scalar(select(Area.id).limit(1)) is not None
     if has_user_data:

@@ -109,6 +109,37 @@ class ChannelUpdate(BaseModel):
     sort_order: int | None = None
 
 
+class RoutineOut(BaseModel):
+    id: str
+    title: str
+    weekdays: str
+    sort_order: int
+    scheduled: bool  # repeats on the requested day
+    done: bool  # checked on the requested day
+    streak: int  # consecutive scheduled days done, as of today
+
+
+class RoutinesOut(BaseModel):
+    day: date
+    today: date
+    routines: list[RoutineOut]
+
+
+class RoutineCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    weekdays: str = Field(default="0123456", min_length=1, max_length=7)
+
+
+class RoutineUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    weekdays: str | None = Field(default=None, min_length=1, max_length=7)
+    sort_order: int | None = None
+
+
+class RoutineCheckIn(BaseModel):
+    done: bool
+
+
 class ClassifierSettingsOut(BaseModel):
     provider: Literal["ollama", "hermes"]
     model: str
@@ -333,7 +364,16 @@ class TodayOut(BaseModel):
     inbox_count: int
 
 
-NOT_NULL_FIELDS = {"channel_id", "title", "status", "name", "kind", "area_id", "sort_order"}
+NOT_NULL_FIELDS = {
+    "weekdays",
+    "channel_id",
+    "title",
+    "status",
+    "name",
+    "kind",
+    "area_id",
+    "sort_order",
+}
 
 
 def _changes(body: BaseModel) -> dict[str, Any]:
@@ -535,6 +575,57 @@ async def _classifier_settings(request: Request, session: AsyncSession) -> Class
         model=config.classifier_model,
         source=source,
         enabled=request.app.state.classifier is not None,
+    )
+
+
+def _today(config: Settings) -> date:
+    return datetime.now(config.zoneinfo).date()
+
+
+@router.get("/routines")
+async def list_routines(session: Session, config: Config, day: date | None = None) -> RoutinesOut:
+    today = _today(config)
+    rows = await services.list_routines(session, day=day or today, today=today)
+    return RoutinesOut(
+        day=day or today,
+        today=today,
+        routines=[
+            RoutineOut(
+                id=r.id,
+                title=r.title,
+                weekdays=r.weekdays,
+                sort_order=r.sort_order,
+                scheduled=scheduled,
+                done=done,
+                streak=streak,
+            )
+            for r, scheduled, done, streak in rows
+        ],
+    )
+
+
+@router.post("/routines", status_code=status.HTTP_201_CREATED)
+async def create_routine(session: Session, body: RoutineCreate) -> PromotedOut:
+    routine = await services.create_routine(session, actor=USER, **body.model_dump())
+    return PromotedOut(object_type="routine", id=routine.id)
+
+
+@router.patch("/routines/{routine_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def update_routine(session: Session, routine_id: str, body: RoutineUpdate) -> None:
+    await services.update_routine(session, routine_id, _changes(body), USER)
+
+
+@router.delete("/routines/{routine_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_routine(session: Session, routine_id: str) -> None:
+    await services.delete_routine(session, routine_id, USER)
+
+
+@router.put("/routines/{routine_id}/checks/{day}", status_code=status.HTTP_204_NO_CONTENT)
+async def set_routine_check(
+    session: Session, config: Config, routine_id: str, day: date, body: RoutineCheckIn
+) -> None:
+    await services.set_routine_check(
+        session, routine_id, day=day, done=body.done, today=_today(config), actor=USER
     )
 
 

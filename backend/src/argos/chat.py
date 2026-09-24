@@ -130,6 +130,7 @@ async def classify_item(
         if item is None or item.status != InboxStatus.NEW:
             return  # deleted or handled while we waited
         channel = await session.get(Channel, item.channel_id) if item.channel_id else None
+        personal = await services.get_personal_channel(session)
         names = await session.scalars(
             select(Channel.name).where(Channel.kind != ChannelKind.SYSTEM).order_by(Channel.name)
         )
@@ -139,6 +140,7 @@ async def classify_item(
             channel_name=channel.name if channel else None,
             channel_kind=channel.kind if channel else None,
             channel_names=list(names.all()),
+            personal_channel=personal.name if personal else None,
         )
         try:
             suggestion = await classifier.classify(item.raw_text, context)

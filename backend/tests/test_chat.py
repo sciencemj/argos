@@ -152,19 +152,24 @@ def test_auto_apply_only_for_enabled_types_above_threshold(settings: Settings) -
         assert message["ref_type"] == "inbox_item"
 
 
-def test_suggestion_from_system_inbox_needs_a_channel(settings: Settings) -> None:
+def test_inbox_capture_without_channel_goes_to_personal(settings: Settings) -> None:
     unsure = HOMEWORK.model_copy(update={"channel_hint": "KUBIG"})  # not a channel
     for client in make_client(settings, FakeClassifier(unsure)):
         inbox = channel_id(client, "inbox")
         item_id = send(client, inbox, "금요일까지 과제2").json()["ref_id"]
         [item] = client.get("/api/v1/inbox").json()["items"]
         assert item["suggestion_json"]["channel_hint"] is None
-        missing = client.post(f"/api/v1/inbox/{item_id}/accept", json={})
-        assert missing.status_code == 422
-        ok = client.post(
-            f"/api/v1/inbox/{item_id}/accept", json={"channel_id": channel_id(client, "운영체제")}
+        client.post(f"/api/v1/inbox/{item_id}/accept", json={})
+        [task] = client.get(
+            "/api/v1/tasks", params={"channel_id": channel_id(client, "일상")}
+        ).json()
+        assert task["title"] == "과제2 제출"
+
+        other = send(client, inbox, "금요일까지 과제3").json()["ref_id"]
+        chosen = client.post(
+            f"/api/v1/inbox/{other}/accept", json={"channel_id": channel_id(client, "운영체제")}
         )
-        assert ok.status_code == 200
+        assert chosen.status_code == 200
 
 
 def test_slash_commands(chat: TestClient, fake: FakeClassifier) -> None:

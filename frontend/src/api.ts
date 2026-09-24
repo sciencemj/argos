@@ -18,6 +18,8 @@ export type InboxItem = Schemas["InboxOut"];
 export type Activity = Schemas["ActivityOut"];
 export type Config = Schemas["ConfigOut"];
 export type Message = Schemas["MessageOut"];
+export type Routine = Schemas["RoutineOut"];
+export type Routines = Schemas["RoutinesOut"];
 export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
 
@@ -77,6 +79,8 @@ export function invalidateFor(
     event: [["events"], ["today"], ...feeds],
     inbox_item: [["inbox"], ["today"], ...feeds],
     message: feeds,
+    routine: [["routines"]],
+    routine_check: [["routines"]],
     channel: [["channels"], ["tasks"]],
     area: [["channels"]],
   };
@@ -426,5 +430,79 @@ export function useSaveClassifier() {
       void qc.invalidateQueries({ queryKey: ["settings"] });
       void qc.invalidateQueries({ queryKey: ["config"] });
     },
+  });
+}
+
+// --- routines -------------------------------------------------------------------
+
+export const useRoutines = () =>
+  useQuery({
+    queryKey: ["routines"],
+    queryFn: () => call(client.GET("/api/v1/routines")),
+  });
+
+export const useCreateRoutine = () =>
+  useWrite("routine", (body: Schemas["RoutineCreate"]) =>
+    call(client.POST("/api/v1/routines", { body })),
+  );
+
+export const useUpdateRoutine = () =>
+  useWrite(
+    "routine",
+    ({ id, ...body }: Schemas["RoutineUpdate"] & { id: string }) =>
+      call(
+        client.PATCH("/api/v1/routines/{routine_id}", {
+          params: { path: { routine_id: id } },
+          body,
+        }),
+      ),
+  );
+
+export const useDeleteRoutine = () =>
+  useWrite("routine", (id: string) =>
+    call(
+      client.DELETE("/api/v1/routines/{routine_id}", {
+        params: { path: { routine_id: id } },
+      }),
+    ),
+  );
+
+/** Ticks instantly; the refetch afterwards brings the real streak. */
+export function useCheckRoutine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      day,
+      done,
+    }: {
+      id: string;
+      day: string;
+      done: boolean;
+    }) =>
+      call(
+        client.PUT("/api/v1/routines/{routine_id}/checks/{day}", {
+          params: { path: { routine_id: id, day } },
+          body: { done },
+        }),
+      ),
+    onMutate: ({ id, done }) => {
+      const previous = qc.getQueryData<Routines>(["routines"]);
+      if (previous) {
+        qc.setQueryData<Routines>(["routines"], {
+          ...previous,
+          routines: previous.routines.map((r) =>
+            r.id === id
+              ? { ...r, done, streak: Math.max(0, r.streak + (done ? 1 : -1)) }
+              : r,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(["routines"], ctx.previous);
+    },
+    onSettled: () => invalidateFor(qc, "routine"),
   });
 }

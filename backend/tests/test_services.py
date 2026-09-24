@@ -42,13 +42,26 @@ async def test_seed_only_fills_an_empty_database(session: AsyncSession) -> None:
     await services.seed_defaults(session, config("운영체제", "인공지능", "새과목"))
 
     names = [c.name for c in await services.list_channels(session)]
-    assert names == ["today", "inbox", "인공지능"]
+    assert names == ["today", "inbox", "일상", "인공지능"]
 
 
 async def test_system_channels_are_restored(session: AsyncSession) -> None:
     await services.seed_defaults(session, {})
     await services.seed_defaults(session, {})
-    assert [c.name for c in await services.list_channels(session)] == ["today", "inbox"]
+    assert [c.name for c in await services.list_channels(session)] == ["today", "inbox", "일상"]
+
+
+async def test_personal_channel_is_built_in(session: AsyncSession) -> None:
+    await services.seed_defaults(session, {})
+    personal = await services.get_personal_channel(session)
+    assert personal is not None
+    await services.update_channel(session, personal.id, {"name": "생활"}, "user")
+    await services.seed_defaults(session, {})  # restart: found by kind, not recreated
+    assert [c.name for c in await services.list_channels(session)] == ["today", "inbox", "생활"]
+    with pytest.raises(services.InvalidError):
+        await services.delete_channel(session, personal.id, "user")
+    with pytest.raises(services.InvalidError):
+        await services.update_channel(session, personal.id, {"kind": "course"}, "user")
 
 
 # --- areas & channels -----------------------------------------------------------
@@ -326,3 +339,68 @@ async def test_every_write_is_logged(session: AsyncSession) -> None:
     await services.delete_task(session, task.id, "u")
     count = await session.scalar(select(func.count()).where(ActivityLog.object_id == task.id))
     assert count == 4
+
+
+# --- routines -------------------------------------------------------------------
+
+
+async def test_routine_checks_and_streak(session: AsyncSession) -> None:
+    today = date(2026, 9, 24)  # Thursday
+    routine = await services.create_routine(session, title="아침 운동", actor="u")
+    routine.created_at = datetime(2026, 9, 1, tzinfo=UTC)
+    for back in (1, 2, 3):  # Mon–Wed done
+        await services.set_routine_check(
+            session, routine.id, day=today - timedelta(back), done=True, today=today, actor="u"
+        )
+
+    [(r, scheduled, done, run)] = await services.list_routines(session, day=today, today=today)
+    assert (r.id, scheduled, done, run) == (routine.id, True, False, 3)  # today not yet done
+
+    await services.set_routine_check(
+        session, routine.id, day=today, done=True, today=today, actor="u"
+    )
+    [(_, _, done, run)] = await services.list_routines(session, day=today, today=today)
+    assert (done, run) == (True, 4)
+
+    await services.set_routine_check(
+        session, routine.id, day=today - timedelta(2), done=False, today=today, actor="u"
+    )
+    [(_, _, _, run)] = await services.list_routines(session, day=today, today=today)
+    assert run == 2  # the gap on Tuesday breaks the streak
+
+
+async def test_rest_days_do_not_break_streak(session: AsyncSession) -> None:
+    monday = date(2026, 9, 28)
+    routine = await services.create_routine(session, title="단어", weekdays="01234", actor="u")
+    routine.created_at = datetime(2026, 9, 1, tzinfo=UTC)
+    friday = monday - timedelta(3)
+    for day in (friday, monday):
+        await services.set_routine_check(
+            session, routine.id, day=day, done=True, today=monday, actor="u"
+        )
+    [(_, _, _, run)] = await services.list_routines(session, day=monday, today=monday)
+    assert run == 2
+    with pytest.raises(services.InvalidError):  # Sunday is a rest day
+        await services.set_routine_check(
+            session, routine.id, day=monday - timedelta(1), done=True, today=monday, actor="u"
+        )
+
+
+async def test_routine_rules(session: AsyncSession) -> None:
+    today = date(2026, 9, 24)
+    with pytest.raises(services.InvalidError):
+        await services.create_routine(session, title="x", weekdays="78", actor="u")
+    routine = await services.create_routine(session, title="물 2L", weekdays="6543210", actor="u")
+    assert routine.weekdays == "0123456"
+    with pytest.raises(services.InvalidError):
+        await services.set_routine_check(
+            session, routine.id, day=today + timedelta(1), done=True, today=today, actor="u"
+        )
+    await services.set_routine_check(
+        session, routine.id, day=today, done=True, today=today, actor="u"
+    )
+    await services.set_routine_check(
+        session, routine.id, day=today, done=True, today=today, actor="u"
+    )
+    await services.delete_routine(session, routine.id, "u")
+    assert await services.list_routines(session, day=today, today=today) == []

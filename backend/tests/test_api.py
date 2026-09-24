@@ -149,3 +149,33 @@ def test_errors_use_uniform_shape(client: TestClient) -> None:
 
     unknown_route = client.get("/api/v1/nothing")
     assert unknown_route.json() == {"error": {"code": "http_error", "message": "Not Found"}}
+
+
+def test_routine_api(client: TestClient) -> None:
+    created = client.post("/api/v1/routines", json={"title": "아침 운동", "weekdays": "0123456"})
+    routine_id = created.json()["id"]
+    today = client.get("/api/v1/routines").json()
+    [routine] = today["routines"]
+    assert (routine["title"], routine["done"], routine["streak"]) == ("아침 운동", False, 0)
+
+    checked = client.put(
+        f"/api/v1/routines/{routine_id}/checks/{today['today']}", json={"done": True}
+    )
+    assert checked.status_code == 204
+    [routine] = client.get("/api/v1/routines").json()["routines"]
+    assert (routine["done"], routine["streak"]) == (True, 1)
+
+    future = client.put(f"/api/v1/routines/{routine_id}/checks/2999-01-01", json={"done": True})
+    assert future.status_code == 422
+
+    client.patch(f"/api/v1/routines/{routine_id}", json={"title": "운동 30분"})
+    assert client.get("/api/v1/routines").json()["routines"][0]["title"] == "운동 30분"
+    assert client.delete(f"/api/v1/routines/{routine_id}").status_code == 204
+    assert client.get("/api/v1/routines").json()["routines"] == []
+
+
+def test_personal_channel_listed(client: TestClient) -> None:
+    channels = client.get("/api/v1/channels").json()["channels"]
+    [personal] = [c for c in channels if c["kind"] == "personal"]
+    assert personal["name"] == "일상"
+    assert client.delete(f"/api/v1/channels/{personal['id']}").status_code == 422

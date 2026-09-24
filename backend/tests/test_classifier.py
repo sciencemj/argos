@@ -156,3 +156,15 @@ def test_anchor_dates_corrects_the_models_day() -> None:
 
     idea = Suggestion.model_validate(ANSWER | {"type": "idea", "due_at": None})
     assert anchor_dates(idea, "금요일에 해보기", CONTEXT) == idea
+
+
+def test_prompt_suggests_personal_channel_from_inbox() -> None:
+    from_inbox = ClassifyContext(
+        now=CONTEXT.now,
+        tz=SEOUL,
+        channel_name="inbox",
+        channel_kind="system",
+        channel_names=["컴퓨터구조", "일상"],
+        personal_channel="일상",
+    )
+    assert 'channel_hint는 "일상"' in build_prompt("치과 예약", from_inbox)[0]["content"]

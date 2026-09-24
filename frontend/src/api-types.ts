@@ -198,6 +198,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/routines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Routines */
+        get: operations["list_routines_api_v1_routines_get"];
+        put?: never;
+        /** Create Routine */
+        post: operations["create_routine_api_v1_routines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routines/{routine_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Routine */
+        delete: operations["delete_routine_api_v1_routines__routine_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Routine */
+        patch: operations["update_routine_api_v1_routines__routine_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/routines/{routine_id}/checks/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Routine Check */
+        put: operations["set_routine_check_api_v1_routines__routine_id__checks__day__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/classifier": {
         parameters: {
             query?: never;
@@ -491,7 +544,7 @@ export interface components {
          * ChannelKind
          * @enum {string}
          */
-        ChannelKind: "course" | "project" | "system";
+        ChannelKind: "course" | "project" | "personal" | "system";
         /** ChannelOut */
         ChannelOut: {
             /** Id */
@@ -822,6 +875,62 @@ export interface components {
             inbox_item?: components["schemas"]["InboxOut"] | null;
             task?: components["schemas"]["TaskOut"] | null;
             event?: components["schemas"]["EventOut"] | null;
+        };
+        /** RoutineCheckIn */
+        RoutineCheckIn: {
+            /** Done */
+            done: boolean;
+        };
+        /** RoutineCreate */
+        RoutineCreate: {
+            /** Title */
+            title: string;
+            /**
+             * Weekdays
+             * @default 0123456
+             */
+            weekdays: string;
+        };
+        /** RoutineOut */
+        RoutineOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Weekdays */
+            weekdays: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Scheduled */
+            scheduled: boolean;
+            /** Done */
+            done: boolean;
+            /** Streak */
+            streak: number;
+        };
+        /** RoutineUpdate */
+        RoutineUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Weekdays */
+            weekdays?: string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** RoutinesOut */
+        RoutinesOut: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Routines */
+            routines: components["schemas"]["RoutineOut"][];
         };
         /** TaskCreate */
         TaskCreate: {
@@ -1392,6 +1501,166 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["InboxOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_routines_api_v1_routines_get: {
+        parameters: {
+            query?: {
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutinesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_routine_api_v1_routines_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_routine_api_v1_routines__routine_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_routine_api_v1_routines__routine_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_routine_check_api_v1_routines__routine_id__checks__day__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: string;
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineCheckIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -211,6 +211,9 @@ flowchart LR
 | `debate` | channel_id, topic, mode, participants_json, max_rounds, status, summary_task_id | 토론 세션 |
 | `approval` | requested_by_run_id, action, payload_json, status | 파괴적 작업 승인 요청 (P5) |
 | `usage_snapshot` | provider, window, used_percent, resets_at, observed_at | 사용량 기록 |
+| `routine` | title, weekdays, sort_order | 데일리 루틴 (Phase 3a) |
+| `routine_check` | routine_id, day | 루틴을 체크한 날 (routine_id+day 유일) |
+| `app_setting` | key, value | 앱에서 바꾼 설정(.env보다 우선) |
 
 **task.status 값**: `backlog`, `todo`, `in_progress`, `review`, `done`.
 **position**: 칸반 정렬용 실수값. 두 카드 사이에 넣을 때 평균값을 쓴다. 간격이 너무 좁아지면 해당 컬럼만 재번호.
@@ -278,6 +281,13 @@ flowchart LR
   - 클라우드 API(Claude 등) 직접 호출 provider는 **아직 만들지 않는다**. 설정값만 확장 가능하게 둔다
 
 **완료 기준**: `#컴퓨터구조`에서 "금요일까지 과제2"를 입력하면 제안 카드가 뜨고, 승인 시 해당 채널 task가 생성되어 칸반에 보인다 / 분류 실패해도 원본은 인박스에 남는다.
+
+### Phase 3a. 일상 채널과 데일리 루틴 (추가 범위, 2026-09-25 사용자 요청)
+
+- **#일상 채널**: 과목·프로젝트에 속하지 않는 일정·할 일용 기본 채널(kind `personal`). 삭제 불가, 이름 변경 가능. 사이드바 "지켜보는 중"과 Home 과목별 진행에 표시. `#inbox`에서 채널을 특정하지 못한 입력은 #일상으로 제안
+- **데일리 루틴**: 매일(또는 지정 요일) 체크하는 체크리스트. 칸반과 분리. 날짜별 체크 기록(`routine`, `routine_check`)과 연속 달성 일수. Home에 "오늘의 루틴" 패널
+
+**완료 기준**: #inbox의 개인 일정이 #일상으로 들어간다 / 루틴을 체크하면 연속 일수가 늘고 새로고침 후에도 유지된다 / 쉬는 요일은 연속을 끊지 않는다.
 
 ### Phase 4. MCP 서버
 

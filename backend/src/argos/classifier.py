@@ -106,6 +106,7 @@ class ClassifyContext:
     channel_name: str | None
     channel_kind: str | None
     channel_names: list[str]
+    personal_channel: str | None = None  # the built-in #일상 channel's current name
 
 
 class ClassifierError(Exception):
@@ -135,7 +136,7 @@ def _calendar(local: datetime) -> str:
 def build_prompt(text: str, ctx: ClassifyContext) -> list[dict[str, str]]:
     local = ctx.now.astimezone(ctx.tz)
     today = f"{local:%Y-%m-%d} ({WEEKDAY_KO[local.weekday()]}) {local:%H:%M} {ctx.tz.key}"
-    if ctx.channel_kind in ("course", "project"):
+    if ctx.channel_kind in ("course", "project", "personal"):
         channel_rule = (
             f'입력은 "#{ctx.channel_name}" 채널에서 들어왔다. 이 채널로 이미 정해진 것으로 보고 '
             f'channel_hint는 "{ctx.channel_name}"로 둔다.'
@@ -145,6 +146,11 @@ def build_prompt(text: str, ctx: ClassifyContext) -> list[dict[str, str]]:
             "입력한 채널이 과목·프로젝트가 아니다. 입력에 채널 이름이 직접 나오거나 그 과목 내용이 "
             "분명할 때만 channel_hint에 그 이름을 넣는다. 조금이라도 애매하면 null."
         )
+        if ctx.personal_channel:
+            channel_rule += (
+                f" 과목·프로젝트와 무관한 개인 일상(약속, 병원, 운동, 장보기, 집안일 등)이면 "
+                f'channel_hint는 "{ctx.personal_channel}".'
+            )
     system = f"""너는 개인 일정·할 일 앱의 입력 분류기다.
 사용자가 적은 한 줄을 JSON 하나로만 답한다.
 

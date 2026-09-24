@@ -38,3 +38,11 @@ describe("dates (Asia/Seoul)", () => {
     );
   });
 });
+
+import { weekdaysLabel } from "./routines";
+
+test("weekday labels", () => {
+  expect(weekdaysLabel("0123456")).toBe("매일");
+  expect(weekdaysLabel("01234")).toBe("평일");
+  expect(weekdaysLabel("024")).toBe("월·수·금");
+});

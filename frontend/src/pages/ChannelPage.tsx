@@ -165,16 +165,18 @@ function ChannelSettings({
         </label>
         <ErrorText error={update.error} />
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={btn.danger}
-            disabled={remove.isPending}
-            onClick={() =>
-              confirm(`#${channel.name} 채널을 삭제할까요?`) && destroy(false)
-            }
-          >
-            채널 삭제
-          </button>
+          {channel.kind !== "personal" && (
+            <button
+              type="button"
+              className={btn.danger}
+              disabled={remove.isPending}
+              onClick={() =>
+                confirm(`#${channel.name} 채널을 삭제할까요?`) && destroy(false)
+              }
+            >
+              채널 삭제
+            </button>
+          )}
           <span className="grow" />
           <button type="button" className={btn.ghost} onClick={onClose}>
             취소

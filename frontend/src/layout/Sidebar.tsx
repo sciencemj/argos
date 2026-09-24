@@ -49,6 +49,7 @@ export function Sidebar({
   const area = data?.areas.find((a) => a.id === areaId);
   const channels = data?.channels ?? [];
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
+  const personal = channels.find((c) => c.kind === "personal");
   const inScope = channels.filter(
     (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
   );
@@ -96,6 +97,9 @@ export function Sidebar({
                 </span>
               )}
             </NavLink>
+          )}
+          {personal && (
+            <ChannelRow channel={personal} days={due.get(personal.id)} />
           )}
         </Section>
 

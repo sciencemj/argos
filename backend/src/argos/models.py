@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -49,6 +50,8 @@ def new_id() -> str:
 class ChannelKind(StrEnum):
     COURSE = "course"
     PROJECT = "project"
+    # The single built-in #일상 channel for everyday things outside courses/projects.
+    PERSONAL = "personal"
     SYSTEM = "system"
 
 
@@ -185,3 +188,26 @@ class AppSetting(Record):
 
     key: Mapped[str] = mapped_column(String(100), unique=True)
     value: Mapped[Any] = mapped_column(JSON)
+
+
+class Routine(Record):
+    """A daily checklist item (데일리 루틴), not a kanban task."""
+
+    __tablename__ = "routine"
+
+    title: Mapped[str] = mapped_column(String(200))
+    # Days it repeats, Monday=0 … Sunday=6 as digits: "0123456" every day, "01234" weekdays.
+    weekdays: Mapped[str] = mapped_column(String(7), default="0123456")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class RoutineCheck(Record):
+    """One routine done on one local calendar day."""
+
+    __tablename__ = "routine_check"
+    __table_args__ = (UniqueConstraint("routine_id", "day", name="uq_routine_check_day"),)
+
+    routine_id: Mapped[str] = mapped_column(
+        ForeignKey("routine.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[date] = mapped_column(Date)

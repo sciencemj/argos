@@ -18,6 +18,7 @@ import {
 import { InboxRow } from "../cards";
 import { dday, fmt, inZone, relativeDue } from "../dates";
 import { CheckIcon } from "../icons";
+import { RoutinePanel } from "../routines";
 import { btn, card, DdayBadge } from "../ui";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -68,10 +69,13 @@ export function TodayPage() {
         <Inbox items={inbox.data?.items ?? []} now={now} byId={byId} />
       </div>
 
-      <Progress
-        channels={channels.data?.channels ?? []}
-        tasks={tasks.data ?? []}
-      />
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start gap-[18px]">
+        <RoutinePanel />
+        <Progress
+          channels={channels.data?.channels ?? []}
+          tasks={tasks.data ?? []}
+        />
+      </div>
     </div>
   );
 }
@@ -342,7 +346,10 @@ const STEP: Record<Task["status"], string> = {
 };
 
 function Progress({ channels, tasks }: { channels: Channel[]; tasks: Task[] }) {
-  const courses = channels.filter((c) => c.kind === "course");
+  // Courses plus the personal #일상 channel, which lives on Home.
+  const courses = channels.filter(
+    (c) => c.kind === "course" || c.kind === "personal",
+  );
   if (courses.length === 0) return null;
   const grid =
     "grid grid-cols-[120px_repeat(5,minmax(0,1fr))] items-center gap-2.5";
