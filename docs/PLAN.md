@@ -85,7 +85,7 @@ Claude Code·Codex 사용량 파일, CLI 출력 포맷처럼 공식 계약이 �
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
-| 패키지 관리 | `uv` (Python 3.13) / `pnpm` | 백엔드 단일 Python 패키지 |
+| 패키지 관리 | `uv` (Python 3.13) / `bun` (패키지 설치·스크립트 실행만) | 백엔드 단일 Python 패키지 |
 | 백엔드 | `fastapi`, `uvicorn[standard]` (+ WebSocket) | async 기반 |
 | DB | SQLite + `sqlalchemy[asyncio]` 2.x + `aiosqlite` + `alembic` | WAL 모드. SQLModel 사용 안 함. 검색은 내장 FTS5 |
 | 설정 | `pydantic-settings` | `.env` |
@@ -102,7 +102,7 @@ Claude Code·Codex 사용량 파일, CLI 출력 포맷처럼 공식 계약이 �
 | 캘린더 뷰 | `@fullcalendar/react` (daygrid, timegrid) | 주간·월간 |
 | 기타 프론트 | `react-markdown` + `remark-gfm`, `date-fns` + `@date-fns/tz` | 노트 렌더링, Asia/Seoul 표시 |
 | API 타입 | `openapi-typescript` + `openapi-fetch` | FastAPI OpenAPI에서 생성. WS 타입은 수동 |
-| 테스트 | `pytest`, `pytest-asyncio`, `httpx` / `vitest` | |
+| 테스트 | `pytest`, `pytest-asyncio`, `httpx2` / `vitest`, Testing Library | |
 | 린트·포맷 | `ruff`, `pyright` / Biome | |
 | 개발 실행 | 루트 `Makefile`의 `make dev` | Vite proxy로 `/api`, `/ws` 연결. 운영 시 FastAPI가 빌드된 프론트를 서빙 |
 

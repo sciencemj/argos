@@ -1,0 +1,9 @@
+:root {
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+}
