@@ -32,17 +32,68 @@ async def column_titles(session: AsyncSession, channel_id: str, status: TaskStat
 # --- seed ---------------------------------------------------------------------
 
 
-async def test_seed_is_idempotent(session: AsyncSession) -> None:
-    def config(vault_path: str) -> dict[str, Any]:
-        channel = {"name": "운영체제", "vault_path": vault_path}
-        return {"area": [{"name": "학업", "channel": [channel]}]}
+async def test_seed_only_fills_an_empty_database(session: AsyncSession) -> None:
+    def config(*names: str) -> dict[str, Any]:
+        return {"area": [{"name": "학업", "channel": [{"name": n} for n in names]}]}
 
-    await services.seed_defaults(session, config("a/"))
-    await services.seed_defaults(session, config("b/"))
+    await services.seed_defaults(session, config("운영체제", "인공지능"))
+    [os_channel] = [c for c in await services.list_channels(session) if c.name == "운영체제"]
+    await services.delete_channel(session, os_channel.id, "user")
+    await services.seed_defaults(session, config("운영체제", "인공지능", "새과목"))
 
-    channels = await services.list_channels(session)
-    assert [c.name for c in channels] == ["today", "inbox", "운영체제"]
-    assert channels[2].vault_path == "b/"
+    names = [c.name for c in await services.list_channels(session)]
+    assert names == ["today", "inbox", "인공지능"]
+
+
+async def test_system_channels_are_restored(session: AsyncSession) -> None:
+    await services.seed_defaults(session, {})
+    await services.seed_defaults(session, {})
+    assert [c.name for c in await services.list_channels(session)] == ["today", "inbox"]
+
+
+# --- areas & channels -----------------------------------------------------------
+
+
+async def test_channel_names_are_unique(session: AsyncSession) -> None:
+    channel = await make_channel(session)
+    assert channel.area_id is not None
+    with pytest.raises(services.ConflictError):
+        await services.create_channel(
+            session, name="컴퓨터구조", area_id=channel.area_id, actor="user"
+        )
+
+
+async def test_system_channels_are_protected(session: AsyncSession) -> None:
+    await services.seed_defaults(session, {})
+    inbox = next(c for c in await services.list_channels(session) if c.name == "inbox")
+    with pytest.raises(services.InvalidError):
+        await services.delete_channel(session, inbox.id, "user")
+    with pytest.raises(services.InvalidError):
+        await services.update_channel(session, inbox.id, {"name": "x"}, "user")
+
+
+async def test_deleting_non_empty_channel_needs_force_and_logs_children(
+    session: AsyncSession,
+) -> None:
+    channel = await make_channel(session)
+    task = await services.create_task(session, channel_id=channel.id, title="t", actor="u")
+    with pytest.raises(services.ConflictError):
+        await services.delete_channel(session, channel.id, "user")
+
+    await services.delete_channel(session, channel.id, "user", force=True)
+
+    assert await session.get(Channel, channel.id) is None
+    assert (await activity(session, task.id))[-1].action == "deleted"
+
+
+async def test_area_with_channels_cannot_be_deleted(session: AsyncSession) -> None:
+    channel = await make_channel(session)
+    assert channel.area_id is not None
+    with pytest.raises(services.ConflictError):
+        await services.delete_area(session, channel.area_id, "user")
+    await services.delete_channel(session, channel.id, "user")
+    await services.delete_area(session, channel.area_id, "user")
+    assert await services.list_areas(session) == []
 
 
 # --- tasks --------------------------------------------------------------------

@@ -1,0 +1,67 @@
+import { useEffect, useState } from "react";
+import { Outlet, useParams, useSearchParams } from "react-router";
+import { useChannels, useConfig } from "../api";
+import { setZone } from "../dates";
+import { useRealtime } from "../realtime";
+import { QuickSwitcher } from "./QuickSwitcher";
+import { Rail } from "./Rail";
+import { Sidebar } from "./Sidebar";
+import { StatusBar } from "./StatusBar";
+import { TaskPanel } from "./TaskPanel";
+
+/** Rail | sidebar | main | (task panel) over a 32px status bar — docs/design/Main.dc.html. */
+export function Shell() {
+  const link = useRealtime();
+  const config = useConfig();
+  const channels = useChannels();
+  const { channelId } = useParams();
+  const [params] = useSearchParams();
+  const taskId = params.get("task");
+  const [pickedArea, setPickedArea] = useState<string | null>(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  useEffect(() => {
+    if (config.data) setZone(config.data.timezone);
+  }, [config.data]);
+
+  // Inside a channel the rail follows that channel's area; elsewhere the user's pick.
+  const channelArea = channels.data?.channels.find(
+    (c) => c.id === channelId,
+  )?.area_id;
+  const areaId = channelArea ?? (channelId ? null : pickedArea);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSwitcherOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div
+      className="grid h-full overflow-hidden bg-page"
+      style={{
+        gridTemplateColumns: taskId
+          ? "68px 256px minmax(0,1fr) 352px"
+          : "68px 256px minmax(0,1fr)",
+        gridTemplateRows: "minmax(0,1fr) 32px",
+      }}
+    >
+      <Rail areaId={areaId} onPickArea={setPickedArea} />
+      <Sidebar areaId={areaId} onOpenSwitcher={() => setSwitcherOpen(true)} />
+      <main className="flex min-h-0 min-w-0 flex-col bg-page">
+        <Outlet />
+      </main>
+      {taskId && <TaskPanel taskId={taskId} />}
+      <StatusBar link={link} />
+      <QuickSwitcher
+        open={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+      />
+    </div>
+  );
+}

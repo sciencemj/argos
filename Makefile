@@ -1,4 +1,4 @@
-.PHONY: install dev migrate test lint format
+.PHONY: install dev migrate test lint format api-types
 
 install:
 	cd backend && uv sync
@@ -25,3 +25,8 @@ lint:
 format:
 	cd backend && uv run ruff check --fix . && uv run ruff format .
 	cd frontend && bun run format
+
+# Regenerates frontend/src/api-types.ts from the FastAPI OpenAPI schema.
+api-types:
+	cd backend && uv run python -c "import json; from argos.main import app; print(json.dumps(app.openapi()))" > ../frontend/openapi.json
+	cd frontend && bunx openapi-typescript openapi.json -o src/api-types.ts && rm openapi.json

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from argos import services
-from argos.api import install_error_handlers, router
+from argos.api import install_error_handlers, router, ws_router
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
 
@@ -25,6 +25,7 @@ def create_app(config: Settings = settings) -> FastAPI:
 
     app = FastAPI(title="Argos", lifespan=lifespan)
     app.include_router(router)
+    app.include_router(ws_router)
     install_error_handlers(app)
     return app
 

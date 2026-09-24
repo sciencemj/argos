@@ -1,9 +1,224 @@
+@import "tailwindcss";
+
+/* Design tokens from docs/design/Tokens.dc.html. Light is the default; index.html
+   resolves the saved preference (or the OS setting) to data-theme before first paint. */
 :root {
-  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
-  color-scheme: light dark;
+  --page: #f7f7f7;
+  --rail: #efefee;
+  --sidebar: #ffffff;
+  --card: #ffffff;
+  --inset: #f2f2f1;
+  --line: #d6d6d5;
+  --line-soft: #e7e7e6;
+  --ink: #000000;
+  --text: #181825;
+  --text-2: #484758;
+  --text-3: #636363;
+  --meta: #6b6b6b;
+  --hash: #949494;
+  --step-1: #d6d6d5;
+  --step-2: #b2b2b2;
+  --step-3: #8b8b8b;
+  --step-4: #484758;
+  --step-5: #181825;
+  --on-dark: #ffffff;
+  --cta: #f69251;
+  --on-cta: #000000;
+  --danger: #a4545f;
+  --danger-bg: #f7ecee;
+  --danger-line: #ebcfd3;
+  --warn: #8a5f14;
+  --hermes: #6e5fa8;
+  --hermes-text: #5e4f98;
+  --claude: #a45d46;
+  --claude-text: #9a553f;
+  --codex: #3f6fa6;
+  --codex-text: #355f91;
+  --tutor: #477a4a;
+  --shadow-sm: 0 2px 3px -2px rgba(24, 24, 37, 0.12);
+  --shadow-raised:
+    0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 2px 4px 0 rgba(0, 0, 0, 0.02),
+    0 4px 8px 0 rgba(0, 0, 0, 0.02);
+  --shadow-lift: 0 12px 28px -8px rgba(24, 24, 37, 0.16);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --page: #1c1c27;
+  --rail: #111118;
+  --sidebar: #17171f;
+  --card: #242433;
+  --inset: #1f1f2c;
+  --line: #3c3c4f;
+  --line-soft: #2f2f40;
+  --ink: #ffffff;
+  --text: #ececf1;
+  --text-2: #c6c6d0;
+  --text-3: #a6a6b2;
+  --meta: #9494a2;
+  --hash: #6f6f7e;
+  --step-1: #3c3c4f;
+  --step-2: #5a5a6e;
+  --step-3: #8a8a9a;
+  --step-4: #c6c6d0;
+  --step-5: #ececf1;
+  --on-dark: #181825;
+  --danger: #e2a0a8;
+  --danger-bg: #2e2330;
+  --danger-line: #4a3440;
+  --warn: #ddb36a;
+  --hermes: #a99ce0;
+  --hermes-text: #bcb2ea;
+  --claude: #de9c84;
+  --claude-text: #e8b39f;
+  --codex: #86aee0;
+  --codex-text: #a3c2ea;
+  --tutor: #94c497;
+  --shadow-sm: 0 2px 3px -2px rgba(0, 0, 0, 0.35);
+  --shadow-raised:
+    0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.15),
+    0 4px 8px 0 rgba(0, 0, 0, 0.15);
+  --shadow-lift: 0 12px 28px -8px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-page: var(--page);
+  --color-rail: var(--rail);
+  --color-sidebar: var(--sidebar);
+  --color-card: var(--card);
+  --color-inset: var(--inset);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--ink);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-meta: var(--meta);
+  --color-hash: var(--hash);
+  --color-step-1: var(--step-1);
+  --color-step-2: var(--step-2);
+  --color-step-3: var(--step-3);
+  --color-step-4: var(--step-4);
+  --color-step-5: var(--step-5);
+  --color-on-dark: var(--on-dark);
+  --color-cta: var(--cta);
+  --color-on-cta: var(--on-cta);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-line: var(--danger-line);
+  --color-warn: var(--warn);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-lift: var(--shadow-lift);
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  padding: 2rem;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cta);
+  outline-offset: 2px;
+}
+
+/* FullCalendar: map its theme variables onto ours. */
+.fc {
+  --fc-border-color: var(--line-soft);
+  --fc-page-bg-color: var(--card);
+  --fc-neutral-bg-color: var(--inset);
+  --fc-today-bg-color: var(--inset);
+  --fc-now-indicator-color: var(--ink);
+  --fc-event-bg-color: var(--inset);
+  --fc-event-border-color: var(--line);
+  --fc-event-text-color: var(--ink);
+  --fc-highlight-color: color-mix(in srgb, var(--cta) 18%, transparent);
+  font-size: 13px;
+}
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-timegrid-slot-label-cushion {
+  color: var(--meta);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.fc .fc-event {
+  border-radius: 8px;
+  padding: 1px 4px;
+}
+.fc .fc-event.argos-deadline {
+  --fc-event-bg-color: var(--danger-bg);
+  --fc-event-border-color: var(--danger-line);
+  --fc-event-text-color: var(--danger);
+}
+.fc .fc-scrollgrid {
+  border-radius: 16px;
+  overflow: hidden;
+}
+.fc .fc-button,
+.fc .fc-button-primary {
+  height: 32px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 0 12px;
+  box-shadow: none;
+  text-transform: none;
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background: var(--inset);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 500;
+}
+.fc .fc-button-primary:hover {
+  background: var(--inset);
+  color: var(--ink);
+}
+.fc .fc-button-primary:disabled {
+  background: var(--card);
+  border-color: var(--line-soft);
+  color: var(--meta);
+}
+.fc .fc-button:focus,
+.fc .fc-button-primary:focus {
+  box-shadow: none;
+}
+.fc .fc-button-group {
+  gap: 4px;
+}
+.fc .fc-button-group > .fc-button {
+  border-radius: 999px;
+}
+.fc .fc-toolbar-title {
+  font-size: 20px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--ink);
 }

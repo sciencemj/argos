@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from argos.hub import hub
 from argos.models import (
     ActivityLog,
     Area,
@@ -36,6 +37,10 @@ class NotFoundError(Exception):
 
 
 class InvalidError(Exception):
+    pass
+
+
+class ConflictError(Exception):
     pass
 
 
@@ -79,8 +84,10 @@ async def _get[T: Record](session: AsyncSession, model: type[T], object_id: str)
 async def _create[T: Record](session: AsyncSession, obj: T, actor: str) -> T:
     session.add(obj)
     await session.flush()
-    _log(session, obj, "created", actor, after=snapshot(obj))
+    after = snapshot(obj)
+    _log(session, obj, "created", actor, after=after)
     await session.commit()
+    await _publish("object.created", obj, after)
     return obj
 
 
@@ -107,13 +114,34 @@ async def _update[T: Record](
             after={k: after[k] for k in diff},
         )
     await session.commit()
+    if diff:
+        await _publish("object.updated", obj, after)
     return obj
 
 
 async def _delete(session: AsyncSession, obj: Record, actor: str) -> None:
-    _log(session, obj, "deleted", actor, before=snapshot(obj))
+    before = snapshot(obj)
+    _log(session, obj, "deleted", actor, before=before)
     await session.delete(obj)
     await session.commit()
+    await _publish("object.deleted", obj, before)
+
+
+async def _publish(type_: str, obj: Record, fields: dict[str, Any]) -> None:
+    """Sent after commit so clients never see a write that was rolled back."""
+    await hub.publish(type_, {"object_type": obj.__tablename__, "id": obj.id, "object": fields})
+
+
+# --- activity -----------------------------------------------------------------
+
+
+async def list_activity(session: AsyncSession, object_id: str) -> Sequence[ActivityLog]:
+    query = (
+        select(ActivityLog)
+        .where(ActivityLog.object_id == object_id)
+        .order_by(ActivityLog.created_at, ActivityLog.id)
+    )
+    return (await session.scalars(query)).all()
 
 
 # --- channels -----------------------------------------------------------------
@@ -130,6 +158,99 @@ async def list_channels(session: AsyncSession) -> Sequence[Channel]:
 
 async def get_channel(session: AsyncSession, channel_id: str) -> Channel:
     return await _get(session, Channel, channel_id)
+
+
+async def _check_unique_name(
+    session: AsyncSession, model: type[Area] | type[Channel], name: str, own_id: str | None = None
+) -> None:
+    existing = await session.scalar(select(model.id).where(model.name == name))
+    if existing is not None and existing != own_id:
+        raise ConflictError(f"{model.__tablename__} named {name!r} already exists")
+
+
+async def create_area(
+    session: AsyncSession, *, name: str, actor: str, icon: str | None = None
+) -> Area:
+    await _check_unique_name(session, Area, name)
+    order = (await session.scalar(select(func.max(Area.sort_order)))) or 0
+    return await _create(session, Area(name=name, icon=icon, sort_order=order + 1), actor)
+
+
+async def update_area(
+    session: AsyncSession, area_id: str, changes: dict[str, Any], actor: str
+) -> Area:
+    area = await _get(session, Area, area_id)
+    if "name" in changes:
+        await _check_unique_name(session, Area, changes["name"], area.id)
+    return await _update(session, area, changes, actor)
+
+
+async def delete_area(session: AsyncSession, area_id: str, actor: str) -> None:
+    area = await _get(session, Area, area_id)
+    count = await session.scalar(select(func.count()).where(Channel.area_id == area.id))
+    if count:
+        raise ConflictError(f"area still has {count} channel(s); move or delete them first")
+    await _delete(session, area, actor)
+
+
+async def create_channel(
+    session: AsyncSession,
+    *,
+    name: str,
+    area_id: str,
+    actor: str,
+    kind: ChannelKind = ChannelKind.COURSE,
+    vault_path: str | None = None,
+) -> Channel:
+    if kind == ChannelKind.SYSTEM:
+        raise InvalidError("system channels cannot be created")
+    await _get(session, Area, area_id)
+    await _check_unique_name(session, Channel, name)
+    order = await session.scalar(
+        select(func.max(Channel.sort_order)).where(Channel.area_id == area_id)
+    )
+    channel = Channel(
+        name=name,
+        area_id=area_id,
+        kind=kind,
+        vault_path=vault_path,
+        sort_order=(order or 0) + 1,
+    )
+    return await _create(session, channel, actor)
+
+
+async def update_channel(
+    session: AsyncSession, channel_id: str, changes: dict[str, Any], actor: str
+) -> Channel:
+    channel = await get_channel(session, channel_id)
+    if channel.kind == ChannelKind.SYSTEM:
+        raise InvalidError("system channels cannot be changed")
+    if changes.get("kind") == ChannelKind.SYSTEM:
+        raise InvalidError("cannot turn a channel into a system channel")
+    if "name" in changes:
+        await _check_unique_name(session, Channel, changes["name"], channel.id)
+    if changes.get("area_id") is not None:
+        await _get(session, Area, changes["area_id"])
+    return await _update(session, channel, changes, actor)
+
+
+async def delete_channel(
+    session: AsyncSession, channel_id: str, actor: str, *, force: bool = False
+) -> None:
+    """Refuses while the channel still holds tasks or events unless `force`; forced
+    deletes log each contained object so nothing disappears without a trace."""
+    channel = await get_channel(session, channel_id)
+    if channel.kind == ChannelKind.SYSTEM:
+        raise InvalidError("system channels cannot be deleted")
+    tasks = (await session.scalars(select(Task).where(Task.channel_id == channel.id))).all()
+    events = (await session.scalars(select(Event).where(Event.channel_id == channel.id))).all()
+    if (tasks or events) and not force:
+        raise ConflictError(
+            f"channel has {len(tasks)} task(s) and {len(events)} event(s); pass force to delete"
+        )
+    for obj in [*tasks, *events]:
+        await _delete(session, obj, actor)
+    await _delete(session, channel, actor)
 
 
 # --- tasks --------------------------------------------------------------------
@@ -457,32 +578,30 @@ def load_seed(seed_path: Path) -> dict[str, Any]:
 
 
 async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
-    """Idempotent: creates system channels, then areas/channels from the seed config
-    (PLAN §9: the course list is user config, never hard-coded)."""
+    """Ensures the system channels, then loads the demo areas/channels from the seed
+    config only into an empty database: afterwards the user owns the list and a
+    deleted course must not come back on restart."""
     for order, name in enumerate(SYSTEM_CHANNELS, start=-len(SYSTEM_CHANNELS)):
-        await _upsert_channel(session, name=name, kind=ChannelKind.SYSTEM, sort_order=order)
+        exists = await session.scalar(select(Channel.id).where(Channel.name == name))
+        if exists is None:
+            channel = Channel(name=name, kind=ChannelKind.SYSTEM, sort_order=order)
+            await _create(session, channel, "system")
 
+    has_user_data = await session.scalar(select(Area.id).limit(1)) is not None
+    if has_user_data:
+        return
     for area_order, area_cfg in enumerate(config.get("area", [])):
-        area = await session.scalar(select(Area).where(Area.name == area_cfg["name"]))
-        if area is None:
-            area = await _create(
-                session,
-                Area(name=area_cfg["name"], icon=area_cfg.get("icon"), sort_order=area_order),
-                "system",
-            )
+        area = await _create(
+            session,
+            Area(name=area_cfg["name"], icon=area_cfg.get("icon"), sort_order=area_order),
+            "system",
+        )
         for order, ch in enumerate(area_cfg.get("channel", [])):
-            await _upsert_channel(
-                session,
+            channel = Channel(
                 name=ch["name"],
                 kind=ChannelKind(ch.get("kind", ChannelKind.COURSE)),
                 sort_order=order,
                 area_id=area.id,
                 vault_path=ch.get("vault_path"),
             )
-
-
-async def _upsert_channel(session: AsyncSession, *, name: str, **fields: Any) -> Channel:
-    channel = await session.scalar(select(Channel).where(Channel.name == name))
-    if channel is None:
-        return await _create(session, Channel(name=name, **fields), "system")
-    return await _update(session, channel, fields, "system")
+            await _create(session, channel, "system")

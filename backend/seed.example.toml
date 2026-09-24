@@ -1,11 +1,12 @@
-# Copy to seed.toml and edit. Loaded on every startup; existing channels are
-# matched by name and updated, never duplicated. #today and #inbox always exist.
+# Demo areas and channels, loaded ONLY into an empty database (first run).
+# After that the user adds/removes channels in the app; this file is not re-applied.
+# Copy to seed.toml to customise the first-run set. #today and #inbox always exist.
 #
 # kind: "course" (default) or "project". vault_path is used from Phase 8.
 
 [[area]]
 name = "학업"
-icon = "📚"
+icon = "학"
 
 [[area.channel]]
 name = "컴퓨터구조"
@@ -15,9 +16,21 @@ vault_path = "강의/컴퓨터구조/"
 name = "운영체제"
 vault_path = "강의/운영체제/"
 
+[[area.channel]]
+name = "인공지능"
+vault_path = "강의/인공지능/"
+
+[[area.channel]]
+name = "머신러닝"
+vault_path = "강의/머신러닝/"
+
 [[area]]
 name = "프로젝트"
-icon = "🛠"
+icon = "프"
+
+[[area.channel]]
+name = "conflict-dynamics"
+kind = "project"
 
 [[area.channel]]
 name = "argos"

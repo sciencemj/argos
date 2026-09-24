@@ -97,9 +97,9 @@ Claude Code·Codex 사용량 파일, CLI 출력 포맷처럼 공식 계약이 �
 | LLM (분류·일반) | `openai` SDK + 설정의 `base_url` | provider는 `ollama` / `hermes` 두 개만 구현. 클라우드 API 직접 호출은 아직 만들지 않음 |
 | 코딩 에이전트 | `claude-agent-sdk` / `codex exec --json` subprocess | Phase 5 |
 | 프론트엔드 | React + TypeScript + Vite, `@tanstack/react-query`, `react-router` | 전역 상태 라이브러리 없음 |
-| UI | Tailwind + shadcn/ui, `cmdk`(⌘K) | |
+| UI | Tailwind v4 (디자인 토큰 = CSS 변수), `cmdk`(⌘K) | 디자인: `docs/design/` (라이트·다크). shadcn/ui 사용 안 함 |
 | 드래그앤드롭 | `@dnd-kit/core`, `@dnd-kit/sortable` | 칸반 |
-| 캘린더 뷰 | `@fullcalendar/react` (daygrid, timegrid) | 주간·월간 |
+| 캘린더 뷰 | `@fullcalendar/react` v6 (daygrid, timegrid, interaction) | 주간·월간. v7은 플러그인 미호환이라 v6 고정 |
 | 기타 프론트 | `react-markdown` + `remark-gfm`, `date-fns` + `@date-fns/tz` | 노트 렌더링, Asia/Seoul 표시 |
 | API 타입 | `openapi-typescript` + `openapi-fetch` | FastAPI OpenAPI에서 생성. WS 타입은 수동 |
 | 테스트 | `pytest`, `pytest-asyncio`, `httpx2` / `vitest`, Testing Library | |

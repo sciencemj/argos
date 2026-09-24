@@ -1,0 +1,253 @@
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { NavLink } from "react-router";
+import {
+  type Channel,
+  type Task,
+  useChannels,
+  useCreateChannel,
+  useTasks,
+  useToday,
+} from "../api";
+import { dday, fmt } from "../dates";
+import { InboxIcon, PlusIcon, SearchIcon, SunIcon } from "../icons";
+import { btn, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
+
+type Kind = "course" | "project";
+const SECTIONS: { kind: Kind; title: string }[] = [
+  { kind: "course", title: "과목" },
+  { kind: "project", title: "프로젝트" },
+];
+
+const row =
+  "flex h-8 items-center gap-[9px] rounded-full px-3 text-text-2 hover:bg-inset aria-[current=page]:bg-inset aria-[current=page]:font-medium aria-[current=page]:text-ink";
+
+/** Nearest open deadline per channel: the sidebar shows D-day instead of unread counts. */
+function nearestDue(tasks: Task[] | undefined): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of tasks ?? []) {
+    if (!t.due_at || t.status === "done") continue;
+    const days = dday(t.due_at);
+    const prev = out.get(t.channel_id);
+    if (prev === undefined || days < prev) out.set(t.channel_id, days);
+  }
+  return out;
+}
+
+export function Sidebar({
+  areaId,
+  onOpenSwitcher,
+}: {
+  areaId: string | null;
+  onOpenSwitcher: () => void;
+}) {
+  const { data } = useChannels();
+  const tasks = useTasks();
+  const today = useToday();
+  const [adding, setAdding] = useState<Kind | null>(null);
+  const due = useMemo(() => nearestDue(tasks.data), [tasks.data]);
+
+  const area = data?.areas.find((a) => a.id === areaId);
+  const channels = data?.channels ?? [];
+  const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
+  const inScope = channels.filter(
+    (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
+  );
+  const todayCount =
+    (today.data?.events.length ?? 0) + (today.data?.due_tasks.length ?? 0);
+
+  return (
+    <aside className="flex min-h-0 flex-col border-r border-line-soft bg-sidebar">
+      <div className="flex flex-col gap-3.5 px-4 pt-[18px] pb-3.5">
+        <div className="flex items-baseline justify-between px-1">
+          <div className="text-[22px] font-light tracking-[-0.02em] text-ink">
+            {area?.name ?? "전체"}
+          </div>
+          <div className="font-mono text-[11px] text-meta">
+            {fmt(new Date(), "yyyy.MM.dd")}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenSwitcher}
+          className="flex h-9 cursor-pointer items-center gap-2 rounded-full border border-line-soft bg-page px-3 text-[13px] text-text-3"
+        >
+          <SearchIcon />
+          <span className="grow text-left">채널·할 일 찾기</span>
+          <span className="font-mono text-[11px] text-meta">⌘K</span>
+        </button>
+      </div>
+
+      <div className="flex min-h-0 grow flex-col gap-5 overflow-y-auto px-2.5 pt-1.5 pb-3.5">
+        <Section title="지켜보는 중">
+          <NavLink to="/" end className={row}>
+            <SunIcon />
+            <span className="grow">today</span>
+            <span className="font-mono text-[11.5px] text-meta">
+              {todayCount}
+            </span>
+          </NavLink>
+          {inbox && (
+            <NavLink to={`/c/${inbox.id}`} className={row}>
+              <InboxIcon />
+              <span className="grow">inbox</span>
+              {!!today.data?.inbox_count && (
+                <span className="rounded-full border border-line bg-inset px-2 py-px font-mono text-[11.5px] font-semibold text-text">
+                  {today.data.inbox_count}
+                </span>
+              )}
+            </NavLink>
+          )}
+        </Section>
+
+        {SECTIONS.map(({ kind, title }) => (
+          <Section
+            key={kind}
+            title={title}
+            action={
+              <button
+                type="button"
+                aria-label={`${title} 추가`}
+                className="flex size-6 cursor-pointer items-center justify-center rounded-full text-meta hover:bg-inset hover:text-ink"
+                onClick={() => setAdding(kind)}
+              >
+                <PlusIcon size={14} />
+              </button>
+            }
+          >
+            {inScope
+              .filter((c) => c.kind === kind)
+              .map((c) => (
+                <ChannelRow key={c.id} channel={c} days={due.get(c.id)} />
+              ))}
+          </Section>
+        ))}
+      </div>
+
+      <AddChannelDialog
+        kind={adding}
+        defaultAreaId={areaId ?? data?.areas[0]?.id ?? ""}
+        onClose={() => setAdding(null)}
+      />
+    </aside>
+  );
+}
+
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between px-2.5 pb-1.5 text-[11.5px] font-medium text-meta">
+        {title}
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ChannelRow({
+  channel,
+  days,
+}: {
+  channel: Channel;
+  days: number | undefined;
+}) {
+  return (
+    <NavLink to={`/c/${channel.id}`} className={row}>
+      <span className="font-mono text-hash">#</span>
+      <span className="grow truncate">{channel.name}</span>
+      {days !== undefined && <DdayBadge days={days} />}
+    </NavLink>
+  );
+}
+
+function AddChannelDialog({
+  kind,
+  defaultAreaId,
+  onClose,
+}: {
+  kind: Kind | null;
+  defaultAreaId: string;
+  onClose: () => void;
+}) {
+  const { data } = useChannels();
+  const create = useCreateChannel();
+  const [name, setName] = useState("");
+  const [areaId, setAreaId] = useState("");
+  const noun = kind === "project" ? "프로젝트" : "과목";
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!kind) return;
+    create.mutate(
+      {
+        name: name.trim().replace(/^#/, ""),
+        kind,
+        area_id: areaId || defaultAreaId,
+      },
+      {
+        onSuccess: () => {
+          setName("");
+          onClose();
+        },
+      },
+    );
+  };
+
+  return (
+    <Dialog open={kind !== null} onClose={onClose} title={`${noun} 채널 추가`}>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1">
+          <span className={label}>이름</span>
+          <input
+            className={field}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={kind === "project" ? "예: argos" : "예: 자료구조"}
+            required
+          />
+        </label>
+        {data && data.areas.length > 0 ? (
+          <label className="flex flex-col gap-1">
+            <span className={label}>영역</span>
+            <select
+              className={field}
+              value={areaId || defaultAreaId}
+              onChange={(e) => setAreaId(e.target.value)}
+            >
+              {data.areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="m-0 text-[12.5px] text-text-3">
+            먼저 레일의 + 로 영역을 만들어 주세요.
+          </p>
+        )}
+        <ErrorText error={create.error} />
+        <div className="flex justify-end gap-2">
+          <button type="button" className={btn.ghost} onClick={onClose}>
+            취소
+          </button>
+          <button
+            type="submit"
+            className={btn.cta}
+            disabled={create.isPending || !data?.areas.length}
+          >
+            추가하기
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}

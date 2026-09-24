@@ -16,6 +16,48 @@ def test_channels_include_system_and_seeded_courses(client: TestClient) -> None:
     assert [a["name"] for a in body["areas"]] == ["학업", "프로젝트"]
 
 
+def test_user_adds_and_removes_a_course(client: TestClient) -> None:
+    area_id = client.get("/api/v1/channels").json()["areas"][0]["id"]
+    created = client.post("/api/v1/channels", json={"name": "자료구조", "area_id": area_id})
+    assert created.status_code == 201
+    channel = created.json()
+    client.post("/api/v1/tasks", json={"channel_id": channel["id"], "title": "x"})
+
+    blocked = client.delete(f"/api/v1/channels/{channel['id']}")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "conflict"
+
+    forced = client.delete(f"/api/v1/channels/{channel['id']}", params={"force": True})
+    assert forced.status_code == 204
+    names = [c["name"] for c in client.get("/api/v1/channels").json()["channels"]]
+    assert "자료구조" not in names
+
+
+def test_websocket_receives_object_events(client: TestClient) -> None:
+    channel = course_channel(client)
+    with client.websocket_connect("/ws") as ws:
+        task = client.post(
+            "/api/v1/tasks", json={"channel_id": channel["id"], "title": "실시간"}
+        ).json()
+        created = ws.receive_json()
+        client.post(f"/api/v1/tasks/{task['id']}/move", json={"status": "done"})
+        updated = ws.receive_json()
+        client.delete(f"/api/v1/tasks/{task['id']}")
+        deleted = ws.receive_json()
+
+    assert created["type"] == "object.created"
+    assert created["data"]["object_type"] == "task"
+    assert created["data"]["id"] == task["id"]
+    assert updated["type"] == "object.updated"
+    assert updated["data"]["object"]["status"] == "done"
+    assert deleted["type"] == "object.deleted"
+    assert {"type", "data", "ts"} <= created.keys()
+
+
+def test_config_exposes_wip_limit(client: TestClient) -> None:
+    assert client.get("/api/v1/config").json()["wip_limit"] == 3
+
+
 def test_task_lifecycle_in_course_channel(client: TestClient) -> None:
     channel = course_channel(client)
     created = client.post(
@@ -34,6 +76,9 @@ def test_task_lifecycle_in_course_channel(client: TestClient) -> None:
 
     patched = client.patch(f"/api/v1/tasks/{task['id']}", json={"title": "과제 2"})
     assert patched.json()["title"] == "과제 2"
+
+    history = client.get(f"/api/v1/tasks/{task['id']}/activity").json()
+    assert [h["action"] for h in history] == ["created", "moved", "updated"]
 
     assert client.delete(f"/api/v1/tasks/{task['id']}").status_code == 204
     assert client.get(f"/api/v1/tasks/{task['id']}").status_code == 404

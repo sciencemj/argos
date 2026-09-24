@@ -2,7 +2,16 @@ from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -13,6 +22,7 @@ from starlette.exceptions import HTTPException
 from argos import services
 from argos.config import Settings
 from argos.db import session_scope
+from argos.hub import hub
 from argos.models import ChannelKind, InboxStatus, TaskStatus
 
 USER = "user"
@@ -60,6 +70,38 @@ class ChannelOut(Out):
     kind: ChannelKind
     vault_path: str | None
     sort_order: int
+
+
+class AreaCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    icon: str | None = Field(default=None, max_length=20)
+
+
+class AreaUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    icon: str | None = Field(default=None, max_length=20)
+    sort_order: int | None = None
+
+
+class ChannelCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    area_id: str
+    kind: ChannelKind = ChannelKind.COURSE
+    vault_path: str | None = None
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    area_id: str | None = None
+    kind: ChannelKind | None = None
+    vault_path: str | None = None
+    sort_order: int | None = None
+
+
+class ConfigOut(BaseModel):
+    timezone: str
+    wip_limit: int
+    due_soon_days: int
 
 
 class ChannelsOut(BaseModel):
@@ -170,13 +212,24 @@ class InboxPage(BaseModel):
     next_cursor: str | None
 
 
+class ActivityOut(Out):
+    id: str
+    object_type: str
+    object_id: str
+    action: str
+    before_json: dict[str, Any] | None
+    after_json: dict[str, Any] | None
+    actor: str
+    created_at: datetime
+
+
 class TodayOut(BaseModel):
     events: list[EventOut]
     due_tasks: list[TaskOut]
     inbox_count: int
 
 
-NOT_NULL_FIELDS = {"channel_id", "title", "status"}
+NOT_NULL_FIELDS = {"channel_id", "title", "status", "name", "kind", "area_id", "sort_order"}
 
 
 def _changes(body: BaseModel) -> dict[str, Any]:
@@ -205,6 +258,47 @@ async def list_channels(session: Session) -> ChannelsOut:
     )
 
 
+@router.post("/areas", status_code=status.HTTP_201_CREATED)
+async def create_area(session: Session, body: AreaCreate) -> AreaOut:
+    area = await services.create_area(session, actor=USER, **body.model_dump())
+    return AreaOut.model_validate(area)
+
+
+@router.patch("/areas/{area_id}")
+async def update_area(session: Session, area_id: str, body: AreaUpdate) -> AreaOut:
+    area = await services.update_area(session, area_id, _changes(body), USER)
+    return AreaOut.model_validate(area)
+
+
+@router.delete("/areas/{area_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_area(session: Session, area_id: str) -> None:
+    await services.delete_area(session, area_id, USER)
+
+
+@router.post("/channels", status_code=status.HTTP_201_CREATED)
+async def create_channel(session: Session, body: ChannelCreate) -> ChannelOut:
+    channel = await services.create_channel(session, actor=USER, **body.model_dump())
+    return ChannelOut.model_validate(channel)
+
+
+@router.patch("/channels/{channel_id}")
+async def update_channel(session: Session, channel_id: str, body: ChannelUpdate) -> ChannelOut:
+    channel = await services.update_channel(session, channel_id, _changes(body), USER)
+    return ChannelOut.model_validate(channel)
+
+
+@router.delete("/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_channel(session: Session, channel_id: str, force: bool = False) -> None:
+    await services.delete_channel(session, channel_id, USER, force=force)
+
+
+@router.get("/config")
+async def get_config(config: Config) -> ConfigOut:
+    return ConfigOut(
+        timezone=config.timezone, wip_limit=config.wip_limit, due_soon_days=config.due_soon_days
+    )
+
+
 @router.get("/tasks")
 async def list_tasks(
     session: Session, channel_id: str | None = None, status: TaskStatus | None = None
@@ -222,6 +316,11 @@ async def create_task(session: Session, body: TaskCreate) -> TaskOut:
 @router.get("/tasks/{task_id}")
 async def get_task(session: Session, task_id: str) -> TaskOut:
     return TaskOut.model_validate(await services.get_task(session, task_id))
+
+
+@router.get("/tasks/{task_id}/activity")
+async def task_activity(session: Session, task_id: str) -> list[ActivityOut]:
+    return [ActivityOut.model_validate(a) for a in await services.list_activity(session, task_id)]
 
 
 @router.patch("/tasks/{task_id}")
@@ -319,6 +418,19 @@ async def today(session: Session, config: Config) -> TodayOut:
     )
 
 
+ws_router = APIRouter()
+
+
+@ws_router.websocket("/ws")
+async def websocket(ws: WebSocket) -> None:
+    await hub.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()  # client → server events arrive from Phase 5 (run.cancel)
+    except WebSocketDisconnect:
+        hub.disconnect(ws)
+
+
 # --- errors (PLAN §7.1: {"error": {"code", "message"}}) -------------------------
 
 
@@ -330,6 +442,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(services.NotFoundError)
     async def not_found(_: Request, exc: services.NotFoundError) -> JSONResponse:
         return _error(404, "not_found", str(exc))
+
+    @app.exception_handler(services.ConflictError)
+    async def conflict(_: Request, exc: services.ConflictError) -> JSONResponse:
+        return _error(409, "conflict", str(exc))
 
     @app.exception_handler(services.InvalidError)
     async def invalid(_: Request, exc: services.InvalidError) -> JSONResponse:

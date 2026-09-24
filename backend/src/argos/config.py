@@ -12,11 +12,13 @@ class Settings(BaseSettings):
     port: int = 8000
     db_path: Path = Path("data/argos.db")
     vault_path: Path | None = None
-    # Areas and course/project channels to create on startup (PLAN §9).
-    seed_path: Path = Path("seed.toml")
+    # Demo areas/channels loaded into an empty database on first run (PLAN §9).
+    seed_path: Path = Path("seed.example.toml")
     timezone: str = "Asia/Seoul"
     # "Today" lists open tasks that are overdue or due within this many days.
     due_soon_days: int = 3
+    # Kanban warns (never blocks) when In Progress holds more cards than this.
+    wip_limit: int = 3
 
     @property
     def db_url(self) -> str:
