@@ -26,6 +26,8 @@ from argos.config import Settings
 from argos.db import session_scope
 from argos.hub import hub
 from argos.models import (
+    Approval,
+    ApprovalStatus,
     AuthorType,
     ChannelKind,
     Event,
@@ -280,12 +282,27 @@ class InboxPage(BaseModel):
     next_cursor: str | None
 
 
+class ApprovalOut(Out):
+    id: str
+    requested_by: str
+    channel_id: str | None
+    action: str
+    payload_json: dict[str, Any]
+    summary: str
+    reason: str | None
+    status: ApprovalStatus
+    error: str | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
 class RefOut(BaseModel):
     """The object a message renders as a card (PLAN P4); at most one is set."""
 
     inbox_item: InboxOut | None = None
     task: TaskOut | None = None
     event: EventOut | None = None
+    approval: ApprovalOut | None = None
 
 
 class MessageOut(Out):
@@ -447,6 +464,7 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
         "inbox_item": (InboxItem, InboxOut),
         "task": (Task, TaskOut),
         "event": (Event, EventOut),
+        "approval": (Approval, ApprovalOut),
     }
     refs: dict[tuple[str, str], BaseModel] = {}
     for ref_type, ids in by_type.items():
@@ -580,6 +598,25 @@ async def _classifier_settings(request: Request, session: AsyncSession) -> Class
 
 def _today(config: Settings) -> date:
     return datetime.now(config.zoneinfo).date()
+
+
+@router.get("/approvals")
+async def list_approvals(
+    session: Session, status: ApprovalStatus | None = None
+) -> list[ApprovalOut]:
+    return [ApprovalOut.model_validate(a) for a in await services.list_approvals(session, status)]
+
+
+@router.post("/approvals/{approval_id}/approve")
+async def approve(session: Session, approval_id: str) -> ApprovalOut:
+    approval = await services.resolve_approval(session, approval_id, approve=True, actor=USER)
+    return ApprovalOut.model_validate(approval)
+
+
+@router.post("/approvals/{approval_id}/reject")
+async def reject(session: Session, approval_id: str) -> ApprovalOut:
+    approval = await services.resolve_approval(session, approval_id, approve=False, actor=USER)
+    return ApprovalOut.model_validate(approval)
 
 
 @router.get("/routines")

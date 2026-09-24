@@ -136,3 +136,9 @@ export const SendIcon = ({ size = 16 }: P) => (
     <path d="M5 12h14M13 6l6 6-6 6" />
   </Stroke>
 );
+
+export const ShieldIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" />
+  </Stroke>
+);

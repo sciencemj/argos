@@ -10,6 +10,7 @@ import {
   useChannels,
   useConfig,
   useOpenInbox,
+  usePendingApprovals,
   useTasks,
   useToday,
   useUpdateInbox,
@@ -40,6 +41,7 @@ export function TodayPage() {
   const tasks = useTasks();
   const inbox = useOpenInbox();
   const channels = useChannels();
+  const approvals = usePendingApprovals().data?.length ?? 0;
   const byId = new Map(channels.data?.channels.map((c) => [c.id, c]));
 
   const events = today.data?.events ?? [];
@@ -60,6 +62,9 @@ export function TodayPage() {
           <Stat label="일정" value={events.length} />
           <Stat label="마감 임박" value={due.length} />
           <Stat label="인박스" value={today.data?.inbox_count ?? 0} />
+          <Link to="/approvals">
+            <Stat label="승인 대기" value={approvals} danger={approvals > 0} />
+          </Link>
         </div>
       </header>
 
@@ -80,13 +85,23 @@ export function TodayPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  danger,
+}: {
+  label: string;
+  value: number;
+  danger?: boolean;
+}) {
   return (
     <div
       className={`${card} flex min-w-[88px] flex-col gap-0.5 px-[18px] py-3`}
     >
       <span className="text-[12px] text-meta">{label}</span>
-      <span className="text-[30px] leading-[1.15] font-light tracking-[-0.02em] text-ink">
+      <span
+        className={`text-[30px] leading-[1.15] font-light tracking-[-0.02em] ${danger ? "text-danger" : "text-ink"}`}
+      >
         {value}
       </span>
     </div>

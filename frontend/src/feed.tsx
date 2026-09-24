@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "react-router";
+import { AgentAvatar, agentInfo } from "./agents";
 import {
   type Channel,
   type Message,
@@ -16,7 +17,12 @@ import {
   usePostMessage,
   useUpdateTask,
 } from "./api";
-import { EventRefCard, SuggestionCard, TaskRefCard } from "./cards";
+import {
+  ApprovalCard,
+  EventRefCard,
+  SuggestionCard,
+  TaskRefCard,
+} from "./cards";
 import { fmt, localInputToIso } from "./dates";
 import {
   CalendarIcon,
@@ -102,6 +108,8 @@ export function Feed({ channel }: { channel: Channel }) {
 }
 
 function Author({ message }: { message: Message }) {
+  if (message.author_type === "agent")
+    return <AgentAvatar id={message.author_id} />;
   if (message.author_type === "system") {
     return (
       <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-step-5 text-on-dark">
@@ -126,18 +134,23 @@ export function MessageItem({
   onThread?: (id: string) => void;
 }) {
   const system = message.author_type === "system";
-  const { inbox_item, task, event } = message.ref ?? {};
+  const agent =
+    message.author_type === "agent" ? agentInfo(message.author_id) : null;
+  const { inbox_item, task, event, approval } = message.ref ?? {};
   return (
     <article className="group relative flex gap-3.5">
       <Author message={message} />
       <div className="flex min-w-0 grow flex-col gap-2.5">
         <div className="flex items-baseline gap-2">
-          <span className="font-medium text-ink">
-            {system ? "Argos" : "나"}
+          <span
+            className="font-medium"
+            style={{ color: agent?.text ?? "var(--ink)" }}
+          >
+            {agent ? agent.name : system ? "Argos" : "나"}
           </span>
-          {system && (
+          {(system || agent) && (
             <span className="rounded-full border border-line-soft px-[7px] text-[11px] text-meta">
-              시스템
+              {agent ? "에이전트" : "시스템"}
             </span>
           )}
           <span className="font-mono text-[11px] text-meta">
@@ -150,13 +163,14 @@ export function MessageItem({
           )}
         </div>
         <div
-          className={`whitespace-pre-wrap ${system ? "text-text-2" : "text-[15px] text-text"}`}
+          className={`whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
         >
           {message.body}
         </div>
         {inbox_item && <SuggestionCard item={inbox_item} channel={channel} />}
         {task && <TaskRefCard task={task} />}
         {event && <EventRefCard event={event} />}
+        {approval && <ApprovalCard approval={approval} />}
         {onThread && message.reply_count > 0 && (
           <button
             type="button"

@@ -70,6 +70,13 @@ class InboxStatus(StrEnum):
     DISMISSED = "dismissed"
 
 
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    FAILED = "failed"  # approved, but running the action failed
+
+
 class AuthorType(StrEnum):
     USER = "user"
     AGENT = "agent"
@@ -211,3 +218,24 @@ class RoutineCheck(Record):
         ForeignKey("routine.id", ondelete="CASCADE"), index=True
     )
     day: Mapped[date] = mapped_column(Date)
+
+
+class Approval(Record):
+    """A destructive action an agent asked for, waiting for the user (PLAN P5)."""
+
+    __tablename__ = "approval"
+
+    requested_by: Mapped[str] = mapped_column(String(100))  # actor, e.g. "agent:claude"
+    run_id: Mapped[str | None] = mapped_column(String(36))  # agent_run from Phase 5
+    channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("channel.id", ondelete="SET NULL"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(50))  # e.g. "delete_task"
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    summary: Mapped[str] = mapped_column(String(500))  # what the card shows
+    reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[ApprovalStatus] = mapped_column(
+        String(20), default=ApprovalStatus.PENDING, index=True
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime)

@@ -19,6 +19,7 @@ export type Activity = Schemas["ActivityOut"];
 export type Config = Schemas["ConfigOut"];
 export type Message = Schemas["MessageOut"];
 export type Routine = Schemas["RoutineOut"];
+export type Approval = Schemas["ApprovalOut"];
 export type Routines = Schemas["RoutinesOut"];
 export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
@@ -80,6 +81,7 @@ export function invalidateFor(
     inbox_item: [["inbox"], ["today"], ...feeds],
     message: feeds,
     routine: [["routines"]],
+    approval: [["approvals"], ...feeds],
     routine_check: [["routines"]],
     channel: [["channels"], ["tasks"]],
     area: [["channels"]],
@@ -506,3 +508,33 @@ export function useCheckRoutine() {
     onSettled: () => invalidateFor(qc, "routine"),
   });
 }
+
+// --- approvals (PLAN P5) ---------------------------------------------------------
+
+export const usePendingApprovals = () =>
+  useQuery({
+    queryKey: ["approvals", "pending"],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/approvals", {
+          params: { query: { status: "pending" } },
+        }),
+      ),
+  });
+
+export const useResolveApproval = () =>
+  useWrite(
+    ["approval", "task", "event"],
+    ({ id, approve }: { id: string; approve: boolean }) =>
+      approve
+        ? call(
+            client.POST("/api/v1/approvals/{approval_id}/approve", {
+              params: { path: { approval_id: id } },
+            }),
+          )
+        : call(
+            client.POST("/api/v1/approvals/{approval_id}/reject", {
+              params: { path: { approval_id: id } },
+            }),
+          ),
+  );

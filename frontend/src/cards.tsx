@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router";
+import { agentInfo } from "./agents";
 import {
+  type Approval,
   type CalEvent,
   type Channel,
   type InboxAccept,
@@ -10,9 +12,10 @@ import {
   useChannels,
   useConfig,
   useReclassify,
+  useResolveApproval,
 } from "./api";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "./dates";
-import { CheckIcon, PawIcon } from "./icons";
+import { CheckIcon, PawIcon, ShieldIcon } from "./icons";
 import { btn, Chip, card, DdayBadge, ErrorText, field, label } from "./ui";
 
 type Suggestion = {
@@ -542,3 +545,86 @@ export function InboxRow({ item }: { item: InboxItem }) {
     </div>
   );
 }
+
+// --- approval (PLAN P5) -------------------------------------------------------------
+
+const ACTION_VERB: Record<string, string> = {
+  delete_task: "승인하고 삭제",
+  delete_event: "승인하고 삭제",
+};
+
+/** A destructive action an agent asked for. Nothing happens until the user decides. */
+export function ApprovalCard({ approval }: { approval: Approval }) {
+  const resolve = useResolveApproval();
+  const payload = approval.payload_json as {
+    title?: string;
+    when?: string | null;
+  };
+  const pending = approval.status === "pending";
+  const when = payload.when
+    ? payload.when.length === 10
+      ? fmt(`${payload.when}T12:00:00`, "M/d (EEE)")
+      : fmt(payload.when, "M/d (EEE) HH:mm")
+    : null;
+
+  return (
+    <div
+      className={`${card} flex max-w-[580px] flex-col gap-3.5 px-5 py-[18px]`}
+    >
+      <div className="flex items-center gap-2 text-danger">
+        <ShieldIcon />
+        <span className="text-[13px] font-medium">
+          {pending ? "승인 필요" : STATUS_TEXT[approval.status]}
+        </span>
+        <span className="font-mono text-[12px] text-meta">
+          {approval.action}
+        </span>
+        <span className="grow" />
+        <span className="text-[12px] text-meta">
+          {agentInfo(approval.requested_by).name} 요청
+        </span>
+      </div>
+      <div className="flex items-center gap-2.5 rounded-xl bg-inset px-3.5 py-3">
+        <span
+          className={`font-medium text-ink ${approval.status === "approved" ? "line-through decoration-danger" : pending ? "line-through decoration-danger" : ""}`}
+        >
+          {payload.title ?? approval.summary}
+        </span>
+        {when && (
+          <span className="font-mono text-[12px] text-text-3">{when}</span>
+        )}
+      </div>
+      {approval.error && (
+        <p className="m-0 text-[12.5px] text-danger">{approval.error}</p>
+      )}
+      {pending && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={resolve.isPending}
+            onClick={() => resolve.mutate({ id: approval.id, approve: true })}
+            className="inline-flex h-9 cursor-pointer items-center rounded-full bg-danger px-[18px] text-[13.5px] font-medium text-on-dark disabled:opacity-50"
+          >
+            {ACTION_VERB[approval.action] ?? "승인"}
+          </button>
+          <button
+            type="button"
+            disabled={resolve.isPending}
+            onClick={() => resolve.mutate({ id: approval.id, approve: false })}
+            className={btn.outline}
+          >
+            거절
+          </button>
+        </div>
+      )}
+      <ErrorText error={resolve.error} />
+    </div>
+  );
+}
+
+const STATUS_TEXT: Record<string, string> = {
+  approved: "승인됨",
+  rejected: "거절됨",
+  failed: "실행 실패",
+  pending: "승인 필요",
+};

@@ -3,7 +3,7 @@ activity_log row in the same transaction."""
 
 import tomllib
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from argos.hub import hub
 from argos.models import (
     ActivityLog,
+    Approval,
+    ApprovalStatus,
     AppSetting,
     Area,
     AuthorType,
@@ -846,6 +848,97 @@ async def get_today(
     count_query = select(func.count()).where(InboxItem.status.in_(OPEN_INBOX))
     inbox_count = (await session.execute(count_query)).scalar_one()
     return {"events": events, "due_tasks": due_tasks, "inbox_count": inbox_count}
+
+
+# --- approvals (PLAN P5) ----------------------------------------------------------
+
+# Destructive actions an agent may request; each runs only after the user approves.
+APPROVAL_ACTIONS = ("delete_task", "delete_event")
+
+
+async def request_approval(
+    session: AsyncSession,
+    *,
+    action: str,
+    payload: dict[str, Any],
+    actor: str,
+    reason: str | None = None,
+) -> Approval:
+    """Records the request and posts it as a card in the object's channel feed."""
+    if action == "delete_task":
+        target: Task | Event = await get_task(session, payload["task_id"])
+        summary = f"할 일 삭제: {target.title}"
+        when: datetime | date | None = target.due_at
+    elif action == "delete_event":
+        target = await get_event(session, payload["event_id"])
+        summary = f"일정 삭제: {target.title}"
+        when = target.starts_at or target.start_date
+    else:
+        raise InvalidError(f"unknown approval action {action!r}")
+    # What the card shows even after the object is gone.
+    payload = payload | {"title": target.title, "when": _jsonable(when)}
+    approval = await _create(
+        session,
+        Approval(
+            requested_by=actor,
+            channel_id=target.channel_id,
+            action=action,
+            payload_json=payload,
+            summary=summary,
+            reason=reason,
+        ),
+        actor,
+    )
+    await create_message(
+        session,
+        channel_id=target.channel_id,
+        body=reason or summary,
+        author_type=AuthorType.AGENT,
+        author_id=actor.removeprefix("agent:"),
+        ref=approval,
+        actor=actor,
+    )
+    return approval
+
+
+async def list_approvals(
+    session: AsyncSession, status: ApprovalStatus | None = None
+) -> Sequence[Approval]:
+    query = select(Approval).order_by(Approval.created_at.desc())
+    if status is not None:
+        query = query.where(Approval.status == status)
+    return (await session.scalars(query)).all()
+
+
+async def resolve_approval(
+    session: AsyncSession, approval_id: str, *, approve: bool, actor: str
+) -> Approval:
+    """Runs the action on approval, attributed to the agent that asked for it; the
+    approve/reject decision itself is logged with the user as actor."""
+    approval = await _get(session, Approval, approval_id)
+    if approval.status != ApprovalStatus.PENDING:
+        raise ConflictError(f"approval is already {approval.status}")
+    now = datetime.now(UTC)
+    if not approve:
+        return await _update(
+            session, approval, {"status": ApprovalStatus.REJECTED, "resolved_at": now}, actor
+        )
+    try:
+        if approval.action == "delete_task":
+            await delete_task(session, approval.payload_json["task_id"], approval.requested_by)
+        elif approval.action == "delete_event":
+            await delete_event(session, approval.payload_json["event_id"], approval.requested_by)
+    except NotFoundError as exc:
+        # Raised by the lookup before anything is written, so there is nothing to undo.
+        return await _update(
+            session,
+            approval,
+            {"status": ApprovalStatus.FAILED, "error": str(exc), "resolved_at": now},
+            actor,
+        )
+    return await _update(
+        session, approval, {"status": ApprovalStatus.APPROVED, "resolved_at": now}, actor
+    )
 
 
 # --- routines -------------------------------------------------------------------

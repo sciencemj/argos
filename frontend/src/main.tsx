@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import "./index.css";
 import { Shell } from "./layout/Shell";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CalendarTab } from "./pages/CalendarTab";
 import { ChannelPage, FeedTab } from "./pages/ChannelPage";
 import { KanbanTab } from "./pages/KanbanTab";
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <TodayPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "approvals", element: <ApprovalsPage /> },
       {
         path: "c/:channelId",
         element: <ChannelPage />,

@@ -9,6 +9,7 @@ from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
+from argos.mcp_server import build_mcp
 
 
 def create_app(config: Settings = settings) -> FastAPI:
@@ -24,12 +25,18 @@ def create_app(config: Settings = settings) -> FastAPI:
         app.state.base_settings = config
         app.state.settings = apply_overrides(config, overrides)
         app.state.classifier = build_classifier(app.state.settings)
-        yield
+        async with mcp.session_manager.run():
+            yield
         await engine.dispose()
 
     app = FastAPI(title="Argos", lifespan=lifespan)
     app.include_router(router)
     app.include_router(ws_router)
+    # MCP over Streamable HTTP at /mcp (a single route; DNS-rebinding protection on).
+    mcp = build_mcp(app)
+    app.router.routes.extend(
+        mcp.streamable_http_app(streamable_http_path="/mcp", host=config.host).routes
+    )
     install_error_handlers(app)
     return app
 

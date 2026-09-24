@@ -5,11 +5,12 @@ import {
   type Task,
   useChannels,
   useCreateChannel,
+  usePendingApprovals,
   useTasks,
   useToday,
 } from "../api";
 import { dday, fmt } from "../dates";
-import { InboxIcon, PlusIcon, SearchIcon, SunIcon } from "../icons";
+import { InboxIcon, PlusIcon, SearchIcon, ShieldIcon, SunIcon } from "../icons";
 import { btn, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
 
 type Kind = "course" | "project";
@@ -50,6 +51,7 @@ export function Sidebar({
   const channels = data?.channels ?? [];
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
   const personal = channels.find((c) => c.kind === "personal");
+  const approvals = usePendingApprovals().data?.length ?? 0;
   const inScope = channels.filter(
     (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
   );
@@ -98,6 +100,15 @@ export function Sidebar({
               )}
             </NavLink>
           )}
+          <NavLink to="/approvals" className={row}>
+            <ShieldIcon />
+            <span className="grow">승인 대기</span>
+            {approvals > 0 && (
+              <span className="rounded-full bg-danger-bg px-[9px] py-0.5 font-mono text-[11.5px] font-medium text-danger">
+                {approvals}
+              </span>
+            )}
+          </NavLink>
           {personal && (
             <ChannelRow channel={personal} days={due.get(personal.id)} />
           )}

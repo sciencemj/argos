@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
+import { usePendingApprovals } from "../api";
 import { MoonIcon, SunIcon } from "../icons";
 import type { LinkState } from "../realtime";
 import {
@@ -28,6 +30,7 @@ const THEME_TEXT: Record<ThemePref, string> = {
 /** Bottom bar. Agent usage and sync status slots fill in from Phases 7 and 9. */
 export function StatusBar({ link }: { link: LinkState }) {
   const [pref, setPref] = useState<ThemePref>(readThemePref);
+  const approvals = usePendingApprovals().data?.length ?? 0;
 
   useEffect(() => watchSystemTheme(() => pref), [pref]);
 
@@ -49,6 +52,14 @@ export function StatusBar({ link }: { link: LinkState }) {
         </span>
       </span>
       <span className="grow" />
+      {approvals > 0 && (
+        <>
+          <Link to="/approvals" className="text-danger hover:underline">
+            승인 대기 {approvals}
+          </Link>
+          <span className="h-3 w-px bg-line" />
+        </>
+      )}
       <button
         type="button"
         onClick={cycle}
