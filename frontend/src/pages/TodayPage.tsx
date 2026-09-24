@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import {
   type CalEvent,
   type Channel,
+  type InboxItem,
   STATUSES,
   type Task,
   useChannels,
@@ -14,6 +15,7 @@ import {
   useUpdateInbox,
   useUpdateTask,
 } from "../api";
+import { InboxRow } from "../cards";
 import { dday, fmt, inZone, relativeDue } from "../dates";
 import { CheckIcon } from "../icons";
 import { btn, card, DdayBadge } from "../ui";
@@ -269,12 +271,7 @@ function Inbox({
   now,
   byId,
 }: {
-  items: {
-    id: string;
-    raw_text: string;
-    captured_via: string;
-    created_at: string;
-  }[];
+  items: InboxItem[];
   now: Date;
   byId: Map<string, Channel>;
 }) {
@@ -299,6 +296,7 @@ function Inbox({
           className="flex flex-col gap-2.5 rounded-xl bg-page p-3.5"
         >
           <div className="text-[14px] text-ink">"{i.raw_text}"</div>
+          <InboxRow item={i} />
           <div className="flex items-center gap-1.5 text-[11.5px] text-meta">
             <span className="rounded-full border border-line-soft px-[9px] py-px">
               ↳ {i.captured_via}

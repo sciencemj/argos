@@ -3,7 +3,18 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, Dialect, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Dialect,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -129,6 +140,10 @@ class Event(Record):
 class InboxItem(Record):
     __tablename__ = "inbox_item"
 
+    # Channel the text was typed in (classification context); None for outside capture.
+    channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("channel.id", ondelete="SET NULL"), index=True
+    )
     raw_text: Mapped[str] = mapped_column(Text)
     captured_via: Mapped[str] = mapped_column(String(50))
     status: Mapped[InboxStatus] = mapped_column(String(20), default=InboxStatus.NEW, index=True)
@@ -149,6 +164,7 @@ class Message(Record):
     ref_type: Mapped[str | None] = mapped_column(String(50))
     ref_id: Mapped[str | None] = mapped_column(String(36))
     run_id: Mapped[str | None] = mapped_column(String(36))
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class ActivityLog(Record):
@@ -160,3 +176,12 @@ class ActivityLog(Record):
     before_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     after_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     actor: Mapped[str] = mapped_column(String(100))
+
+
+class AppSetting(Record):
+    """User-changeable settings that override .env (e.g. the classifier model)."""
+
+    __tablename__ = "app_setting"
+
+    key: Mapped[str] = mapped_column(String(100), unique=True)
+    value: Mapped[Any] = mapped_column(JSON)

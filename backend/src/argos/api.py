@@ -1,9 +1,10 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     FastAPI,
     Query,
@@ -15,15 +16,25 @@ from fastapi import (
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import services
+from argos import chat, classifier, services
+from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
 from argos.hub import hub
-from argos.models import ChannelKind, InboxStatus, TaskStatus
+from argos.models import (
+    AuthorType,
+    ChannelKind,
+    Event,
+    InboxItem,
+    InboxStatus,
+    Message,
+    Task,
+    TaskStatus,
+)
 
 USER = "user"
 
@@ -98,10 +109,35 @@ class ChannelUpdate(BaseModel):
     sort_order: int | None = None
 
 
+class ClassifierSettingsOut(BaseModel):
+    provider: Literal["ollama", "hermes"]
+    model: str
+    # "app": picked in the settings screen, "env": from .env, "none": classification off
+    source: Literal["app", "env", "none"]
+    enabled: bool
+
+
+class ClassifierSettingsIn(BaseModel):
+    model: str | None = Field(default=None, max_length=200)  # null or "" turns it off
+
+
+class OllamaModelOut(BaseModel):
+    name: str
+    remote: bool
+    parameter_size: str | None
+
+
+class OllamaModelsOut(BaseModel):
+    reachable: bool
+    error: str | None = None
+    models: list[OllamaModelOut] = Field(default_factory=list[OllamaModelOut])
+
+
 class ConfigOut(BaseModel):
     timezone: str
     wip_limit: int
     due_soon_days: int
+    classifier_enabled: bool
 
 
 class ChannelsOut(BaseModel):
@@ -187,6 +223,7 @@ class EventUpdate(BaseModel):
 
 class InboxOut(Out):
     id: str
+    channel_id: str | None
     raw_text: str
     captured_via: str
     status: InboxStatus
@@ -210,6 +247,73 @@ class InboxUpdate(BaseModel):
 class InboxPage(BaseModel):
     items: list[InboxOut]
     next_cursor: str | None
+
+
+class RefOut(BaseModel):
+    """The object a message renders as a card (PLAN P4); at most one is set."""
+
+    inbox_item: InboxOut | None = None
+    task: TaskOut | None = None
+    event: EventOut | None = None
+
+
+class MessageOut(Out):
+    id: str
+    channel_id: str
+    thread_root_id: str | None
+    author_type: AuthorType
+    author_id: str | None
+    body: str
+    ref_type: str | None
+    ref_id: str | None
+    pinned: bool
+    created_at: datetime
+    reply_count: int = 0
+    ref: RefOut = Field(default_factory=RefOut)
+
+
+class MessagePage(BaseModel):
+    items: list[MessageOut]
+    next_cursor: str | None
+
+
+class ThreadOut(BaseModel):
+    root: MessageOut
+    replies: list[MessageOut]
+
+
+class MessageCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=10_000)
+    thread_root_id: str | None = None
+
+
+class MessageUpdate(BaseModel):
+    pinned: bool | None = None
+
+
+class PromoteFields(BaseModel):
+    """User corrections applied when accepting a suggestion or converting a message."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    due_at: AwareDatetime | None = None
+    starts_at: AwareDatetime | None = None
+    ends_at: AwareDatetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    channel_id: str | None = None
+
+
+class InboxAccept(PromoteFields):
+    type: Literal["task", "event", "idea"] | None = None
+
+
+class MessageConvert(PromoteFields):
+    kind: Literal["task", "event"]
+
+
+class PromotedOut(BaseModel):
+    object_type: str
+    id: str
 
 
 class ActivityOut(Out):
@@ -292,10 +396,203 @@ async def delete_channel(session: Session, channel_id: str, force: bool = False)
     await services.delete_channel(session, channel_id, USER, force=force)
 
 
+async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[MessageOut]:
+    """Embeds each message's referenced object and reply count in two small queries."""
+    counts = await services.reply_counts(session, [m.id for m in messages])
+    by_type: dict[str, set[str]] = {}
+    for m in messages:
+        if m.ref_type and m.ref_id:
+            by_type.setdefault(m.ref_type, set()).add(m.ref_id)
+    models = {
+        "inbox_item": (InboxItem, InboxOut),
+        "task": (Task, TaskOut),
+        "event": (Event, EventOut),
+    }
+    refs: dict[tuple[str, str], BaseModel] = {}
+    for ref_type, ids in by_type.items():
+        if ref_type not in models:
+            continue
+        model, schema = models[ref_type]
+        for obj in (await session.scalars(select(model).where(model.id.in_(ids)))).all():
+            refs[(ref_type, obj.id)] = schema.model_validate(obj)
+    out: list[MessageOut] = []
+    for m in messages:
+        item = MessageOut.model_validate(m)
+        item.reply_count = counts.get(m.id, 0)
+        if m.ref_type and m.ref_id and (ref := refs.get((m.ref_type, m.ref_id))):
+            item.ref = RefOut.model_validate({m.ref_type: ref})
+        out.append(item)
+    return out
+
+
+def _classify_later(
+    request: Request, background: BackgroundTasks, config: Settings, item_id: str | None
+) -> None:
+    classifier: Classifier | None = request.app.state.classifier
+    if item_id and classifier is not None:
+        background.add_task(
+            chat.classify_item,
+            request.app.state.sessionmaker,
+            classifier,
+            item_id,
+            config,
+            datetime.now(UTC),
+        )
+
+
+@router.get("/channels/{channel_id}/messages")
+async def list_messages(
+    session: Session,
+    channel_id: str,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> MessagePage:
+    await services.get_channel(session, channel_id)
+    messages, next_cursor = await services.list_messages(
+        session, channel_id, cursor=cursor, limit=limit
+    )
+    return MessagePage(items=await _messages_out(session, messages), next_cursor=next_cursor)
+
+
+@router.post("/channels/{channel_id}/messages", status_code=status.HTTP_201_CREATED)
+async def post_message(
+    request: Request,
+    background: BackgroundTasks,
+    session: Session,
+    config: Config,
+    channel_id: str,
+    body: MessageCreate,
+) -> MessageOut:
+    message, pending = await chat.post_message(
+        session,
+        channel_id=channel_id,
+        body=body.body,
+        thread_root_id=body.thread_root_id,
+        now=datetime.now(UTC),
+        settings=config,
+    )
+    _classify_later(request, background, config, pending)
+    [out] = await _messages_out(session, [message])
+    return out
+
+
+@router.get("/messages/{message_id}/thread")
+async def get_thread(session: Session, message_id: str) -> ThreadOut:
+    root, replies = await services.list_thread(session, message_id)
+    [root_out, *reply_out] = await _messages_out(session, [root, *replies])
+    return ThreadOut(root=root_out, replies=reply_out)
+
+
+@router.patch("/messages/{message_id}")
+async def update_message(session: Session, message_id: str, body: MessageUpdate) -> MessageOut:
+    changes = _changes(body)
+    if changes.get("pinned") is None:
+        changes.pop("pinned", None)
+    message = await services.update_message(session, message_id, changes, USER)
+    [out] = await _messages_out(session, [message])
+    return out
+
+
+@router.post("/messages/{message_id}/convert")
+async def convert_message(session: Session, message_id: str, body: MessageConvert) -> PromotedOut:
+    fields = body.model_dump(exclude_unset=True, exclude={"kind"})
+    obj = await services.convert_message(
+        session, message_id, kind=body.kind, fields=fields, actor=USER
+    )
+    return PromotedOut(object_type=obj.__tablename__, id=obj.id)
+
+
+@router.post("/inbox/{item_id}/accept")
+async def accept_inbox_item(session: Session, item_id: str, body: InboxAccept) -> PromotedOut:
+    overrides = body.model_dump(exclude_unset=True)
+    obj = await services.accept_inbox_item(session, item_id, actor=USER, overrides=overrides)
+    return PromotedOut(object_type=obj.__tablename__, id=obj.id)
+
+
+@router.post("/inbox/{item_id}/classify", status_code=status.HTTP_202_ACCEPTED)
+async def reclassify_inbox_item(
+    request: Request, background: BackgroundTasks, session: Session, config: Config, item_id: str
+) -> InboxOut:
+    """Retry after a failure (or after configuring a model): resets to `new` and queues."""
+    if request.app.state.classifier is None:
+        raise services.InvalidError("분류 모델이 설정되지 않았어요 (ARGOS_CLASSIFIER_MODEL)")
+    item = await services.update_inbox_item(
+        session, item_id, {"status": InboxStatus.NEW, "suggestion_json": None}, USER
+    )
+    _classify_later(request, background, config, item.id)
+    return InboxOut.model_validate(item)
+
+
+async def _classifier_settings(request: Request, session: AsyncSession) -> ClassifierSettingsOut:
+    config: Settings = request.app.state.settings
+    overrides = await services.get_settings_overrides(session)
+    if "classifier_model" in overrides:
+        source = "app" if config.classifier_model else "none"
+    else:
+        source = "env" if config.classifier_model else "none"
+    return ClassifierSettingsOut(
+        provider=config.classifier_provider,
+        model=config.classifier_model,
+        source=source,
+        enabled=request.app.state.classifier is not None,
+    )
+
+
+@router.get("/settings/classifier")
+async def get_classifier_settings(request: Request, session: Session) -> ClassifierSettingsOut:
+    return await _classifier_settings(request, session)
+
+
+@router.put("/settings/classifier")
+async def put_classifier_settings(
+    request: Request, session: Session, body: ClassifierSettingsIn
+) -> ClassifierSettingsOut:
+    """Saves the model choice and swaps the classifier without a restart."""
+    model = (body.model or "").strip()
+    base: Settings = request.app.state.base_settings
+    if model and base.classifier_provider == "ollama":
+        try:
+            installed = {m.name for m in await classifier.list_ollama_models(base)}
+        except classifier.ClassifierError as exc:
+            raise services.InvalidError("Ollama에 연결할 수 없어요") from exc
+        if model not in installed:
+            raise services.InvalidError(f"Ollama에 설치되지 않은 모델이에요: {model}")
+    await services.set_setting(session, "classifier_model", model, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(base, overrides)
+    request.app.state.classifier = classifier.build_classifier(request.app.state.settings)
+    return await _classifier_settings(request, session)
+
+
+@router.get("/settings/classifier/models")
+async def list_classifier_models(request: Request) -> OllamaModelsOut:
+    base: Settings = request.app.state.base_settings
+    if base.classifier_provider != "ollama":
+        return OllamaModelsOut(
+            reachable=False, error="모델 목록은 ollama provider에서만 볼 수 있어요"
+        )
+    try:
+        models = await classifier.list_ollama_models(base)
+    except classifier.ClassifierError:
+        return OllamaModelsOut(
+            reachable=False, error="Ollama에 연결할 수 없어요. 실행 중인지 확인해 주세요."
+        )
+    return OllamaModelsOut(
+        reachable=True,
+        models=[
+            OllamaModelOut(name=m.name, remote=m.remote, parameter_size=m.parameter_size)
+            for m in models
+        ],
+    )
+
+
 @router.get("/config")
-async def get_config(config: Config) -> ConfigOut:
+async def get_config(request: Request, config: Config) -> ConfigOut:
     return ConfigOut(
-        timezone=config.timezone, wip_limit=config.wip_limit, due_soon_days=config.due_soon_days
+        timezone=config.timezone,
+        wip_limit=config.wip_limit,
+        due_soon_days=config.due_soon_days,
+        classifier_enabled=request.app.state.classifier is not None,
     )
 
 

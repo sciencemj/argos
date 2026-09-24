@@ -14,12 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from argos.hub import hub
 from argos.models import (
     ActivityLog,
+    AppSetting,
     Area,
+    AuthorType,
     Channel,
     ChannelKind,
     Event,
     InboxItem,
     InboxStatus,
+    Message,
     Record,
     Task,
     TaskStatus,
@@ -128,8 +131,26 @@ async def _delete(session: AsyncSession, obj: Record, actor: str) -> None:
 
 
 async def _publish(type_: str, obj: Record, fields: dict[str, Any]) -> None:
-    """Sent after commit so clients never see a write that was rolled back."""
+    """Sent after commit so clients never see a write that was rolled back. New chat
+    messages use their own event name (PLAN §7.2)."""
+    if isinstance(obj, Message) and type_ == "object.created":
+        type_ = "message.created"
     await hub.publish(type_, {"object_type": obj.__tablename__, "id": obj.id, "object": fields})
+
+
+# --- app settings -----------------------------------------------------------------
+
+
+async def get_settings_overrides(session: AsyncSession) -> dict[str, Any]:
+    rows = (await session.scalars(select(AppSetting))).all()
+    return {row.key: row.value for row in rows}
+
+
+async def set_setting(session: AsyncSession, key: str, value: Any, actor: str) -> AppSetting:
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    if row is None:
+        return await _create(session, AppSetting(key=key, value=value), actor)
+    return await _update(session, row, {"value": value}, actor)
 
 
 # --- activity -----------------------------------------------------------------
@@ -497,9 +518,20 @@ async def get_inbox_item(session: AsyncSession, item_id: str) -> InboxItem:
 
 
 async def create_inbox_item(
-    session: AsyncSession, *, raw_text: str, captured_via: str, actor: str
+    session: AsyncSession,
+    *,
+    raw_text: str,
+    captured_via: str,
+    actor: str,
+    channel_id: str | None = None,
+    suggestion: dict[str, Any] | None = None,
 ) -> InboxItem:
-    return await _create(session, InboxItem(raw_text=raw_text, captured_via=captured_via), actor)
+    item = InboxItem(raw_text=raw_text, captured_via=captured_via, channel_id=channel_id)
+    if suggestion is not None:
+        item.suggestion_json = suggestion
+        item.confidence = suggestion.get("confidence")
+        item.status = InboxStatus.SUGGESTED
+    return await _create(session, item, actor)
 
 
 async def update_inbox_item(
@@ -524,11 +556,7 @@ async def list_inbox(
     if statuses:
         query = query.where(InboxItem.status.in_(statuses))
     if cursor is not None:
-        try:
-            raw_ts, last_id = cursor.split("|", 1)
-            last_ts = datetime.fromisoformat(raw_ts)
-        except ValueError as exc:
-            raise InvalidError("malformed cursor") from exc
+        last_ts, last_id = _decode_cursor(cursor)
         query = query.where(
             or_(
                 InboxItem.created_at < last_ts,
@@ -540,6 +568,245 @@ async def list_inbox(
         return items, None
     last = items[limit - 1]
     return items[:limit], f"{last.created_at.isoformat()}|{last.id}"
+
+
+async def accept_inbox_item(
+    session: AsyncSession, item_id: str, *, actor: str, overrides: dict[str, Any] | None = None
+) -> Task | Event:
+    """Turns a (suggested) inbox item into a task or event. `overrides` are the user's
+    corrections ("고치기") on top of the suggestion; messages that showed the item now
+    point at the new object (PLAN P4)."""
+    item = await get_inbox_item(session, item_id)
+    if item.status == InboxStatus.ACCEPTED:
+        raise ConflictError("inbox item was already accepted")
+    fields: dict[str, Any] = {
+        k: v for k, v in (item.suggestion_json or {}).items() if k != "error"
+    } | (overrides or {})
+    kind = fields.get("type") or "task"
+    title = (fields.get("title") or item.raw_text).strip()[:500]
+    channel_id = await _resolve_channel(session, fields, item.channel_id)
+
+    obj: Task | Event
+    if kind in ("task", "idea"):
+        obj = await create_task(
+            session,
+            channel_id=channel_id,
+            title=title,
+            actor=actor,
+            status=TaskStatus.BACKLOG if kind == "idea" else TaskStatus.TODO,
+            due_at=_as_datetime(fields.get("due_at")),
+            description=fields.get("summary") or None,
+        )
+    elif kind == "event":
+        start_date = _as_date(fields.get("start_date") or fields.get("all_day_date"))
+        obj = await create_event(
+            session,
+            channel_id=channel_id,
+            title=title,
+            actor=actor,
+            starts_at=None if start_date else _as_datetime(fields.get("starts_at")),
+            ends_at=None if start_date else _as_datetime(fields.get("ends_at")),
+            start_date=start_date,
+            end_date=_as_date(fields.get("end_date")),
+        )
+    else:
+        raise InvalidError("공부 노트는 옵시디언 연동 후 파일로 만들 수 있어요")
+
+    result = {"object_type": obj.__tablename__, "id": obj.id}
+    await _update(
+        session,
+        item,
+        {
+            "status": InboxStatus.ACCEPTED,
+            "suggestion_json": (item.suggestion_json or {}) | {"result": result},
+        },
+        actor,
+    )
+    await _repoint_messages(session, "inbox_item", item.id, obj, actor)
+    return obj
+
+
+async def _resolve_channel(
+    session: AsyncSession, fields: dict[str, Any], captured_in: str | None
+) -> str:
+    """Explicit channel_id, else the classifier's channel_hint by name, else the channel
+    the text was typed in unless that is a system channel (#today, #inbox)."""
+    if fields.get("channel_id"):
+        return (await get_channel(session, fields["channel_id"])).id
+    if hint := fields.get("channel_hint"):
+        by_name = await session.scalar(select(Channel).where(Channel.name == hint))
+        if by_name is not None and by_name.kind != ChannelKind.SYSTEM:
+            return by_name.id
+    if captured_in is not None:
+        channel = await session.get(Channel, captured_in)
+        if channel is not None and channel.kind != ChannelKind.SYSTEM:
+            return channel.id
+    raise InvalidError("어느 채널에 넣을지 골라 주세요")
+
+
+def _as_datetime(value: Any) -> datetime | None:
+    if value is None or isinstance(value, datetime):
+        return value
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        raise InvalidError("time without timezone offset")
+    return parsed
+
+
+def _as_date(value: Any) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+# --- messages -------------------------------------------------------------------
+
+
+async def get_message(session: AsyncSession, message_id: str) -> Message:
+    return await _get(session, Message, message_id)
+
+
+async def create_message(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    body: str,
+    actor: str,
+    author_type: AuthorType = AuthorType.USER,
+    author_id: str | None = None,
+    thread_root_id: str | None = None,
+    ref: Record | None = None,
+) -> Message:
+    await get_channel(session, channel_id)
+    if thread_root_id is not None:
+        root = await get_message(session, thread_root_id)
+        if root.channel_id != channel_id:
+            raise InvalidError("thread root is in another channel")
+        thread_root_id = root.thread_root_id or root.id  # threads are one level deep
+    message = Message(
+        channel_id=channel_id,
+        body=body,
+        author_type=author_type,
+        author_id=author_id,
+        thread_root_id=thread_root_id,
+        ref_type=ref.__tablename__ if ref is not None else None,
+        ref_id=ref.id if ref is not None else None,
+    )
+    return await _create(session, message, actor)
+
+
+async def update_message(
+    session: AsyncSession, message_id: str, changes: dict[str, Any], actor: str
+) -> Message:
+    return await _update(session, await get_message(session, message_id), changes, actor)
+
+
+async def list_messages(
+    session: AsyncSession, channel_id: str, *, cursor: str | None = None, limit: int = 50
+) -> tuple[list[Message], str | None]:
+    """Top-level messages, oldest first; `next_cursor` fetches the page before this one."""
+    query = (
+        select(Message)
+        .where(Message.channel_id == channel_id, Message.thread_root_id.is_(None))
+        .order_by(Message.created_at.desc(), Message.id.desc())
+    )
+    if cursor is not None:
+        last_ts, last_id = _decode_cursor(cursor)
+        query = query.where(
+            or_(
+                Message.created_at < last_ts,
+                (Message.created_at == last_ts) & (Message.id < last_id),
+            )
+        )
+    rows = list((await session.scalars(query.limit(limit + 1))).all())
+    next_cursor = None
+    if len(rows) > limit:
+        rows = rows[:limit]
+        next_cursor = f"{rows[-1].created_at.isoformat()}|{rows[-1].id}"
+    return rows[::-1], next_cursor
+
+
+async def list_thread(session: AsyncSession, root_id: str) -> tuple[Message, list[Message]]:
+    root = await get_message(session, root_id)
+    query = (
+        select(Message)
+        .where(Message.thread_root_id == root.id)
+        .order_by(Message.created_at, Message.id)
+    )
+    return root, list((await session.scalars(query)).all())
+
+
+async def reply_counts(session: AsyncSession, root_ids: Sequence[str]) -> dict[str, int]:
+    if not root_ids:
+        return {}
+    query = (
+        select(Message.thread_root_id, func.count())
+        .where(Message.thread_root_id.in_(root_ids))
+        .group_by(Message.thread_root_id)
+    )
+    return {str(root): count for root, count in (await session.execute(query)).all()}
+
+
+async def convert_message(
+    session: AsyncSession,
+    message_id: str,
+    *,
+    kind: str,
+    actor: str,
+    fields: dict[str, Any] | None = None,
+) -> Task | Event:
+    """Quick actions 🗂/📅 on a message: make it a task or event. A message that is still
+    an inbox suggestion goes through accept_inbox_item so the item is closed too."""
+    message = await get_message(session, message_id)
+    if message.ref_type == "inbox_item" and message.ref_id:
+        return await accept_inbox_item(
+            session, message.ref_id, actor=actor, overrides={"type": kind, **(fields or {})}
+        )
+    if message.ref_type in ("task", "event"):
+        raise ConflictError("message already points at a task or event")
+    data = {"title": message.body.strip()[:500]} | (fields or {})
+    obj: Task | Event
+    if kind == "task":
+        obj = await create_task(
+            session,
+            channel_id=message.channel_id,
+            title=data["title"],
+            actor=actor,
+            due_at=_as_datetime(data.get("due_at")),
+        )
+    elif kind == "event":
+        obj = await create_event(
+            session,
+            channel_id=message.channel_id,
+            title=data["title"],
+            actor=actor,
+            starts_at=_as_datetime(data.get("starts_at")),
+            ends_at=_as_datetime(data.get("ends_at")),
+            start_date=_as_date(data.get("start_date")),
+            end_date=_as_date(data.get("end_date")),
+        )
+    else:
+        raise InvalidError(f"cannot convert a message into {kind!r}")
+    await _update(session, message, {"ref_type": obj.__tablename__, "ref_id": obj.id}, actor)
+    return obj
+
+
+async def _repoint_messages(
+    session: AsyncSession, ref_type: str, ref_id: str, target: Record, actor: str
+) -> None:
+    query = select(Message).where(Message.ref_type == ref_type, Message.ref_id == ref_id)
+    for message in (await session.scalars(query)).all():
+        await _update(
+            session, message, {"ref_type": target.__tablename__, "ref_id": target.id}, actor
+        )
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str]:
+    try:
+        raw_ts, last_id = cursor.split("|", 1)
+        return datetime.fromisoformat(raw_ts), last_id
+    except ValueError as exc:
+        raise InvalidError("malformed cursor") from exc
 
 
 # --- today --------------------------------------------------------------------

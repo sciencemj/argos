@@ -92,6 +92,150 @@ export interface paths {
         patch: operations["update_channel_api_v1_channels__channel_id__patch"];
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Messages */
+        get: operations["list_messages_api_v1_channels__channel_id__messages_get"];
+        put?: never;
+        /** Post Message */
+        post: operations["post_message_api_v1_channels__channel_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Thread */
+        get: operations["get_thread_api_v1_messages__message_id__thread_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Message */
+        patch: operations["update_message_api_v1_messages__message_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert Message */
+        post: operations["convert_message_api_v1_messages__message_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/{item_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Inbox Item */
+        post: operations["accept_inbox_item_api_v1_inbox__item_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/{item_id}/classify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reclassify Inbox Item
+         * @description Retry after a failure (or after configuring a model): resets to `new` and queues.
+         */
+        post: operations["reclassify_inbox_item_api_v1_inbox__item_id__classify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/classifier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Classifier Settings */
+        get: operations["get_classifier_settings_api_v1_settings_classifier_get"];
+        /**
+         * Put Classifier Settings
+         * @description Saves the model choice and swaps the classifier without a restart.
+         */
+        put: operations["put_classifier_settings_api_v1_settings_classifier_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/classifier/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Classifier Models */
+        get: operations["list_classifier_models_api_v1_settings_classifier_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config": {
         parameters: {
             query?: never;
@@ -327,6 +471,11 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /**
+         * AuthorType
+         * @enum {string}
+         */
+        AuthorType: "user" | "agent" | "system";
         /** ChannelCreate */
         ChannelCreate: {
             /** Name */
@@ -376,6 +525,28 @@ export interface components {
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
         };
+        /** ClassifierSettingsIn */
+        ClassifierSettingsIn: {
+            /** Model */
+            model?: string | null;
+        };
+        /** ClassifierSettingsOut */
+        ClassifierSettingsOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "ollama" | "hermes";
+            /** Model */
+            model: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "app" | "env" | "none";
+            /** Enabled */
+            enabled: boolean;
+        };
         /** ConfigOut */
         ConfigOut: {
             /** Timezone */
@@ -384,6 +555,8 @@ export interface components {
             wip_limit: number;
             /** Due Soon Days */
             due_soon_days: number;
+            /** Classifier Enabled */
+            classifier_enabled: boolean;
         };
         /** EventCreate */
         EventCreate: {
@@ -465,6 +638,25 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InboxAccept */
+        InboxAccept: {
+            /** Title */
+            title?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Type */
+            type?: ("task" | "event" | "idea") | null;
+        };
         /** InboxCreate */
         InboxCreate: {
             /** Raw Text */
@@ -479,6 +671,8 @@ export interface components {
         InboxOut: {
             /** Id */
             id: string;
+            /** Channel Id */
+            channel_id: string | null;
             /** Raw Text */
             raw_text: string;
             /** Captured Via */
@@ -522,6 +716,112 @@ export interface components {
             } | null;
             /** Confidence */
             confidence?: number | null;
+        };
+        /** MessageConvert */
+        MessageConvert: {
+            /** Title */
+            title?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            /** Starts At */
+            starts_at?: string | null;
+            /** Ends At */
+            ends_at?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Channel Id */
+            channel_id?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "task" | "event";
+        };
+        /** MessageCreate */
+        MessageCreate: {
+            /** Body */
+            body: string;
+            /** Thread Root Id */
+            thread_root_id?: string | null;
+        };
+        /** MessageOut */
+        MessageOut: {
+            /** Id */
+            id: string;
+            /** Channel Id */
+            channel_id: string;
+            /** Thread Root Id */
+            thread_root_id: string | null;
+            author_type: components["schemas"]["AuthorType"];
+            /** Author Id */
+            author_id: string | null;
+            /** Body */
+            body: string;
+            /** Ref Type */
+            ref_type: string | null;
+            /** Ref Id */
+            ref_id: string | null;
+            /** Pinned */
+            pinned: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Reply Count
+             * @default 0
+             */
+            reply_count: number;
+            ref?: components["schemas"]["RefOut"];
+        };
+        /** MessagePage */
+        MessagePage: {
+            /** Items */
+            items: components["schemas"]["MessageOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** MessageUpdate */
+        MessageUpdate: {
+            /** Pinned */
+            pinned?: boolean | null;
+        };
+        /** OllamaModelOut */
+        OllamaModelOut: {
+            /** Name */
+            name: string;
+            /** Remote */
+            remote: boolean;
+            /** Parameter Size */
+            parameter_size: string | null;
+        };
+        /** OllamaModelsOut */
+        OllamaModelsOut: {
+            /** Reachable */
+            reachable: boolean;
+            /** Error */
+            error?: string | null;
+            /** Models */
+            models?: components["schemas"]["OllamaModelOut"][];
+        };
+        /** PromotedOut */
+        PromotedOut: {
+            /** Object Type */
+            object_type: string;
+            /** Id */
+            id: string;
+        };
+        /**
+         * RefOut
+         * @description The object a message renders as a card (PLAN P4); at most one is set.
+         */
+        RefOut: {
+            inbox_item?: components["schemas"]["InboxOut"] | null;
+            task?: components["schemas"]["TaskOut"] | null;
+            event?: components["schemas"]["EventOut"] | null;
         };
         /** TaskCreate */
         TaskCreate: {
@@ -592,6 +892,12 @@ export interface components {
             due_at?: string | null;
             /** Priority */
             priority?: number | null;
+        };
+        /** ThreadOut */
+        ThreadOut: {
+            root: components["schemas"]["MessageOut"];
+            /** Replies */
+            replies: components["schemas"]["MessageOut"][];
         };
         /** TodayOut */
         TodayOut: {
@@ -858,6 +1164,315 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_messages_api_v1_channels__channel_id__messages_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_v1_channels__channel_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thread_api_v1_messages__message_id__thread_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_message_api_v1_messages__message_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_message_api_v1_messages__message_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageConvert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_inbox_item_api_v1_inbox__item_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reclassify_inbox_item_api_v1_inbox__item_id__classify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_classifier_settings_api_v1_settings_classifier_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassifierSettingsOut"];
+                };
+            };
+        };
+    };
+    put_classifier_settings_api_v1_settings_classifier_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassifierSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassifierSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_classifier_models_api_v1_settings_classifier_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaModelsOut"];
                 };
             };
         };

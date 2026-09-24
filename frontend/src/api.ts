@@ -1,5 +1,6 @@
 import {
   type QueryClient,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -16,6 +17,9 @@ export type CalEvent = Schemas["EventOut"];
 export type InboxItem = Schemas["InboxOut"];
 export type Activity = Schemas["ActivityOut"];
 export type Config = Schemas["ConfigOut"];
+export type Message = Schemas["MessageOut"];
+export type InboxAccept = Schemas["InboxAccept"];
+export type PromoteFields = Schemas["MessageConvert"];
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
   { id: "backlog", label: "백로그" },
@@ -66,10 +70,13 @@ export function invalidateFor(
   objectType: string,
   id?: string,
 ) {
+  // Messages embed their task/event/inbox card, so those changes refresh feeds too.
+  const feeds = [["messages"], ["thread"]];
   const keys: Record<string, string[][]> = {
-    task: [["tasks"], ["today"], ["task"], ["activity"]],
-    event: [["events"], ["today"]],
-    inbox_item: [["inbox"], ["today"]],
+    task: [["tasks"], ["today"], ["task"], ["activity"], ...feeds],
+    event: [["events"], ["today"], ...feeds],
+    inbox_item: [["inbox"], ["today"], ...feeds],
+    message: feeds,
     channel: [["channels"], ["tasks"]],
     area: [["channels"]],
   };
@@ -166,15 +173,53 @@ export const useOpenInbox = () =>
       ),
   });
 
+/** Newest page first from the API; pages are rendered oldest → newest. */
+export const useMessages = (channelId: string) =>
+  useInfiniteQuery({
+    queryKey: ["messages", channelId],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/messages", {
+          params: {
+            path: { channel_id: channelId },
+            query: pageParam ? { cursor: pageParam } : {},
+          },
+        }),
+      ),
+    getNextPageParam: (page) => page.next_cursor,
+  });
+
+export const useThread = (messageId: string | null) =>
+  useQuery({
+    queryKey: ["thread", messageId],
+    enabled: messageId !== null,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/messages/{message_id}/thread", {
+          params: { path: { message_id: messageId ?? "" } },
+        }),
+      ),
+  });
+
 // --- mutations ------------------------------------------------------------------
 
-function useWrite<A, R>(objectType: string, fn: (args: A) => Promise<R>) {
+function useWrite<A, R>(
+  objectTypes: string | string[],
+  fn: (args: A) => Promise<R>,
+) {
   const qc = useQueryClient();
+  const types = Array.isArray(objectTypes) ? objectTypes : [objectTypes];
   return useMutation({
     mutationFn: fn,
-    onSettled: () => invalidateFor(qc, objectType),
+    onSettled: () => {
+      for (const t of types) invalidateFor(qc, t);
+    },
   });
 }
+
+// Writes that can create a task or event on top of their own object.
+const PROMOTES = ["message", "inbox_item", "task", "event"];
 
 export const useCreateTask = () =>
   useWrite("task", (body: Schemas["TaskCreate"]) =>
@@ -302,3 +347,84 @@ export const useDeleteChannel = () =>
       }),
     ),
   );
+
+export const usePostMessage = () =>
+  useWrite(
+    PROMOTES, // slash commands create tasks/events directly
+    ({
+      channelId,
+      ...body
+    }: Schemas["MessageCreate"] & { channelId: string }) =>
+      call(
+        client.POST("/api/v1/channels/{channel_id}/messages", {
+          params: { path: { channel_id: channelId } },
+          body,
+        }),
+      ),
+  );
+
+export const usePinMessage = () =>
+  useWrite("message", ({ id, pinned }: { id: string; pinned: boolean }) =>
+    call(
+      client.PATCH("/api/v1/messages/{message_id}", {
+        params: { path: { message_id: id } },
+        body: { pinned },
+      }),
+    ),
+  );
+
+export const useConvertMessage = () =>
+  useWrite(PROMOTES, ({ id, ...body }: PromoteFields & { id: string }) =>
+    call(
+      client.POST("/api/v1/messages/{message_id}/convert", {
+        params: { path: { message_id: id } },
+        body,
+      }),
+    ),
+  );
+
+export const useAcceptInbox = () =>
+  useWrite(PROMOTES, ({ id, ...body }: InboxAccept & { id: string }) =>
+    call(
+      client.POST("/api/v1/inbox/{item_id}/accept", {
+        params: { path: { item_id: id } },
+        body,
+      }),
+    ),
+  );
+
+export const useReclassify = () =>
+  useWrite("inbox_item", (id: string) =>
+    call(
+      client.POST("/api/v1/inbox/{item_id}/classify", {
+        params: { path: { item_id: id } },
+      }),
+    ),
+  );
+
+// --- settings -------------------------------------------------------------------
+
+export const useClassifierSettings = () =>
+  useQuery({
+    queryKey: ["settings", "classifier"],
+    queryFn: () => call(client.GET("/api/v1/settings/classifier")),
+  });
+
+export const useOllamaModels = () =>
+  useQuery({
+    queryKey: ["settings", "ollama-models"],
+    queryFn: () => call(client.GET("/api/v1/settings/classifier/models")),
+    staleTime: 0,
+  });
+
+export function useSaveClassifier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (model: string | null) =>
+      call(client.PUT("/api/v1/settings/classifier", { body: { model } })),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["settings"] });
+      void qc.invalidateQueries({ queryKey: ["config"] });
+    },
+  });
+}

@@ -8,6 +8,7 @@ import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { TaskPanel } from "./TaskPanel";
+import { ThreadPanel } from "./ThreadPanel";
 
 /** Rail | sidebar | main | (task panel) over a 32px status bar — docs/design/Main.dc.html. */
 export function Shell() {
@@ -17,6 +18,8 @@ export function Shell() {
   const { channelId } = useParams();
   const [params] = useSearchParams();
   const taskId = params.get("task");
+  const threadId = taskId ? null : params.get("thread");
+  const panel = Boolean(taskId || threadId);
   const [pickedArea, setPickedArea] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
@@ -45,7 +48,7 @@ export function Shell() {
     <div
       className="grid h-full overflow-hidden bg-page"
       style={{
-        gridTemplateColumns: taskId
+        gridTemplateColumns: panel
           ? "68px 256px minmax(0,1fr) 352px"
           : "68px 256px minmax(0,1fr)",
         gridTemplateRows: "minmax(0,1fr) 32px",
@@ -57,6 +60,7 @@ export function Shell() {
         <Outlet />
       </main>
       {taskId && <TaskPanel taskId={taskId} />}
+      {threadId && <ThreadPanel messageId={threadId} />}
       <StatusBar link={link} />
       <QuickSwitcher
         open={switcherOpen}

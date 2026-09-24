@@ -7,6 +7,7 @@ import { Shell } from "./layout/Shell";
 import { CalendarTab } from "./pages/CalendarTab";
 import { ChannelPage, FeedTab } from "./pages/ChannelPage";
 import { KanbanTab } from "./pages/KanbanTab";
+import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
 
 const queryClient = new QueryClient({
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
     element: <Shell />,
     children: [
       { index: true, element: <TodayPage /> },
+      { path: "settings", element: <SettingsPage /> },
       {
         path: "c/:channelId",
         element: <ChannelPage />,

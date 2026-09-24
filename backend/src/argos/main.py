@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from argos import services
 from argos.api import install_error_handlers, router, ws_router
+from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
 
@@ -15,11 +16,14 @@ def create_app(config: Settings = settings) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
         engine = make_engine(config.db_url)
-        app.state.settings = config
         app.state.sessionmaker = make_sessionmaker(engine)
         async with app.state.sessionmaker() as session:
             seed = await asyncio.to_thread(services.load_seed, config.seed_path)
             await services.seed_defaults(session, seed)
+            overrides = await services.get_settings_overrides(session)
+        app.state.base_settings = config
+        app.state.settings = apply_overrides(config, overrides)
+        app.state.classifier = build_classifier(app.state.settings)
         yield
         await engine.dispose()
 

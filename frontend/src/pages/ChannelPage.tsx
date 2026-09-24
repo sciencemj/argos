@@ -13,8 +13,9 @@ import {
   useDeleteChannel,
   useUpdateChannel,
 } from "../api";
+import { Feed } from "../feed";
 import { SettingsIcon } from "../icons";
-import { btn, card, Dialog, ErrorText, field, label } from "../ui";
+import { btn, Dialog, ErrorText, field, label } from "../ui";
 
 const tab =
   "flex h-8 items-center rounded-full border border-transparent px-3.5 text-text-3 aria-[current=page]:border-line-soft aria-[current=page]:bg-card aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:shadow-sm";
@@ -91,21 +92,9 @@ export function ChannelPage() {
   );
 }
 
-/** Messages arrive in Phase 3; until then the feed only points at the working tabs. */
 export function FeedTab() {
   const channel = useChannel();
-  return (
-    <section aria-label="메시지" className="flex grow items-end px-8 pb-6">
-      <div className={`${card} flex w-full flex-col gap-2 p-6`}>
-        <div className="text-[15px] text-ink">
-          #{channel.name}에는 아직 대화가 없어요.
-        </div>
-        <div className="text-[13px] text-text-3">
-          할 일은 칸반에서, 일정은 캘린더에서 바로 추가할 수 있어요.
-        </div>
-      </div>
-    </section>
-  );
+  return <Feed key={channel.id} channel={channel} />;
 }
 
 function ChannelSettings({

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router";
+import { NavLink, useMatch, useNavigate } from "react-router";
 import { useChannels, useCreateArea } from "../api";
-import { DogIcon, PlusIcon } from "../icons";
+import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
 
 const railButton =
@@ -18,6 +18,7 @@ export function Rail({
   const navigate = useNavigate();
   const { data } = useChannels();
   const [adding, setAdding] = useState(false);
+  const onSettings = useMatch("/settings") !== null;
 
   const openArea = (id: string) => {
     onPickArea(id);
@@ -37,7 +38,7 @@ export function Rail({
       <button
         type="button"
         aria-label="홈 · 오늘"
-        className={`${railButton} ${areaId === null ? active : "text-text-3"}`}
+        className={`${railButton} ${areaId === null && !onSettings ? active : "text-text-3"}`}
         onClick={() => {
           onPickArea(null);
           navigate("/");
@@ -65,6 +66,17 @@ export function Rail({
       >
         <PlusIcon size={17} />
       </button>
+      <span className="grow" />
+      <NavLink
+        to="/settings"
+        aria-label="설정"
+        title="설정"
+        className={({ isActive }) =>
+          `${railButton} ${isActive ? active : "text-text-3"}`
+        }
+      >
+        <SettingsIcon size={18} />
+      </NavLink>
       <AddAreaDialog open={adding} onClose={() => setAdding(false)} />
     </nav>
   );

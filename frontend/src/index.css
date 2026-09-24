@@ -138,9 +138,13 @@ a {
   text-decoration: none;
 }
 
-:focus-visible {
-  outline: 2px solid var(--cta);
-  outline-offset: 2px;
+/* In the base layer so component utilities (e.g. focus-visible:outline-none on the
+   composer) can override it. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--cta);
+    outline-offset: 2px;
+  }
 }
 
 /* FullCalendar: map its theme variables onto ours. */
