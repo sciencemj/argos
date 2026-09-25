@@ -13,7 +13,7 @@ from icalendar import Event as VEvent
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from argos.models import Channel, Event, Task, TaskStatus
+from argos.models import Channel, Event, SourceLink, Task, TaskStatus
 
 HISTORY = timedelta(days=90)  # past events kept in the feed
 DEADLINE_LENGTH = timedelta(minutes=30)  # a deadline shows as the half hour before it
@@ -25,12 +25,14 @@ async def build_feed(session: AsyncSession, now: datetime, tz_name: str) -> byte
     events = (
         await session.scalars(
             select(Event).where(
+                # Events synced with Apple calendars are already there (Phase 7b).
+                Event.id.not_in(select(SourceLink.object_id)),
                 or_(
                     Event.rrule.is_not(None),  # a series may have started long ago
                     Event.starts_at >= since,
                     Event.ends_at >= since,
                     Event.end_date >= since.date(),
-                )
+                ),
             )
         )
     ).all()

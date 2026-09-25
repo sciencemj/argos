@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from dateutil.rrule import rrulestr
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +37,7 @@ from argos.models import (
     Routine,
     RoutineCheck,
     RunStatus,
+    SourceLink,
     Task,
     TaskStatus,
 )
@@ -159,6 +161,21 @@ async def get_settings_overrides(session: AsyncSession) -> dict[str, Any]:
     return {row.key: row.value for row in rows}
 
 
+async def get_setting(session: AsyncSession, key: str) -> Any:
+    return await session.scalar(select(AppSetting.value).where(AppSetting.key == key))
+
+
+async def set_setting_quietly(session: AsyncSession, key: str, value: Any) -> None:
+    """For values that must stay out of activity_log and WebSocket events (secrets,
+    account names) or are bookkeeping rather than user changes."""
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    if row is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+    await session.commit()
+
+
 async def set_setting(session: AsyncSession, key: str, value: Any, actor: str) -> AppSetting:
     row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
     if row is None:
@@ -170,17 +187,12 @@ FEED_TOKEN = "calendar_feed_token"
 
 
 async def feed_token(session: AsyncSession, *, rotate: bool = False) -> str:
-    """Secret in the ICS feed URL (PLAN 7a). Written directly, not through _create/_update:
-    those copy values into activity_log and WebSocket events, which must not carry it."""
-    row = await session.scalar(select(AppSetting).where(AppSetting.key == FEED_TOKEN))
-    if row is not None and not rotate:
-        return str(row.value)
+    """Secret in the ICS feed URL (PLAN 7a), kept out of the activity log."""
+    current = await get_setting(session, FEED_TOKEN)
+    if current and not rotate:
+        return str(current)
     token = secrets.token_urlsafe(24)
-    if row is None:
-        session.add(AppSetting(key=FEED_TOKEN, value=token))
-    else:
-        row.value = token
-    await session.commit()
+    await set_setting_quietly(session, FEED_TOKEN, token)
     return token
 
 
@@ -501,20 +513,56 @@ async def create_event(
     return await _create(session, event, actor)
 
 
+SYNC_ACTORS = ("sync:icloud",)
+
+
+async def _check_event_writable(
+    session: AsyncSession, event: Event, actor: str, changes: dict[str, Any] | None = None
+) -> None:
+    """Events read from other Apple calendars change only through sync (PLAN 7b: Argos
+    writes to the Argos calendar alone); a series' times change only in the calendar."""
+    if actor in SYNC_ACTORS:
+        return
+    link = await session.scalar(
+        select(SourceLink).where(
+            SourceLink.object_type == "event", SourceLink.object_id == event.id
+        )
+    )
+    moving = changes is None or any(key in changes for key in EVENT_TIME_FIELDS + ("rrule",))
+    # Moving an event to another channel is Argos-only, so always allowed.
+    if link is not None and link.read_only and (changes is None or set(changes) - {"channel_id"}):
+        raise ConflictError(f"'{link.calendar_name}' 캘린더의 일정은 캘린더 앱에서 고쳐 주세요")
+    if event.rrule and link is not None and moving:
+        raise ConflictError("반복 일정은 캘린더 앱에서 고쳐 주세요")
+
+
 async def update_event(
     session: AsyncSession, event_id: str, changes: dict[str, Any], actor: str
 ) -> Event:
     event = await get_event(session, event_id)
+    await _check_event_writable(session, event, actor, changes)
     if "channel_id" in changes:
         await get_channel(session, changes["channel_id"])
     if any(key in changes for key in EVENT_TIME_FIELDS):
         current = {key: getattr(event, key) for key in EVENT_TIME_FIELDS}
-        changes = changes | _check_event_times(**(current | changes))
+        times = {k: v for k, v in changes.items() if k in EVENT_TIME_FIELDS}
+        changes = changes | _check_event_times(**(current | times))
     return await _update(session, event, changes, actor)
 
 
 async def delete_event(session: AsyncSession, event_id: str, actor: str) -> None:
-    await _delete(session, await get_event(session, event_id), actor)
+    event = await get_event(session, event_id)
+    await _check_event_writable(session, event, actor)
+    await _delete(session, event, actor)
+
+
+async def event_sources(session: AsyncSession, event_ids: Sequence[str]) -> dict[str, SourceLink]:
+    rows = await session.scalars(
+        select(SourceLink).where(
+            SourceLink.object_type == "event", SourceLink.object_id.in_(event_ids)
+        )
+    )
+    return {link.object_id: link for link in rows}
 
 
 async def list_events(
@@ -525,7 +573,8 @@ async def list_events(
     tz: ZoneInfo,
     channel_id: str | None = None,
 ) -> Sequence[Event]:
-    """Events overlapping [start, end). All-day events compare by local date."""
+    """Events overlapping [start, end). All-day events compare by local date. A series
+    (rrule) yields one unsaved copy per occurrence in the range, sharing the series id."""
     first_day = start.astimezone(tz).date()
     last_day = (end - timedelta(microseconds=1)).astimezone(tz).date()
     timed = (
@@ -533,14 +582,70 @@ async def list_events(
         or_(Event.ends_at > start, Event.ends_at.is_(None) & (Event.starts_at >= start)),
     )
     all_day = (Event.start_date <= last_day, Event.end_date > first_day)
-    query = (
-        select(Event)
-        .where(or_(timed[0] & timed[1], all_day[0] & all_day[1]))
-        .order_by(Event.start_date, Event.starts_at)
+    single = select(Event).where(
+        Event.rrule.is_(None), or_(timed[0] & timed[1], all_day[0] & all_day[1])
     )
+    series = select(Event).where(Event.rrule.is_not(None))
     if channel_id is not None:
-        query = query.where(Event.channel_id == channel_id)
-    return (await session.scalars(query)).all()
+        single = single.where(Event.channel_id == channel_id)
+        series = series.where(Event.channel_id == channel_id)
+    found = list((await session.scalars(single)).all())
+    for event in (await session.scalars(series)).all():
+        found.extend(occurrences(event, start, end, tz))
+    return sorted(found, key=lambda e: _event_sort_key(e, tz))
+
+
+def _event_sort_key(event: Event, tz: ZoneInfo) -> datetime:
+    if event.start_date is not None:
+        return datetime.combine(event.start_date, time(), tz)
+    assert event.starts_at is not None
+    return event.starts_at
+
+
+def occurrences(event: Event, start: datetime, end: datetime, tz: ZoneInfo) -> list[Event]:
+    """Occurrences of a series overlapping [start, end), expanded in local time so BYDAY
+    rules mean the user's weekdays. Unparseable rules show only the first occurrence."""
+    all_day = event.start_date is not None
+    # All-day series run on naive local dates (their UNTIL is a date); timed ones on
+    # aware local times.
+    window_start, window_end = start.astimezone(tz), end.astimezone(tz)
+    if all_day:
+        assert event.start_date is not None
+        first = datetime.combine(event.start_date, time())
+        length = timedelta(days=((event.end_date or event.start_date) - event.start_date).days or 1)
+        window_start = window_start.replace(tzinfo=None)
+        window_end = window_end.replace(tzinfo=None)
+    else:
+        assert event.starts_at is not None
+        first = event.starts_at.astimezone(tz)
+        length = (event.ends_at - event.starts_at) if event.ends_at else timedelta(0)
+    try:
+        rule = rrulestr(event.rrule or "", dtstart=first)
+        starts: list[datetime] = rule.between(window_start - length, window_end, inc=True)
+    except (ValueError, TypeError):
+        starts = [first] if first < window_end and first + length >= window_start else []
+    copies: list[Event] = []
+    for begin in starts:
+        if begin >= window_end or (length and begin + length <= window_start):
+            continue
+        copy = Event(
+            id=event.id,
+            channel_id=event.channel_id,
+            title=event.title,
+            location=event.location,
+            rrule=event.rrule,
+            calendar_id=event.calendar_id,
+            created_at=event.created_at,
+            updated_at=event.updated_at,
+        )
+        if all_day:
+            copy.start_date = begin.date()
+            copy.end_date = (begin + length).date()
+        else:
+            copy.starts_at = begin.astimezone(UTC)
+            copy.ends_at = (begin + length).astimezone(UTC) if event.ends_at else None
+        copies.append(copy)
+    return copies
 
 
 # --- inbox --------------------------------------------------------------------
@@ -679,6 +784,10 @@ async def _resolve_channel(
     if personal is not None:
         return personal.id
     raise InvalidError("어느 채널에 넣을지 골라 주세요")
+
+
+async def channel_exists(session: AsyncSession, channel_id: str) -> bool:
+    return await session.get(Channel, channel_id) is not None
 
 
 async def get_personal_channel(session: AsyncSession) -> Channel | None:

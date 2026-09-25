@@ -1,14 +1,16 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
-from argos import services
+from argos import caldav_sync, services
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
+from argos.hub import hub
 from argos.mcp_server import build_mcp
 from argos.runner import Runner
 
@@ -29,8 +31,21 @@ def create_app(config: Settings = settings) -> FastAPI:
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
         async with app.state.sessionmaker() as session:
             await services.abandon_running_runs(session)
+        app.state.calendar_sync = caldav_sync.CalendarSync(
+            app.state.sessionmaker, lambda: app.state.settings, caldav_sync.Keychain()
+        )
+        if config.caldav_poll_minutes > 0:
+            app.state.calendar_sync.start()
+
+        def on_change(_type: str, data: dict[str, Any]) -> None:
+            if data.get("object_type") == "event":  # push Argos-side edits right away
+                app.state.calendar_sync.nudge()
+
+        stop_listening = hub.listen(on_change)
         async with mcp.session_manager.run():
             yield
+        stop_listening()
+        await app.state.calendar_sync.stop()
         await app.state.runner.shutdown()
         await engine.dispose()
 

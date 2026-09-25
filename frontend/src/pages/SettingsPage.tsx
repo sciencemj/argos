@@ -1,17 +1,27 @@
 import { useState } from "react";
 import { AgentAvatar } from "../agents";
 import {
+  type Conflict,
   useAgentSettings,
   useAgents,
+  useCalendarChannel,
+  useCalendarConflicts,
   useCalendarFeed,
+  useChannels,
   useClassifierSettings,
+  useConnectICloud,
+  useDisconnectICloud,
+  useICloud,
   useJobSettings,
   useOllamaModels,
+  useResolveConflict,
   useRotateCalendarFeed,
   useSaveClassifier,
   useSaveDefaultAgent,
   useSaveJobRoots,
+  useSyncCalendars,
 } from "../api";
+import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
 
 const OFF = "";
@@ -24,6 +34,7 @@ export function SettingsPage() {
       </h1>
       <AgentSection />
       <ClassifierSection />
+      <ICloudSection />
       <CalendarFeedSection />
       <JobRootsSection />
     </div>
@@ -426,5 +437,281 @@ function CalendarFeedSection() {
         </button>
       </div>
     </section>
+  );
+}
+
+const RESULT_TEXT: [string, string][] = [
+  ["created", "가져옴"],
+  ["updated", "바뀜"],
+  ["pushed", "보냄"],
+  ["deleted", "지움"],
+  ["conflicts", "충돌"],
+];
+
+/** Two-way iCloud calendar sync (PLAN 7b): connect, calendars → channels, conflicts. */
+function ICloudSection() {
+  const icloud = useICloud();
+  const connect = useConnectICloud();
+  const disconnect = useDisconnectICloud();
+  const sync = useSyncCalendars();
+  const setChannel = useCalendarChannel();
+  const channels = useChannels();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const data = icloud.data;
+  const status = data?.status;
+  const running = Boolean(status?.running) || sync.isPending;
+  const choices = (channels.data?.channels ?? []).filter(
+    (c) => c.kind !== "system" && c.kind !== "dm",
+  );
+  const personal = choices.find((c) => c.kind === "personal");
+  const result = status?.last_result
+    ? RESULT_TEXT.filter(([key]) => status.last_result?.[key])
+        .map(([key, text]) => `${text} ${status.last_result?.[key]}`)
+        .join(" · ") || "바뀐 것 없음"
+    : null;
+
+  return (
+    <section
+      aria-label="iCloud 캘린더"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <div className="flex items-baseline gap-2">
+        <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
+          iCloud 캘린더
+        </h2>
+        {data?.connected && (
+          <span className="text-[12px] text-meta">
+            {data.username} · 연결됨
+          </span>
+        )}
+      </div>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        모든 캘린더의 일정을 Argos로 가져오고, Argos에서 만든 일정은 "
+        {data?.write_calendar ?? "Argos"}" 캘린더에만 써요.
+        {data && data.poll_minutes > 0
+          ? ` ${data.poll_minutes}분마다 자동으로 맞춰요.`
+          : ""}{" "}
+        다른 캘린더의 일정은 여기서 보기만 하고 캘린더 앱에서 고쳐요.
+      </p>
+
+      {data && !data.connected && (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            connect.mutate(
+              { username, password },
+              { onSuccess: () => setPassword("") },
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1">
+            <span className={label}>Apple ID</span>
+            <input
+              className={field}
+              type="email"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={label}>앱 전용 암호</span>
+            <input
+              className={`${field} font-mono`}
+              type="password"
+              autoComplete="off"
+              placeholder="xxxx-xxxx-xxxx-xxxx"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          <p className="m-0 text-[12px] leading-relaxed text-meta">
+            애플 ID 암호가 아니라{" "}
+            <a
+              href="https://account.apple.com/account/manage"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              애플 계정 관리
+            </a>
+            의 "앱 전용 암호"에서 만든 암호를 넣어 주세요. 암호는 이 Mac의
+            키체인에만 저장돼요.
+          </p>
+          <ErrorText error={connect.error} />
+          <div>
+            <button
+              type="submit"
+              className={btn.cta}
+              disabled={connect.isPending}
+            >
+              {connect.isPending ? "확인하는 중…" : "연결"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {data?.connected && (
+        <>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-page px-4 py-3 text-[13px]">
+            <span className="grow text-text-2">
+              {running
+                ? "동기화하는 중…"
+                : status?.last_sync_at
+                  ? `마지막 동기화 ${fmt(status.last_sync_at, "M/d HH:mm")}${result ? ` · ${result}` : ""}`
+                  : "아직 동기화하지 않았어요"}
+            </span>
+            <button
+              type="button"
+              className={btn.outline}
+              disabled={running}
+              onClick={() => sync.mutate(undefined)}
+            >
+              지금 동기화
+            </button>
+          </div>
+          {status?.last_error && !running && (
+            <p
+              role="alert"
+              className="m-0 rounded-xl bg-danger-bg px-3.5 py-2.5 text-[12.5px] text-danger"
+            >
+              {status.last_error}
+            </p>
+          )}
+          {data.calendars.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className={label}>캘린더 → 채널</span>
+              {data.calendars.map((c) => (
+                <div
+                  key={c.url}
+                  className="flex items-center gap-3 rounded-2xl border border-line-soft bg-card px-4 py-2.5"
+                >
+                  <span className="min-w-0 grow truncate text-[13.5px] text-ink">
+                    {c.name}
+                  </span>
+                  <span className="text-[11.5px] whitespace-nowrap text-meta">
+                    {c.writable ? "Argos가 씀" : "읽기 전용"}
+                  </span>
+                  <select
+                    aria-label={`${c.name} 일정을 넣을 채널`}
+                    className="h-9 w-44 shrink-0 cursor-pointer border-0 border-b border-line bg-transparent text-[13.5px] text-text outline-none focus:border-ink"
+                    value={c.channel_id ?? ""}
+                    disabled={setChannel.isPending}
+                    onChange={(e) =>
+                      setChannel.mutate({
+                        calendar_url: c.url,
+                        channel_id: e.target.value || null,
+                      })
+                    }
+                  >
+                    <option value="">
+                      # {personal?.name ?? "일상"} (기본)
+                    </option>
+                    {choices
+                      .filter((ch) => ch.kind !== "personal")
+                      .map((ch) => (
+                        <option key={ch.id} value={ch.id}>
+                          # {ch.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+          <ErrorText
+            error={sync.error ?? setChannel.error ?? disconnect.error}
+          />
+          <ConflictList />
+          <div>
+            <button
+              type="button"
+              className={btn.ghost}
+              onClick={() => {
+                if (
+                  confirm(
+                    "iCloud 연결을 끊을까요? 키체인의 암호를 지우고, 가져온 일정은 Argos에 남아요.",
+                  )
+                ) {
+                  disconnect.mutate(undefined);
+                }
+              }}
+            >
+              연결 끊기
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function describeTimes(e: {
+  starts_at?: string | null;
+  ends_at?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+}) {
+  if (e.start_date) return `${fmt(e.start_date, "M/d (EEE)")} 종일`;
+  if (!e.starts_at) return "";
+  return `${fmt(e.starts_at, "M/d (EEE) HH:mm")}${e.ends_at ? ` – ${fmt(e.ends_at, "HH:mm")}` : ""}`;
+}
+
+/** Both sides changed the same event: nothing is merged until the user picks (7b). */
+function ConflictList() {
+  const conflicts = useCalendarConflicts();
+  const resolve = useResolveConflict();
+  if (!conflicts.data?.length) return null;
+  const side = (title: string, e: Conflict["event"] | Conflict["remote"]) => (
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-xl bg-page px-3 py-2">
+      <span className={label}>{title}</span>
+      <span className="text-[13px] text-ink">{String(e.title ?? "")}</span>
+      <span className="font-mono text-[11.5px] text-text-3">
+        {describeTimes(e as Parameters<typeof describeTimes>[0])}
+      </span>
+    </div>
+  );
+  return (
+    <div id="calendar-conflicts" className="flex flex-col gap-2">
+      <span className={label}>충돌 {conflicts.data.length}건</span>
+      {conflicts.data.map((c) => (
+        <div
+          key={c.id}
+          className="flex flex-col gap-2.5 rounded-2xl border border-danger-line px-4 py-3"
+        >
+          <span className="text-[12.5px] text-text-2">
+            앱과 "{c.calendar_name}" 캘린더에서 둘 다 고쳤어요. 어느 쪽을
+            남길까요?
+          </span>
+          <div className="flex gap-2">
+            {side("Argos", c.event)}
+            {side("캘린더", c.remote)}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={btn.outline}
+              disabled={resolve.isPending}
+              onClick={() => resolve.mutate({ id: c.id, keep: "app" })}
+            >
+              Argos 버전 남기기
+            </button>
+            <button
+              type="button"
+              className={btn.outline}
+              disabled={resolve.isPending}
+              onClick={() => resolve.mutate({ id: c.id, keep: "calendar" })}
+            >
+              캘린더 버전 남기기
+            </button>
+          </div>
+        </div>
+      ))}
+      <ErrorText error={resolve.error} />
+    </div>
   );
 }

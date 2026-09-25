@@ -79,7 +79,13 @@ export function invalidateFor(
   const feeds = [["messages"], ["thread"]];
   const keys: Record<string, string[][]> = {
     task: [["tasks"], ["today"], ["task"], ["activity"], ...feeds],
-    event: [["events"], ["today"], ...feeds],
+    event: [
+      ["events"],
+      ["today"],
+      ["conflicts"],
+      ["settings", "icloud"],
+      ...feeds,
+    ],
     inbox_item: [["inbox"], ["today"], ...feeds],
     message: feeds,
     routine: [["routines"]],
@@ -630,3 +636,61 @@ export function useRotateCalendarFeed() {
     onSuccess: (data) => qc.setQueryData(["settings", "calendar"], data),
   });
 }
+
+// --- iCloud calendars (PLAN Phase 7b) ----------------------------------------------
+
+export type ICloud = Schemas["ICloudOut"];
+export type Conflict = Schemas["ConflictOut"];
+
+export const useICloud = () =>
+  useQuery({
+    queryKey: ["settings", "icloud"],
+    queryFn: () => call(client.GET("/api/v1/settings/icloud")),
+    // Follow a sync that is running in the background (e.g. right after connecting).
+    refetchInterval: (q) => (q.state.data?.status.running ? 1500 : false),
+  });
+
+function useICloudWrite<A>(fn: (args: A) => Promise<ICloud>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (data) => {
+      qc.setQueryData(["settings", "icloud"], data);
+      for (const key of [["events"], ["today"], ["conflicts"]]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
+}
+
+export const useConnectICloud = () =>
+  useICloudWrite((body: Schemas["ICloudLogin"]) =>
+    call(client.PUT("/api/v1/settings/icloud", { body })),
+  );
+
+export const useDisconnectICloud = () =>
+  useICloudWrite(() => call(client.DELETE("/api/v1/settings/icloud")));
+
+export const useSyncCalendars = () =>
+  useICloudWrite(() => call(client.POST("/api/v1/calendar/sync")));
+
+export const useCalendarChannel = () =>
+  useICloudWrite((body: Schemas["CalendarChannelIn"]) =>
+    call(client.PUT("/api/v1/settings/icloud/channels", { body })),
+  );
+
+export const useCalendarConflicts = () =>
+  useQuery({
+    queryKey: ["conflicts"],
+    queryFn: () => call(client.GET("/api/v1/calendar/conflicts")),
+  });
+
+export const useResolveConflict = () =>
+  useWrite("event", ({ id, keep }: { id: string; keep: "app" | "calendar" }) =>
+    call(
+      client.POST("/api/v1/calendar/conflicts/{link_id}", {
+        params: { path: { link_id: id } },
+        body: { keep },
+      }),
+    ),
+  );

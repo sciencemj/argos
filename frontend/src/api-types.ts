@@ -372,6 +372,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/icloud": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Icloud */
+        get: operations["get_icloud_api_v1_settings_icloud_get"];
+        /**
+         * Connect Icloud
+         * @description Checks the Apple ID and app-specific password against iCloud, then keeps the
+         *     password in the Keychain and syncs in the background.
+         */
+        put: operations["connect_icloud_api_v1_settings_icloud_put"];
+        post?: never;
+        /**
+         * Disconnect Icloud
+         * @description Removes the password from the Keychain. Synced events stay in Argos.
+         */
+        delete: operations["disconnect_icloud_api_v1_settings_icloud_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/icloud/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Calendar Channel
+         * @description Which channel a calendar's events go to; moves the ones already synced.
+         */
+        put: operations["set_calendar_channel_api_v1_settings_icloud_channels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Calendars */
+        post: operations["sync_calendars_api_v1_calendar_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Conflicts */
+        get: operations["list_conflicts_api_v1_calendar_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/conflicts/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Conflict */
+        post: operations["resolve_conflict_api_v1_calendar_conflicts__link_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -808,6 +905,13 @@ export interface components {
          * @enum {string}
          */
         AuthorType: "user" | "agent" | "system";
+        /** CalendarChannelIn */
+        CalendarChannelIn: {
+            /** Calendar Url */
+            calendar_url: string;
+            /** Channel Id */
+            channel_id: string | null;
+        };
         /** CalendarFeedOut */
         CalendarFeedOut: {
             /** Token */
@@ -907,6 +1011,26 @@ export interface components {
             /** Job Concurrency */
             job_concurrency: number;
         };
+        /** ConflictChoice */
+        ConflictChoice: {
+            /**
+             * Keep
+             * @enum {string}
+             */
+            keep: "app" | "calendar";
+        };
+        /** ConflictOut */
+        ConflictOut: {
+            /** Id */
+            id: string;
+            /** Calendar Name */
+            calendar_name: string;
+            event: components["schemas"]["EventOut"];
+            /** Remote */
+            remote: {
+                [key: string]: unknown;
+            };
+        };
         /** EventCreate */
         EventCreate: {
             /** Channel Id */
@@ -962,6 +1086,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Source */
+            source?: string | null;
+            /**
+             * Read Only
+             * @default false
+             */
+            read_only: boolean;
         };
         /** EventUpdate */
         EventUpdate: {
@@ -986,6 +1117,40 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ICloudCalendarOut */
+        ICloudCalendarOut: {
+            /** Url */
+            url: string;
+            /** Name */
+            name: string;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Writable */
+            writable: boolean;
+        };
+        /** ICloudLogin */
+        ICloudLogin: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+        };
+        /** ICloudOut */
+        ICloudOut: {
+            /** Username */
+            username: string | null;
+            /** Connected */
+            connected: boolean;
+            /** Write Calendar */
+            write_calendar: string;
+            /** Poll Minutes */
+            poll_minutes: number;
+            /** Calendars */
+            calendars: components["schemas"]["ICloudCalendarOut"][];
+            /** Conflicts */
+            conflicts: number;
+            status: components["schemas"]["SyncStatusOut"];
         };
         /** InboxAccept */
         InboxAccept: {
@@ -1309,6 +1474,19 @@ export interface components {
          * @enum {string}
          */
         RunStatus: "queued" | "running" | "done" | "error" | "cancelled";
+        /** SyncStatusOut */
+        SyncStatusOut: {
+            /** Running */
+            running: boolean;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Result */
+            last_result: {
+                [key: string]: number;
+            } | null;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Channel Id */
@@ -2179,6 +2357,187 @@ export interface operations {
                 };
                 content: {
                     "text/calendar": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_icloud_api_v1_settings_icloud_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+        };
+    };
+    connect_icloud_api_v1_settings_icloud_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ICloudLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_icloud_api_v1_settings_icloud_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+        };
+    };
+    set_calendar_channel_api_v1_settings_icloud_channels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarChannelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_calendars_api_v1_calendar_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+        };
+    };
+    list_conflicts_api_v1_calendar_conflicts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictOut"][];
+                };
+            };
+        };
+    };
+    resolve_conflict_api_v1_calendar_conflicts__link_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */

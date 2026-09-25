@@ -85,3 +85,13 @@
 | 2026-09-25 | ICS 피드 `GET /api/v1/calendar/feed.ics?token=`: 일정(최근 90일 이후 + 반복 일정 전체)과 완료하지 않은 할 일의 마감. 마감은 "마감 · 제목", 마감 30분 전~마감 시각, TRANSPARENT(바쁨 아님). 시간은 UTC로 써서 VTIMEZONE 없음, 종일 일정은 DATE. UID `event-<id>@argos`/`task-<id>@argos`로 고정, 갱신 주기 10분 | PLAN 7a. 마감이 다음 날로 넘어가 보이지 않게 끝 시각을 마감에 맞춤 |
 | 2026-09-25 | 피드 토큰은 `app_setting.calendar_feed_token`, 설정 화면에서 새 주소로 교체. `_create/_update`를 거치지 않고 직접 저장 | 활동 기록·WS 이벤트에 비밀 값을 싣지 않기 위해(PLAN §8.1). 틀린 토큰은 404 |
 | 2026-09-25 | `ARGOS_PUBLIC_URL`(Tailscale 주소)로 다른 기기용 링크를 만든다. 없으면 브라우저가 연 주소 사용 | 맥에서 localhost로 열어도 아이폰에서 쓸 수 있는 구독 주소가 나오게 |
+| 2026-09-25 | CalDAV: 모든 iCloud 캘린더를 읽고, 쓰기는 "Argos" 캘린더에만(없으면 MKCALENDAR로 생성) | 사용자 결정(가져올 캘린더 "전부", 이름 "Argos"). PLAN 기본값 "Dashboard"에서 변경 |
+| 2026-09-25 | 앱 전용 암호는 macOS 키체인(`keyring`, 서비스 "Argos iCloud CalDAV"). Apple ID는 `app_setting.icloud_username`에 활동 기록 없이 저장. 연결 시 iCloud에 먼저 로그인해 보고 성공해야 저장 | 사용자 결정. PLAN §8.1 비밀 값은 로그·WS에 싣지 않음(테스트로 DB 파일에 암호가 없음을 확인) |
+| 2026-09-25 | CalDAV 클라이언트는 `caldav` 라이브러리 대신 httpx2로 필요한 요청만(PROPFIND·REPORT calendar-query·PUT·DELETE·MKCALENDAR) 직접 구현 | 라이브러리 검색 결과에 ETag가 보장되지 않아 변경 감지·If-Match에 부적합. 요청이 적어 직접 쓰는 편이 검증하기 쉬움 |
+| 2026-09-25 | `source_link` 테이블(PLAN §5)로 일정마다 href·ETag·원격 필드 해시·마지막 동기화 시점의 updated_at을 보관. 원격만 바뀜 → 앱 반영, 앱만 바뀜(Argos 캘린더) → If-Match PUT, 둘 다 → 병합 없이 충돌로 보류, 원격 삭제 → 앱에서 삭제, 앱 삭제 → 원격 삭제. 동기화 범위 90일 전~1년 후 | PLAN 7b 충돌 정책·멱등성. 범위 밖 일정은 삭제로 보지 않음 |
+| 2026-09-25 | 다른 캘린더의 일정과 반복 일정은 앱에서 읽기 전용(수정·삭제 409, 채널 이동만 허용). 캘린더별로 넣을 채널을 설정에서 고름(기본 #일상), 바꾸면 기존 일정도 이동 | PLAN 7b "다른 캘린더에는 쓰지 않는다", "RRULE은 읽기 전용" |
+| 2026-09-25 | 반복 일정은 원본 1개만 저장하고 조회 시 `python-dateutil`로 로컬 시간대에서 전개(BYDAY가 사용자의 요일 기준). 한 회차만 바꾼 예외(RECURRENCE-ID)와 EXDATE는 아직 반영하지 않음 | 읽기 전용 표시가 목표(PLAN 7b). `recurring-ical-events`는 원본 ICS를 보관해야 해서 보류 |
+| 2026-09-25 | 10분 폴링은 앱 프로세스 안 asyncio 태스크, 수동 "지금 동기화" 버튼. 동시 실행은 락으로 1개 | PLAN 7b |
+| 2026-09-25 | ICS 피드에서 iCloud와 동기화되는 일정은 제외(마감과 동기화 전 일정만) | 캘린더 앱에 같은 일정이 두 번 보이지 않게 |
+| 2026-09-25 | 일정 PATCH에서 제목과 시간을 함께 바꾸면 500이 나던 버그 수정(`_check_event_times`에 시간 필드만 전달) | 동기화 테스트에서 발견 |
+| 2026-09-25 | 앱에서 일정을 만들거나 고치거나 지우면 3초 뒤 바로 동기화(`hub.listen` → `CalendarSync.nudge`, 연속 변경은 한 번으로). 동기화가 스스로 만든 변경은 실행 중이라 무시 | 사용자 보고: 앱에서 지운 일정이 다음 10분 폴링까지 폰에 남음(버그 아님, 지연). 폴링은 폰 쪽 변경을 가져오는 용도로 유지 |

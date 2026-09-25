@@ -3,6 +3,7 @@ import re
 import secrets
 import shutil
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal, cast
 
@@ -21,11 +22,11 @@ from fastapi import (
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, chat, classifier, ics, services
+from argos import agents, caldav_sync, chat, classifier, ics, services
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
@@ -43,6 +44,7 @@ from argos.models import (
     InboxStatus,
     Message,
     RunStatus,
+    SourceLink,
     Task,
     TaskStatus,
 )
@@ -266,6 +268,8 @@ class EventOut(Out):
     calendar_id: str | None
     created_at: datetime
     updated_at: datetime
+    source: str | None = None  # Apple calendar it comes from or is mirrored to
+    read_only: bool = False  # from another Apple calendar: change it there
 
 
 class EventCreate(BaseModel):
@@ -843,6 +847,202 @@ async def calendar_feed(session: Session, config: Config, token: str = "") -> Re
     )
 
 
+class ICloudCalendarOut(BaseModel):
+    url: str
+    name: str
+    channel_id: str | None  # None = #일상
+    writable: bool
+
+
+class SyncStatusOut(BaseModel):
+    running: bool
+    last_sync_at: datetime | None
+    last_error: str | None
+    last_result: dict[str, int] | None
+
+
+class ICloudOut(BaseModel):
+    username: str | None
+    connected: bool  # a password for username is in the Keychain
+    write_calendar: str
+    poll_minutes: int
+    calendars: list[ICloudCalendarOut]
+    conflicts: int
+    status: SyncStatusOut
+
+
+class ICloudLogin(BaseModel):
+    username: str = Field(min_length=3, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class CalendarChannelIn(BaseModel):
+    calendar_url: str
+    channel_id: str | None
+
+
+class ConflictOut(BaseModel):
+    id: str
+    calendar_name: str
+    event: EventOut
+    remote: dict[str, Any]  # the calendar's version: title, times, location
+
+
+class ConflictChoice(BaseModel):
+    keep: Literal["app", "calendar"]
+
+
+def _calendar_sync(request: Request) -> caldav_sync.CalendarSync:
+    return request.app.state.calendar_sync
+
+
+async def _icloud_out(request: Request, session: AsyncSession, config: Settings) -> ICloudOut:
+    sync = _calendar_sync(request)
+    username = await services.get_setting(session, caldav_sync.ICLOUD_USERNAME)
+    creds = await sync.credentials(session)
+    mapping: dict[str, str] = (
+        await services.get_setting(session, caldav_sync.CALENDAR_CHANNELS) or {}
+    )
+    listed: list[dict[str, str]] = (
+        await services.get_setting(session, caldav_sync.ICLOUD_CALENDARS) or []
+    )
+    conflicts = await session.scalar(
+        select(func.count()).select_from(SourceLink).where(SourceLink.conflict.is_not(None))
+    )
+    return ICloudOut(
+        username=username,
+        connected=creds is not None,
+        write_calendar=config.caldav_write_calendar,
+        poll_minutes=config.caldav_poll_minutes,
+        calendars=[
+            ICloudCalendarOut(
+                url=c["url"],
+                name=c["name"],
+                channel_id=mapping.get(c["url"]),
+                writable=c["name"] == config.caldav_write_calendar,
+            )
+            for c in listed
+        ],
+        conflicts=conflicts or 0,
+        status=SyncStatusOut(**asdict(sync.status)),
+    )
+
+
+@router.get("/settings/icloud")
+async def get_icloud(request: Request, session: Session, config: Config) -> ICloudOut:
+    return await _icloud_out(request, session, config)
+
+
+@router.put("/settings/icloud")
+async def connect_icloud(
+    request: Request,
+    background: BackgroundTasks,
+    session: Session,
+    config: Config,
+    body: ICloudLogin,
+) -> ICloudOut:
+    """Checks the Apple ID and app-specific password against iCloud, then keeps the
+    password in the Keychain and syncs in the background."""
+    sync = _calendar_sync(request)
+    username = body.username.strip()
+    server = sync.server_factory(config, username, body.password)
+    try:
+        await server.calendars()
+    except caldav_sync.CalDAVError as exc:
+        raise services.InvalidError(str(exc)) from None
+    finally:
+        if isinstance(server, caldav_sync.CalDAVClient):
+            await server.aclose()
+    await asyncio.to_thread(sync.keychain.set, username, body.password)
+    await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, username)
+    background.add_task(sync.run)
+    return await _icloud_out(request, session, config)
+
+
+@router.delete("/settings/icloud")
+async def disconnect_icloud(request: Request, session: Session, config: Config) -> ICloudOut:
+    """Removes the password from the Keychain. Synced events stay in Argos."""
+    sync = _calendar_sync(request)
+    username = await services.get_setting(session, caldav_sync.ICLOUD_USERNAME)
+    if username:
+        await asyncio.to_thread(sync.keychain.delete, username)
+    await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, None)
+    return await _icloud_out(request, session, config)
+
+
+@router.put("/settings/icloud/channels")
+async def set_calendar_channel(
+    request: Request, session: Session, config: Config, body: CalendarChannelIn
+) -> ICloudOut:
+    """Which channel a calendar's events go to; moves the ones already synced."""
+    mapping: dict[str, str] = dict(
+        await services.get_setting(session, caldav_sync.CALENDAR_CHANNELS) or {}
+    )
+    if body.channel_id is None:
+        mapping.pop(body.calendar_url, None)
+    else:
+        await services.get_channel(session, body.channel_id)
+        mapping[body.calendar_url] = body.channel_id
+    await services.set_setting(session, caldav_sync.CALENDAR_CHANNELS, mapping, USER)
+    target = await caldav_sync.channel_for(session, body.calendar_url)
+    links = await session.scalars(
+        select(SourceLink).where(SourceLink.calendar_url == body.calendar_url)
+    )
+    for link in links.all():
+        event = await session.get(Event, link.object_id)
+        if event is not None and event.channel_id != target:
+            await services.update_event(session, event.id, {"channel_id": target}, USER)
+    return await _icloud_out(request, session, config)
+
+
+@router.post("/calendar/sync")
+async def sync_calendars(request: Request, session: Session, config: Config) -> ICloudOut:
+    await _calendar_sync(request).run()
+    return await _icloud_out(request, session, config)
+
+
+@router.get("/calendar/conflicts")
+async def list_conflicts(session: Session) -> list[ConflictOut]:
+    links = (
+        await session.scalars(select(SourceLink).where(SourceLink.conflict.is_not(None)))
+    ).all()
+    out: list[ConflictOut] = []
+    for link in links:
+        event = await session.get(Event, link.object_id)
+        if event is None or link.conflict is None:
+            continue
+        [event_out] = await _events_out(session, [event])
+        out.append(
+            ConflictOut(
+                id=link.id,
+                calendar_name=link.calendar_name,
+                event=event_out,
+                remote=link.conflict["fields"],
+            )
+        )
+    return out
+
+
+@router.post("/calendar/conflicts/{link_id}")
+async def resolve_conflict(
+    request: Request, session: Session, config: Config, link_id: str, body: ConflictChoice
+) -> EventOut:
+    sync = _calendar_sync(request)
+    creds = await sync.credentials(session)
+    if creds is None:
+        raise services.InvalidError("iCloud에 연결한 뒤에 고를 수 있어요")
+    server = sync.server_factory(config, *creds)
+    try:
+        event = await caldav_sync.resolve(session, server, link_id, body.keep, datetime.now(UTC))
+    except caldav_sync.CalDAVError as exc:
+        raise services.InvalidError(str(exc)) from None
+    finally:
+        if isinstance(server, caldav_sync.CalDAVClient):
+            await server.aclose()
+    [out] = await _events_out(session, [event])
+    return out
+
+
 @router.get("/settings/jobs")
 async def get_job_settings(config: Config) -> JobSettingsIn:
     return JobSettingsIn(roots=[str(r.expanduser().resolve()) for r in config.job_roots])
@@ -1092,7 +1292,19 @@ async def list_events(
     events = await services.list_events(
         session, start=start, end=end, tz=config.zoneinfo, channel_id=channel_id
     )
-    return [EventOut.model_validate(e) for e in events]
+    return await _events_out(session, events)
+
+
+async def _events_out(session: AsyncSession, events: Sequence[Event]) -> list[EventOut]:
+    links = await services.event_sources(session, list({e.id for e in events}))
+    out: list[EventOut] = []
+    for e in events:
+        item = EventOut.model_validate(e)
+        if (link := links.get(e.id)) is not None:
+            item.source = link.calendar_name
+            item.read_only = link.read_only or bool(e.rrule)
+        out.append(item)
+    return out
 
 
 @router.post("/events", status_code=status.HTTP_201_CREATED)
@@ -1103,7 +1315,8 @@ async def create_event(session: Session, body: EventCreate) -> EventOut:
 
 @router.get("/events/{event_id}")
 async def get_event(session: Session, event_id: str) -> EventOut:
-    return EventOut.model_validate(await services.get_event(session, event_id))
+    [out] = await _events_out(session, [await services.get_event(session, event_id)])
+    return out
 
 
 @router.patch("/events/{event_id}")
@@ -1153,7 +1366,7 @@ async def today(session: Session, config: Config) -> TodayOut:
         session, now=datetime.now(UTC), tz=config.zoneinfo, due_soon_days=config.due_soon_days
     )
     return TodayOut(
-        events=[EventOut.model_validate(e) for e in result["events"]],
+        events=await _events_out(session, result["events"]),
         due_tasks=[TaskOut.model_validate(t) for t in result["due_tasks"]],
         inbox_count=result["inbox_count"],
     )

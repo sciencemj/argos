@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # Coding jobs (PLAN Phase 6, §9: allowed directories are the user's choice). A job
     # may only write inside one of these roots; without --dir it gets a fresh folder in
     # the first one.
+    # iCloud calendars over CalDAV (PLAN 7b). The Apple ID is set in the app; the
+    # app-specific password is kept in the macOS Keychain.
+    caldav_url: str = "https://caldav.icloud.com/"
+    caldav_write_calendar: str = "Argos"  # the only calendar Argos writes to
+    caldav_poll_minutes: int = 10
+
     job_roots: list[Path] = [Path("data/jobs")]
     job_concurrency: int = 1  # jobs running at once; the rest wait as "queued"
     job_timeout: float = 1800.0

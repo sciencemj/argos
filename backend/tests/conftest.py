@@ -23,7 +23,13 @@ async def _create_schema(url: str) -> None:
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     # _env_file=None: tests must not pick up the developer's backend/.env (keys, models).
-    config = Settings(_env_file=None, db_path=tmp_path / "test.db", seed_path=SEED_EXAMPLE)  # pyright: ignore[reportCallIssue]
+    # caldav_poll_minutes=0: no background calendar sync; tests call it themselves.
+    config = Settings(
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+        db_path=tmp_path / "test.db",
+        seed_path=SEED_EXAMPLE,
+        caldav_poll_minutes=0,
+    )
     asyncio.run(_create_schema(config.db_url))
     return config
 
