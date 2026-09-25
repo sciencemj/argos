@@ -5,6 +5,7 @@
     /note <text>
     /ask <question>
     /job @agent <instructions> [--dir <path>]
+    /debate @a @b [@c @d] <topic> [--mode round_robin|pro_con|moderated] [--rounds N] [--tools]
 
 Dates: 오늘, 내일, 모레, weekdays (금, 금요일, 금요일까지), 다음주 <weekday>, M/D,
 YYYY-MM-DD. Times: HH:MM or N시. Date and time are read from the end of the text.
@@ -57,7 +58,22 @@ class JobCommand:
     directory: str | None = None
 
 
-Command = TaskCommand | EventCommand | NoteCommand | AskCommand | JobCommand
+DEBATE_MODES = ("round_robin", "pro_con", "moderated")
+MAX_DEBATE_ROUNDS = 6
+
+
+@dataclass(frozen=True)
+class DebateCommand:
+    """/debate @a @b [@c @d] <topic> [--mode …] [--rounds N] [--tools] (PLAN Phase 10)."""
+
+    agents: tuple[str, ...]
+    topic: str
+    mode: str = "round_robin"
+    rounds: int = 3
+    tools: bool = False  # Claude/Codex answer without Argos tools unless asked (cost)
+
+
+Command = TaskCommand | EventCommand | NoteCommand | AskCommand | JobCommand | DebateCommand
 
 _TIME = re.compile(r"^(\d{1,2}):(\d{2})$|^(\d{1,2})시$")
 _RANGE = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$")
@@ -132,6 +148,40 @@ def _split_when(
     return words, day, at, span
 
 
+def _option(words: list[str], flag: str) -> str | None:
+    if flag not in words:
+        return None
+    at = words.index(flag)
+    if at + 1 >= len(words):
+        raise CommandError(f"{flag} 뒤에 값을 적어 주세요")
+    value = words[at + 1]
+    del words[at : at + 2]
+    return value
+
+
+def _debate(rest: str) -> DebateCommand:
+    words = rest.split()
+    mode = _option(words, "--mode") or "round_robin"
+    if mode not in DEBATE_MODES:
+        raise CommandError(f"--mode는 {', '.join(DEBATE_MODES)} 중 하나예요")
+    rounds_text = _option(words, "--rounds") or "3"
+    if not rounds_text.isdigit() or not 1 <= int(rounds_text) <= MAX_DEBATE_ROUNDS:
+        raise CommandError(f"--rounds는 1~{MAX_DEBATE_ROUNDS} 사이 숫자예요")
+    tools = "--tools" in words
+    words = [w for w in words if w != "--tools"]
+    agents: list[str] = []
+    while words and words[0].startswith("@"):
+        agents.append(words.pop(0)[1:])
+    topic = " ".join(words).strip()
+    if len(set(agents)) != len(agents):
+        raise CommandError("같은 에이전트를 두 번 부를 수 없어요")
+    if len(agents) < 2 or len(agents) > 4 or not topic:
+        raise CommandError("/debate @에이전트 두~네 명 다음에 토론 주제를 적어 주세요")
+    if mode == "pro_con" and len(agents) != 2:
+        raise CommandError("찬반 토론(pro_con)은 두 에이전트로 해요")
+    return DebateCommand(tuple(agents), topic, mode, int(rounds_text), tools)
+
+
 def parse(text: str, now: datetime, tz: ZoneInfo) -> Command | None:
     """Returns None for plain text (it goes to the inbox classifier instead)."""
     text = text.strip()
@@ -154,13 +204,16 @@ def parse(text: str, now: datetime, tz: ZoneInfo) -> Command | None:
             raise CommandError("/job @claude 또는 @codex 다음에 맡길 일을 적어 주세요")
         return JobCommand(words[0][1:], " ".join(words[1:]), directory)
 
+    if name == "/debate":
+        return _debate(rest)
+
     if name in ("/note", "/ask"):
         if not rest:
             raise CommandError(f"{name} 뒤에 내용을 적어 주세요")
         return NoteCommand(rest) if name == "/note" else AskCommand(rest)
 
     if name not in ("/task", "/event"):
-        raise CommandError(f"모르는 명령이에요: {name} (/task, /event, /note, /ask, /job)")
+        raise CommandError(f"모르는 명령이에요: {name} (/task, /event, /note, /ask, /job, /debate)")
 
     words, day, at, span = _split_when(rest.split(), today)
     title = " ".join(words)

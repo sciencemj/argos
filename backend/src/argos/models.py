@@ -338,6 +338,41 @@ class AgentRun(Record):
     log: Mapped[str | None] = mapped_column(Text)  # tool-use trace, one line per step
 
 
+class DebateMode(StrEnum):
+    ROUND_ROBIN = "round_robin"  # everyone speaks once per round, in order
+    PRO_CON = "pro_con"  # two sides, alternating
+    MODERATED = "moderated"  # the moderator picks the next speaker and when to stop
+
+
+class DebateStatus(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    CANCELLED = "cancelled"
+    ERROR = "error"
+
+
+class Debate(Record):
+    """Agents discussing a topic in one thread (PLAN Phase 10). The root message
+    references the debate; turns and the moderator's summary are replies."""
+
+    __tablename__ = "debate"
+
+    channel_id: Mapped[str] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"))
+    topic: Mapped[str] = mapped_column(Text)
+    mode: Mapped[DebateMode] = mapped_column(String(20), default=DebateMode.ROUND_ROBIN)
+    participants_json: Mapped[list[str]] = mapped_column(JSON)  # agent names, in order
+    moderator: Mapped[str] = mapped_column(String(40))  # agent name
+    max_rounds: Mapped[int] = mapped_column(Integer, default=3)
+    rounds_done: Mapped[int] = mapped_column(Integer, default=0)
+    use_tools: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[DebateStatus] = mapped_column(String(20), default=DebateStatus.RUNNING)
+    thread_root_id: Mapped[str | None] = mapped_column(String(36))
+    summary_message_id: Mapped[str | None] = mapped_column(String(36))
+    summary_task_id: Mapped[str | None] = mapped_column(String(36))
+    summary_note_id: Mapped[str | None] = mapped_column(String(36))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentSession(Record):
     """A backend's own conversation id for one Argos thread/DM (e.g. a Codex thread id),
     for backends that pick their ids themselves."""

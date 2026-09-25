@@ -2,6 +2,7 @@ import asyncio
 import re
 import secrets
 import shutil
+import time as time_module
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import httpx2
+import yaml
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -27,7 +29,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, caldav_sync, chat, classifier, ics, services, usage, vault
+from argos import agents, caldav_sync, chat, classifier, ics, mcp_server, services, usage, vault
+from argos import debate as debate_module
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
@@ -39,7 +42,11 @@ from argos.models import (
     Approval,
     ApprovalStatus,
     AuthorType,
+    Channel,
     ChannelKind,
+    Debate,
+    DebateMode,
+    DebateStatus,
     Event,
     InboxItem,
     InboxStatus,
@@ -339,6 +346,25 @@ class ApprovalOut(Out):
     resolved_at: datetime | None
 
 
+class DebateOut(Out):
+    id: str
+    channel_id: str
+    topic: str
+    mode: DebateMode
+    participants: list[str] = Field(validation_alias="participants_json")  # agent names
+    moderator: str
+    max_rounds: int
+    rounds_done: int
+    use_tools: bool
+    status: DebateStatus
+    thread_root_id: str | None
+    summary_message_id: str | None
+    summary_task_id: str | None
+    summary_note_id: str | None
+    error: str | None
+    summary: str | None = None  # the moderator's summary text, once written
+
+
 class RefOut(BaseModel):
     """The object a message renders as a card (PLAN P4); at most one is set."""
 
@@ -346,6 +372,7 @@ class RefOut(BaseModel):
     task: TaskOut | None = None
     event: EventOut | None = None
     approval: ApprovalOut | None = None
+    debate: DebateOut | None = None
 
 
 class MessageOut(Out):
@@ -387,8 +414,34 @@ class AgentOut(Out):
     backend: AgentBackend
     model: str | None
     is_builtin: bool
+    system_prompt: str | None = None
+    tools: list[str] | None = Field(default=None, validation_alias="tools_json")  # None: all
+    channel_ids: list[str] = []  # channels where it answers /ask
     available: bool = True
     problem: str | None = None  # why it cannot answer right now
+
+
+class AgentIn(BaseModel):
+    """Create or change a custom agent (PLAN Phase 10 "봇 만들기")."""
+
+    name: str | None = Field(default=None, max_length=40)
+    display_name: str | None = Field(default=None, max_length=100)
+    avatar: str | None = Field(default=None, max_length=10)
+    backend: AgentBackend | None = None
+    model: str | None = Field(default=None, max_length=200)
+    system_prompt: str | None = Field(default=None, max_length=20000)
+    tools: list[str] | None = None
+    channel_ids: list[str] | None = None
+
+
+class AgentYaml(BaseModel):
+    yaml: str = Field(max_length=50000)
+
+
+class ToolOut(BaseModel):
+    name: str
+    kind: Literal["read", "write", "approval"]  # approval: always asks the user first
+    description: str
 
 
 class AgentSettingsIn(BaseModel):
@@ -561,6 +614,16 @@ async def delete_channel(session: Session, channel_id: str, force: bool = False)
     await services.delete_channel(session, channel_id, USER, force=force)
 
 
+async def _attach_summaries(session: AsyncSession, refs: dict[tuple[str, str], BaseModel]) -> None:
+    debates = [r for r in refs.values() if isinstance(r, DebateOut) and r.summary_message_id]
+    ids = [d.summary_message_id for d in debates]
+    bodies = {
+        m.id: m.body for m in (await session.scalars(select(Message).where(Message.id.in_(ids))))
+    }
+    for d in debates:
+        d.summary = bodies.get(d.summary_message_id or "")
+
+
 async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[MessageOut]:
     """Embeds each message's referenced object and reply count in two small queries."""
     counts = await services.reply_counts(session, [m.id for m in messages])
@@ -573,6 +636,7 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
         "task": (Task, TaskOut),
         "event": (Event, EventOut),
         "approval": (Approval, ApprovalOut),
+        "debate": (Debate, DebateOut),
     }
     refs: dict[tuple[str, str], BaseModel] = {}
     for ref_type, ids in by_type.items():
@@ -581,6 +645,7 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
         model, schema = models[ref_type]
         for obj in (await session.scalars(select(model).where(model.id.in_(ids)))).all():
             refs[(ref_type, obj.id)] = schema.model_validate(obj)
+    await _attach_summaries(session, refs)
     run_ids = [m.run_id for m in messages if m.run_id]
     runs = {
         r.id: RunOut.model_validate(r)
@@ -591,7 +656,9 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
     triggered = (
         await session.scalars(
             select(AgentRun).where(
-                AgentRun.trigger_message_id.in_(roots), AgentRun.reply_message_id.is_not(None)
+                AgentRun.trigger_message_id.in_(roots),
+                AgentRun.reply_message_id.is_not(None),
+                AgentRun.kind != "debate",  # debate turns stay in the thread
             )
         )
     ).all()
@@ -677,6 +744,8 @@ async def post_message(
         await runner.start_job(
             session, posted.message, job.agent, job.task, job.instructions, job.workspace
         )
+    if posted.debate:
+        runner.start_debate(posted.debate.id)
     [out] = await _messages_out(session, [posted.message])
     return out
 
@@ -828,7 +897,225 @@ async def _agent_status(agent: Agent, config: Settings) -> AgentOut:
 @router.get("/agents")
 async def list_agents(session: Session, config: Config) -> list[AgentOut]:
     rows = await services.list_agents(session)
-    return list(await asyncio.gather(*(_agent_status(a, config) for a in rows)))
+    return [await _agent_out(session, a, config) for a in rows]
+
+
+YAML_BACKENDS = {
+    "claude": AgentBackend.CLAUDE_CODE,
+    "claude_code": AgentBackend.CLAUDE_CODE,
+    "codex": AgentBackend.CODEX,
+    "llm": AgentBackend.OLLAMA,
+    "local": AgentBackend.OLLAMA,
+    "ollama": AgentBackend.OLLAMA,
+}
+YAML_NAMES = {
+    AgentBackend.CLAUDE_CODE: "claude",
+    AgentBackend.CODEX: "codex",
+    AgentBackend.OLLAMA: "llm",
+}
+
+
+def _tool_names() -> list[str]:
+    return list(mcp_server.TOOL_NAMES)
+
+
+async def _agent_out(session: AsyncSession, agent: Agent, config: Settings) -> AgentOut:
+    out = await _agent_status(agent, config)
+    rows = await session.scalars(
+        select(Channel.id).where(
+            Channel.default_agent_id == agent.id, Channel.kind != ChannelKind.DM
+        )
+    )
+    out.channel_ids = list(rows.all())
+    return out
+
+
+async def _save_agent(
+    session: AsyncSession, config: Settings, body: AgentIn, agent_id: str | None
+) -> AgentOut:
+    fields = body.model_dump(exclude_unset=True)
+    channel_ids = fields.pop("channel_ids", None)
+    if "tools" in fields:
+        fields["tools_json"] = fields.pop("tools") or []
+    if agent_id is None:
+        missing = [k for k in ("name", "display_name", "backend") if not fields.get(k)]
+        if missing:
+            raise services.InvalidError("이름, 표시 이름, 기반 에이전트를 정해 주세요")
+        agent = await services.create_agent(session, fields, _tool_names(), USER)
+    else:
+        agent = await services.update_agent(session, agent_id, fields, _tool_names(), USER)
+    if channel_ids is not None:
+        current = await session.scalars(
+            select(Channel).where(
+                Channel.default_agent_id == agent.id, Channel.kind != ChannelKind.DM
+            )
+        )
+        for channel in current.all():
+            if channel.id not in channel_ids:
+                await services.update_channel(session, channel.id, {"default_agent_id": None}, USER)
+        await services.set_agent_channels(session, agent, channel_ids, USER)
+    return await _agent_out(session, agent, config)
+
+
+async def _custom_agent(session: AsyncSession, name: str) -> Agent:
+    agent = await services.find_agent(session, name)
+    if agent is None:
+        raise services.NotFoundError("agent", name)
+    return agent
+
+
+@router.get("/agents/tools")
+async def agent_tools(request: Request) -> list[ToolOut]:
+    """Argos tools a custom agent can be allowed (the MCP server's list)."""
+    listed = {t.name: t.description or "" for t in await request.app.state.mcp.list_tools()}
+    return [
+        ToolOut(
+            name=name,
+            kind="approval"
+            if name in mcp_server.DESTRUCTIVE
+            else "read"
+            if name in mcp_server.READ_ONLY
+            else "write",
+            description=listed.get(name, "").strip().split("\n")[0],
+        )
+        for name in _tool_names()
+    ]
+
+
+class ModelOut(BaseModel):
+    id: str
+    label: str
+    description: str
+    default: bool
+
+
+class ModelsOut(BaseModel):
+    models: list[ModelOut]
+    error: str | None = None
+
+
+MODEL_CACHE_SECONDS = 600
+
+
+@router.get("/agents/models")
+async def agent_models(request: Request, config: Config, backend: AgentBackend) -> ModelsOut:
+    """Models a custom agent can use on this backend, as the backend itself lists
+    them (cached for a few minutes: listing starts the CLI)."""
+    cache: dict[str, tuple[float, ModelsOut]] = request.app.state.__dict__.setdefault(
+        "model_cache", {}
+    )
+    now = time_module.monotonic()
+    if (hit := cache.get(backend)) is not None and now - hit[0] < MODEL_CACHE_SECONDS:
+        return hit[1]
+    try:
+        if backend == AgentBackend.CLAUDE_CODE:
+            found = await agents.claude_models(config)
+        elif backend == AgentBackend.CODEX:
+            found = await agents.codex_models(config)
+        elif backend == AgentBackend.OLLAMA:
+            found = [
+                agents.ModelChoice(
+                    m.name,
+                    m.name,
+                    "클라우드 · 입력이 ollama.com으로 전송돼요"
+                    if m.remote
+                    else "이 컴퓨터에서 실행",
+                )
+                for m in await classifier.list_ollama_models(config)
+            ]
+        else:
+            return ModelsOut(models=[], error="Hermes 모델은 게이트웨이 설정에서 정해요")
+    except (agents.AgentUnavailable, classifier.ClassifierError) as exc:
+        return ModelsOut(models=[], error=str(exc))
+    except Exception as exc:  # a CLI that changed its output: say so, keep the form usable
+        return ModelsOut(models=[], error=f"모델 목록을 가져오지 못했어요 ({type(exc).__name__})")
+    out = ModelsOut(models=[ModelOut(**asdict(m)) for m in found])
+    cache[backend] = (now, out)
+    return out
+
+
+@router.post("/agents", status_code=status.HTTP_201_CREATED)
+async def create_agent(session: Session, config: Config, body: AgentIn) -> AgentOut:
+    return await _save_agent(session, config, body, None)
+
+
+@router.patch("/agents/{name}")
+async def update_agent(session: Session, config: Config, name: str, body: AgentIn) -> AgentOut:
+    agent = await _custom_agent(session, name)
+    return await _save_agent(session, config, body, agent.id)
+
+
+@router.delete("/agents/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(session: Session, name: str) -> None:
+    await services.delete_agent(session, (await _custom_agent(session, name)).id, USER)
+
+
+@router.get("/agents/{name}/export", response_class=Response)
+async def export_agent(session: Session, name: str) -> Response:
+    """The PLAN Phase 10 YAML form, for sharing or backup."""
+    agent = await _custom_agent(session, name)
+    channels = await session.scalars(
+        select(Channel.name).where(
+            Channel.default_agent_id == agent.id, Channel.kind != ChannelKind.DM
+        )
+    )
+    data: dict[str, Any] = {
+        "name": agent.name,
+        "display_name": agent.display_name,
+        "avatar": agent.avatar,
+        "backend": YAML_NAMES.get(AgentBackend(agent.backend), str(agent.backend)),
+        "model": agent.model,
+        "system_prompt": agent.system_prompt,
+        "tools": agent.tools_json or [],
+        "default_channels": [f"#{c}" for c in channels.all()],
+    }
+    text = yaml.safe_dump(
+        {k: v for k, v in data.items() if v not in (None, "")}, allow_unicode=True, sort_keys=False
+    )
+    return Response(
+        text,
+        media_type="application/yaml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{agent.name}.yaml"'},
+    )
+
+
+@router.post("/agents/import", status_code=status.HTTP_201_CREATED)
+async def import_agent(session: Session, config: Config, body: AgentYaml) -> AgentOut:
+    try:
+        data = yaml.safe_load(body.yaml)
+    except yaml.YAMLError as exc:
+        raise services.InvalidError(f"YAML을 읽지 못했어요: {exc}") from None
+    if not isinstance(data, dict):
+        raise services.InvalidError(
+            "YAML은 name, display_name, backend … 항목을 가진 객체여야 해요"
+        )
+    spec = cast(dict[str, Any], data)
+    backend = YAML_BACKENDS.get(str(spec.get("backend", "")).lower())
+    if backend is None:
+        raise services.InvalidError("backend는 claude, codex, llm 중 하나여야 해요")
+    channel_ids: list[str] = []
+    for raw in cast(list[object], spec.get("default_channels") or []):
+        wanted = str(raw).lstrip("#").strip()
+        found = await session.scalar(select(Channel.id).where(Channel.name == wanted))
+        if found is None:
+            raise services.InvalidError(f"없는 채널이에요: #{wanted}")
+        channel_ids.append(found)
+    raw_tools: object = spec.get("tools")
+    if isinstance(raw_tools, list):
+        tools = [str(t) for t in cast(list[object], raw_tools)]
+    else:
+        tools = [str(raw_tools)] if raw_tools else []
+    body_in = AgentIn(
+        name=str(spec.get("name") or ""),
+        display_name=str(spec.get("display_name") or spec.get("name") or ""),
+        avatar=str(spec["avatar"]) if spec.get("avatar") else None,
+        backend=backend,
+        model=str(spec["model"]) if spec.get("model") else None,
+        system_prompt=str(spec["system_prompt"]) if spec.get("system_prompt") else None,
+        tools=tools,
+        channel_ids=channel_ids,
+    )
+    return await _save_agent(session, config, body_in, None)
 
 
 @router.post("/agents/{name}/dm")
@@ -1376,6 +1663,85 @@ async def refresh_usage(request: Request, session: Session, config: Config) -> U
     monitor = _usage_monitor(request)
     await asyncio.gather(monitor.refresh("claude"), monitor.refresh("codex"))
     return await _usage_out(request, session, config)
+
+
+async def _debate_out(session: AsyncSession, debate: Debate) -> DebateOut:
+    out = DebateOut.model_validate(debate)
+    await _attach_summaries(session, {("debate", out.id): out})
+    return out
+
+
+@router.get("/debates/{debate_id}")
+async def get_debate(session: Session, debate_id: str) -> DebateOut:
+    return await _debate_out(session, await services.get_debate(session, debate_id))
+
+
+@router.post("/debates/{debate_id}/cancel")
+async def cancel_debate(request: Request, session: Session, debate_id: str) -> DebateOut:
+    """Stops after the current turn is cut off; no summary is written."""
+    debate = await services.get_debate(session, debate_id)
+    if debate.status == DebateStatus.RUNNING and not request.app.state.runner.cancel(
+        f"debate-{debate_id}"
+    ):  # not running here any more (e.g. after a restart)
+        debate = await services.update_debate(
+            session, debate_id, {"status": DebateStatus.CANCELLED}, USER
+        )
+    return await _debate_out(session, debate)
+
+
+async def _finished_debate(session: AsyncSession, debate_id: str) -> tuple[Debate, str]:
+    debate = await services.get_debate(session, debate_id)
+    out = await _debate_out(session, debate)
+    if out.summary is None:
+        raise services.ConflictError("토론 요약이 아직 없어요")
+    return debate, out.summary
+
+
+@router.post("/debates/{debate_id}/task")
+async def debate_to_task(session: Session, debate_id: str) -> DebateOut:
+    """The conclusion as a card to act on (PLAN Phase 10)."""
+    debate, summary = await _finished_debate(session, debate_id)
+    if debate.summary_task_id is None:
+        task = await services.create_task(
+            session,
+            channel_id=debate.channel_id,
+            title=f"토론 결론: {debate.topic}"[:500],
+            description=summary,
+            actor=USER,
+        )
+        debate = await services.update_debate(
+            session, debate_id, {"summary_task_id": task.id}, USER
+        )
+    return await _debate_out(session, debate)
+
+
+@router.post("/debates/{debate_id}/note")
+async def debate_to_note(session: Session, config: Config, debate_id: str) -> DebateOut:
+    """The summary as a new note in the channel's vault folder."""
+    debate, summary = await _finished_debate(session, debate_id)
+    if debate.summary_note_id is None:
+        root = _vault_root(config)
+        channel = await services.get_channel(session, debate.channel_id)
+        if not channel.vault_path:
+            raise services.InvalidError(
+                f"#{channel.name} 채널 설정에서 볼트 폴더를 먼저 지정해 주세요"
+            )
+        record = await debate_module.debate_record(session, debate.thread_root_id or "")
+        body = (
+            summary
+            + "\n\n---\n\n## 토론 기록\n\n"
+            + "\n\n".join(f"**{speaker}**: {text}" for speaker, text in record[:-1])
+        )
+        today = datetime.now(config.zoneinfo).date()
+        relative = await asyncio.to_thread(
+            vault.create_note, root, channel.vault_path, f"토론 - {debate.topic}", body, today
+        )
+        await vault.index(session, root, datetime.now(UTC))
+        note = await session.scalar(select(NoteRef).where(NoteRef.vault_path == relative))
+        debate = await services.update_debate(
+            session, debate_id, {"summary_note_id": note.id if note else None}, USER
+        )
+    return await _debate_out(session, debate)
 
 
 @router.get("/settings/jobs")

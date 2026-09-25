@@ -7,11 +7,12 @@ call is attributed to the calling agent: `/mcp?agent=claude` or `X-Argos-Agent: 
 """
 
 import asyncio
+import functools
 import re
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI
@@ -32,6 +33,13 @@ items that belong to no course. Deleting always waits for the user's approval.""
 
 _AGENT = re.compile(r"^[a-z0-9_-]{1,40}$")
 STATUSES = [s.value for s in TaskStatus]
+# Filled as tools register; the agent form offers these (PLAN Phase 10).
+TOOL_NAMES: list[str] = []
+DESTRUCTIVE = {"delete_task", "delete_event"}  # always go through approval
+READ_ONLY = {
+    "list_channels", "get_today", "get_schedule", "search_notes", "list_tasks",
+    "list_inbox", "get_course_progress",
+}  # fmt: skip
 
 
 def _agent(ctx: Context) -> str:
@@ -63,10 +71,36 @@ def build_mcp(app: FastAPI) -> MCPServer:
             except (services.NotFoundError, services.InvalidError, services.ConflictError) as exc:
                 raise ToolError(str(exc)) from exc
 
+    async def allow(ctx: Context, name: str) -> None:
+        """Custom agents may only use the tools on their list (PLAN Phase 10); built-in
+        agents (no list) may use all. Destructive tools still need approval."""
+        caller = _agent(ctx).removeprefix("agent:")
+        async with session() as s:
+            agent = await services.find_agent(s, caller)
+        if agent is not None and agent.tools_json is not None and name not in agent.tools_json:
+            raise ToolError(
+                f"'{agent.display_name}' 에이전트에게 허용되지 않은 도구예요: {name}. "
+                "필요하면 사용자에게 에이전트 설정에서 허용해 달라고 하세요."
+            )
+
+    def tool[**P, R](fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+        """@mcp.tool() behind the whitelist check. Every tool takes `ctx`."""
+
+        @functools.wraps(fn)
+        async def guarded(*args: P.args, **kwargs: P.kwargs) -> R:
+            ctx = cast(Context, kwargs.get("ctx"))
+            await allow(ctx, fn.__name__)
+            return await fn(*args, **kwargs)
+
+        mcp.tool()(guarded)  # pyright: ignore[reportUnknownArgumentType]
+        if fn.__name__ not in TOOL_NAMES:
+            TOOL_NAMES.append(fn.__name__)
+        return fn
+
     # --- reads -----------------------------------------------------------------------
 
-    @mcp.tool()
-    async def list_channels() -> list[dict[str, Any]]:
+    @tool
+    async def list_channels(ctx: Context) -> list[dict[str, Any]]:
         """Channels (courses, projects, 일상, inbox) with their names and kinds."""
 
         async def work(s: AsyncSession) -> list[dict[str, Any]]:
@@ -79,8 +113,8 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
-    async def get_today() -> dict[str, Any]:
+    @tool
+    async def get_today(ctx: Context) -> dict[str, Any]:
         """Today's events, open tasks due soon or overdue, open inbox count, and routines."""
         tz = settings().zoneinfo
 
@@ -106,9 +140,9 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def get_schedule(
-        start: str, end: str, channel: str | None = None
+        ctx: Context, start: str, end: str, channel: str | None = None
     ) -> list[dict[str, Any]]:
         """Events between start and end (YYYY-MM-DD or ISO datetime; end exclusive)."""
         tz = settings().zoneinfo
@@ -127,9 +161,9 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def search_notes(
-        query: str, channel: str | None = None, limit: int = 10
+        ctx: Context, query: str, channel: str | None = None, limit: int = 10
     ) -> list[dict[str, Any]]:
         """Search the user's Obsidian notes (title and body). Returns titles, vault paths
         and a snippet with the match in [brackets]; use it to ground answers in their notes."""
@@ -150,9 +184,12 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def list_tasks(
-        channel: str | None = None, status: str | None = None, include_done: bool = False
+        ctx: Context,
+        channel: str | None = None,
+        status: str | None = None,
+        include_done: bool = False,
     ) -> list[dict[str, Any]]:
         """Tasks, optionally for one channel or status (backlog, todo, in_progress, review,
         done). Done tasks are left out unless include_done or status="done"."""
@@ -172,8 +209,8 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
-    async def list_inbox() -> list[dict[str, Any]]:
+    @tool
+    async def list_inbox(ctx: Context) -> list[dict[str, Any]]:
         """Captured text not yet sorted into a task or event, newest first."""
         tz = settings().zoneinfo
 
@@ -194,8 +231,8 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
-    async def get_course_progress(channel: str | None = None) -> list[dict[str, Any]]:
+    @tool
+    async def get_course_progress(ctx: Context, channel: str | None = None) -> list[dict[str, Any]]:
         """Per course/project (or one channel): task counts by status and the next deadline."""
         tz = settings().zoneinfo
 
@@ -233,7 +270,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
     # --- writes ----------------------------------------------------------------------
 
-    @mcp.tool()
+    @tool
     async def add_task(
         ctx: Context,
         title: str,
@@ -264,7 +301,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def update_task(
         ctx: Context,
         task_id: str,
@@ -294,7 +331,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def move_task(
         ctx: Context,
         task_id: str,
@@ -319,7 +356,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def create_event(
         ctx: Context,
         title: str,
@@ -347,7 +384,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def update_event(
         ctx: Context,
         event_id: str,
@@ -374,7 +411,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
-    @mcp.tool()
+    @tool
     async def capture_note(
         ctx: Context,
         text: str,
@@ -411,7 +448,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
     # --- destructive: approval only (PLAN P5) ----------------------------------------
 
-    @mcp.tool()
+    @tool
     async def delete_task(
         ctx: Context,
         task_id: str,
@@ -420,7 +457,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
         """Ask to delete a task. Nothing is deleted until the user approves in Argos."""
         return await _ask(ctx, "delete_task", {"task_id": task_id}, reason)
 
-    @mcp.tool()
+    @tool
     async def delete_event(
         ctx: Context,
         event_id: str,

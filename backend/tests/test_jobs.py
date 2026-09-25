@@ -209,3 +209,16 @@ def test_unsafe_job_folders_are_refused(
     refused = app.put("/api/v1/settings/jobs", json={"roots": roots})
     assert refused.status_code == 422
     assert reason in refused.json()["error"]["message"]
+
+
+def test_job_from_a_thread_reports_in_that_thread(app: TestClient) -> None:
+    course = channel_id(app)
+    root_id = send(app, course, "ALU 설계 논의").json()["id"]
+    started = app.post(
+        f"/api/v1/channels/{course}/messages",
+        json={"body": "/job @codex ALU 초안", "thread_root_id": root_id},
+    ).json()
+    assert started["thread_root_id"] == root_id
+    wait_job(app, started["ref_id"], "done")
+    replies = app.get(f"/api/v1/messages/{root_id}/thread").json()["replies"]
+    assert [r["author_id"] for r in replies if r["author_type"] == "agent"] == ["codex"]

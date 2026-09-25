@@ -94,6 +94,8 @@ export function invalidateFor(
     routine_check: [["routines"]],
     channel: [["channels"], ["tasks"], ["notes"], ["materials"]],
     note_ref: [["notes"], ["settings", "vault"]],
+    agent: [["agents"], ["channels"]],
+    debate: [["debates"], ...feeds],
     area: [["channels"]],
   };
   for (const key of keys[objectType] ?? []) {
@@ -809,3 +811,73 @@ function useUsageWrite(fn: () => Promise<Usage>) {
 
 export const useRefreshUsage = () =>
   useUsageWrite(() => call(client.POST("/api/v1/usage/refresh")));
+
+// --- custom agents and debates (PLAN Phase 10) -------------------------------------
+
+export type AgentTool = Schemas["ToolOut"];
+export type AgentForm = Schemas["AgentIn"];
+export type Debate = Schemas["DebateOut"];
+
+export const useAgentTools = () =>
+  useQuery({
+    queryKey: ["agents", "tools"],
+    queryFn: () => call(client.GET("/api/v1/agents/tools")),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+/** `editing`: the @name of the agent being changed; without it a new one is made. */
+export const useSaveAgent = () =>
+  useWrite("agent", ({ editing, ...body }: AgentForm & { editing?: string }) =>
+    editing
+      ? call(
+          client.PATCH("/api/v1/agents/{name}", {
+            params: { path: { name: editing } },
+            body,
+          }),
+        )
+      : call(client.POST("/api/v1/agents", { body })),
+  );
+
+export const useDeleteAgent = () =>
+  useWrite("agent", (name: string) =>
+    call(
+      client.DELETE("/api/v1/agents/{name}", { params: { path: { name } } }),
+    ),
+  );
+
+export const useImportAgent = () =>
+  useWrite("agent", (yaml: string) =>
+    call(client.POST("/api/v1/agents/import", { body: { yaml } })),
+  );
+
+export const agentExportUrl = (name: string) =>
+  `/api/v1/agents/${encodeURIComponent(name)}/export`;
+
+const debatePath = (id: string) => ({ params: { path: { debate_id: id } } });
+
+export const useCancelDebate = () =>
+  useWrite("debate", (id: string) =>
+    call(client.POST("/api/v1/debates/{debate_id}/cancel", debatePath(id))),
+  );
+
+export const useDebateToTask = () =>
+  useWrite(["debate", "task"], (id: string) =>
+    call(client.POST("/api/v1/debates/{debate_id}/task", debatePath(id))),
+  );
+
+export const useDebateToNote = () =>
+  useWrite(["debate", "note_ref"], (id: string) =>
+    call(client.POST("/api/v1/debates/{debate_id}/note", debatePath(id))),
+  );
+
+export const useAgentModels = (backend: string) =>
+  useQuery({
+    queryKey: ["agents", "models", backend],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/agents/models", {
+          params: { query: { backend: backend as Agent["backend"] } },
+        }),
+      ),
+    staleTime: 10 * 60_000, // listing starts the CLI; the server caches too
+  });

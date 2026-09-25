@@ -1,21 +1,26 @@
 import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router";
-import { agentInfo } from "./agents";
+import { AgentAvatar, agentInfo } from "./agents";
 import {
   type Approval,
   type CalEvent,
   type Channel,
+  type Debate,
   type InboxAccept,
   type InboxItem,
   type Task,
   useAcceptInbox,
+  useCancelDebate,
   useChannels,
   useConfig,
+  useDebateToNote,
+  useDebateToTask,
   useReclassify,
   useResolveApproval,
 } from "./api";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "./dates";
 import { CheckIcon, PawIcon, ShieldIcon } from "./icons";
+import { Markdown } from "./markdown";
 import { btn, Chip, card, DdayBadge, ErrorText, field, label } from "./ui";
 
 type Suggestion = {
@@ -626,3 +631,137 @@ const STATUS_TEXT: Record<string, string> = {
   failed: "실행 실패",
   pending: "승인 필요",
 };
+
+// --- debate (PLAN Phase 10) ----------------------------------------------------------
+
+const MODE_TEXT: Record<Debate["mode"], string> = {
+  round_robin: "돌아가며",
+  pro_con: "찬반",
+  moderated: "사회자 진행",
+};
+
+const DEBATE_STATE: Record<Debate["status"], string> = {
+  running: "진행 중",
+  done: "끝남",
+  cancelled: "중단됨",
+  error: "오류로 멈춤",
+};
+
+/** The debate's card on its opening message: who, how far, and what came of it. */
+export function DebateCard({
+  debate,
+  onThread,
+}: {
+  debate: Debate;
+  onThread?: () => void;
+}) {
+  const cancel = useCancelDebate();
+  const toTask = useDebateToTask();
+  const toNote = useDebateToNote();
+  const running = debate.status === "running";
+  // The "## 결론" part of the moderator's summary (the whole summary if it has none).
+  const section = (title: string) =>
+    debate.summary
+      ?.split(new RegExp(`^##\\s*${title}\\s*$`, "m"))[1]
+      ?.split(/^##\s/m)[0]
+      ?.trim();
+  const conclusion = debate.summary
+    ? (section("결론") ?? debate.summary.trim())
+    : null;
+  const improved = section("개선안");
+  return (
+    <div className={`${card} flex max-w-[640px] flex-col gap-3 px-[18px] py-4`}>
+      <div className="flex items-center gap-2">
+        <div className="flex -space-x-1.5">
+          {debate.participants.map((p) => (
+            <span key={p} className="rounded-full ring-2 ring-card">
+              <AgentAvatar id={p} size={24} />
+            </span>
+          ))}
+        </div>
+        <span className="shrink-0 text-[13.5px] font-medium text-ink">
+          토론
+        </span>
+        <span
+          className={`min-w-0 grow text-right text-[11.5px] ${debate.status === "error" ? "text-danger" : "text-meta"}`}
+        >
+          {MODE_TEXT[debate.mode]} · {debate.rounds_done}/{debate.max_rounds}
+          라운드 · {DEBATE_STATE[debate.status]}
+        </span>
+      </div>
+      <div className="text-[14px] text-text">{debate.topic}</div>
+      <div className="text-[12px] text-text-3">
+        {debate.participants.map((p) => agentInfo(p).name).join(" · ")} · 사회{" "}
+        {agentInfo(debate.moderator).name}
+        {debate.use_tools ? " · 도구 사용" : ""}
+      </div>
+      {running && (
+        <div className="flex items-center gap-2 text-[12.5px] text-text-3">
+          <span className="animate-pulse">●</span>
+          발언이 스레드에 이어지고 있어요. 스레드에 쓰면 다음 차례부터 반영돼요.
+        </div>
+      )}
+      {conclusion && (
+        <div className="flex flex-col gap-1 rounded-xl bg-page px-3.5 py-2.5 text-[13px] leading-relaxed text-text-2">
+          <span className={label}>결론</span>
+          <div className="line-clamp-6">
+            <Markdown text={conclusion} />
+          </div>
+        </div>
+      )}
+      {improved && (
+        <details className="rounded-xl bg-page px-3.5 py-2.5 text-[13px] text-text-2">
+          <summary className={`${label} cursor-pointer`}>
+            개선안 (최종본)
+          </summary>
+          <div className="mt-2 leading-relaxed">
+            <Markdown text={improved} />
+          </div>
+        </details>
+      )}
+      {debate.error && (
+        <p role="alert" className="m-0 text-[12.5px] text-danger">
+          {debate.error}
+        </p>
+      )}
+      <ErrorText error={cancel.error ?? toTask.error ?? toNote.error} />
+      <div className="flex flex-wrap items-center gap-2">
+        {onThread && (
+          <button type="button" className={btn.outline} onClick={onThread}>
+            스레드 보기
+          </button>
+        )}
+        {running && (
+          <button
+            type="button"
+            className={btn.ghost}
+            disabled={cancel.isPending}
+            onClick={() => cancel.mutate(debate.id)}
+          >
+            중단
+          </button>
+        )}
+        {debate.summary && (
+          <>
+            <button
+              type="button"
+              className={btn.ghost}
+              disabled={toTask.isPending || Boolean(debate.summary_task_id)}
+              onClick={() => toTask.mutate(debate.id)}
+            >
+              {debate.summary_task_id ? "할 일로 만듦" : "할 일로"}
+            </button>
+            <button
+              type="button"
+              className={btn.ghost}
+              disabled={toNote.isPending || Boolean(debate.summary_note_id)}
+              onClick={() => toNote.mutate(debate.id)}
+            >
+              {debate.summary_note_id ? "노트로 저장함" : "노트로"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

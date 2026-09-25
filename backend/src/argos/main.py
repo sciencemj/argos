@@ -68,6 +68,7 @@ def create_app(config: Settings = settings) -> FastAPI:
     app.include_router(ws_router)
     # MCP over Streamable HTTP at /mcp (a single route; DNS-rebinding protection on).
     mcp = build_mcp(app)
+    app.state.mcp = mcp  # the agent form lists its tools
     app.router.routes.extend(
         mcp.streamable_http_app(streamable_http_path="/mcp", host=config.host).routes
     )

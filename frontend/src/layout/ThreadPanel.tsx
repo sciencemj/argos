@@ -4,23 +4,50 @@ import { ThreadReplies } from "../feed";
 import { CloseIcon } from "../icons";
 import { btn } from "../ui";
 
-export function ThreadPanel({ messageId }: { messageId: string }) {
+/** A thread beside the feed, or (`wide`) in place of it for long reviews. */
+export function ThreadPanel({
+  messageId,
+  wide = false,
+}: {
+  messageId: string;
+  wide?: boolean;
+}) {
   const [params, setParams] = useSearchParams();
   const thread = useThread(messageId);
 
   const close = () => {
     const next = new URLSearchParams(params);
     next.delete("thread");
+    next.delete("wide");
+    setParams(next);
+  };
+  const toggleWide = () => {
+    const next = new URLSearchParams(params);
+    if (wide) next.delete("wide");
+    else next.set("wide", "1");
     setParams(next);
   };
 
   return (
     <aside
       aria-label="스레드"
-      className="flex min-h-0 flex-col border-l border-line-soft bg-sidebar"
+      className={`flex min-h-0 flex-col ${wide ? "grow bg-page" : "border-l border-line-soft bg-sidebar"}`}
     >
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <span className="grow text-[12.5px] text-meta">스레드</span>
+      <div
+        className={`flex h-16 items-center gap-2.5 ${wide ? "px-8" : "px-5"}`}
+      >
+        <span className="grow text-[12.5px] text-meta">
+          스레드
+          {thread.data ? ` · 답글 ${thread.data.replies.length}` : ""}
+        </span>
+        <button
+          type="button"
+          className={`${btn.ghost} h-8 text-[12.5px]`}
+          onClick={toggleWide}
+          aria-pressed={wide}
+        >
+          {wide ? "옆으로 좁히기" : "넓게 보기"}
+        </button>
         <button
           type="button"
           aria-label="닫기"
@@ -40,6 +67,7 @@ export function ThreadPanel({ messageId }: { messageId: string }) {
           root={thread.data.root}
           replies={thread.data.replies}
           channelId={thread.data.root.channel_id}
+          wide={wide}
         />
       )}
     </aside>

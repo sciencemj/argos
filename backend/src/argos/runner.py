@@ -33,6 +33,7 @@ from argos.agents import (
     build_adapter,
 )
 from argos.config import Settings
+from argos.debate import DebateRunner
 from argos.hub import hub
 from argos.models import (
     Agent,
@@ -208,7 +209,34 @@ class Runner:
         self._job_slots = asyncio.Semaphore(max(1, settings.job_concurrency))
         self.usage: UsageMonitor | None = None  # set by the app (PLAN Phase 9)
 
-    async def _warn_if_busy(
+    @property
+    def sessionmaker(self) -> async_sessionmaker[AsyncSession]:
+        return self._sessionmaker
+
+    def start_debate(self, debate_id: str) -> None:
+        """Runs a debate (PLAN Phase 10) in the background; cancel with its id."""
+        task = asyncio.create_task(DebateRunner(self, debate_id).run())
+        key = f"debate-{debate_id}"
+        self._tasks[key] = task
+        task.add_done_callback(lambda _t: self._tasks.pop(key, None))
+
+    async def run_turn(
+        self,
+        run_id: str,
+        agent: Agent,
+        message_id: str,
+        transcript: list[Turn],
+        context: str,
+        session_key: str,
+        *,
+        no_tools: bool = False,
+    ) -> None:
+        """One agent answer, awaited (debate turns run one after another)."""
+        await self._run(
+            run_id, agent, message_id, transcript, context, session_key, no_tools=no_tools
+        )
+
+    async def warn_if_busy(
         self, session: AsyncSession, agent: Agent, channel_id: str, thread_root_id: str | None
     ) -> None:
         """Routing hint (PLAN Phase 9): when the agent's 5-hour window is ≥ 90% used,
@@ -248,7 +276,7 @@ class Runner:
         reply_root = None if in_dm else (trigger.thread_root_id or trigger.id)
         run_ids: list[str] = []
         for agent in agents:
-            await self._warn_if_busy(session, agent, channel.id, reply_root)
+            await self.warn_if_busy(session, agent, channel.id, reply_root)
             run, reply = await services.start_run(
                 session,
                 agent=agent,
@@ -281,7 +309,7 @@ class Runner:
         allowlist), answers in the trigger's thread, and moves `task` along the board
         (in_progress → review)."""
         channel = await services.get_channel(session, trigger.channel_id)
-        await self._warn_if_busy(session, agent, channel.id, trigger.thread_root_id or trigger.id)
+        await self.warn_if_busy(session, agent, channel.id, trigger.thread_root_id or trigger.id)
         run, reply = await services.start_run(
             session,
             agent=agent,
@@ -327,6 +355,7 @@ class Runner:
         context: str,
         session_key: str,
         job: "_Job | None" = None,
+        no_tools: bool = False,
     ) -> None:
         ids = {"run_id": run_id, "agent_id": agent.name, "message_id": message_id}
         parts: list[str] = []
@@ -344,6 +373,8 @@ class Runner:
                 adapter = self.adapter_factory(
                     agent, self.settings, sessions, job_workspace=job.workspace
                 )
+            elif no_tools:
+                adapter = self.adapter_factory(agent, self.settings, sessions, no_tools=True)
             else:
                 adapter = self.adapter_factory(agent, self.settings, sessions)
             limit = self.settings.job_timeout if job is not None else self.settings.agent_timeout

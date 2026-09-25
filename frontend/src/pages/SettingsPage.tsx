@@ -28,6 +28,7 @@ import {
 } from "../api";
 import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
+import { CustomAgentsSection } from "./CustomAgents";
 
 const OFF = "";
 
@@ -38,6 +39,7 @@ export function SettingsPage() {
         설정
       </h1>
       <AgentSection />
+      <CustomAgentsSection />
       <ClassifierSection />
       <UsageSection />
       <VaultSection />
@@ -272,7 +274,7 @@ function AgentSection() {
                 </span>
               </span>
               <span className="text-[12px] text-text-3">
-                {BACKEND_TEXT[a.backend]}
+                {a.is_builtin ? BACKEND_TEXT[a.backend] : "커스텀 에이전트"}
               </span>
               {!a.available && (
                 <span className="text-[12px] text-danger">{a.problem}</span>

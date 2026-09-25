@@ -2,40 +2,10 @@
 
 import asyncio
 import json
-import socket
-import threading
-import time
-from collections.abc import Iterator
 from typing import Any
 
 import httpx2
-import pytest
-import uvicorn
 from mcp.client import Client
-
-from argos.config import Settings
-from argos.main import create_app
-
-
-@pytest.fixture
-def server(settings: Settings) -> Iterator[str]:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    config = uvicorn.Config(
-        create_app(settings), host="127.0.0.1", port=port, log_level="warning", ws="none"
-    )
-    uv = uvicorn.Server(config)
-    thread = threading.Thread(target=uv.run, daemon=True)
-    thread.start()
-    deadline = time.time() + 10
-    while not uv.started:
-        if time.time() > deadline:
-            raise RuntimeError("uvicorn did not start")
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    uv.should_exit = True
-    thread.join(timeout=5)
 
 
 def call(base: str, tool: str, args: dict[str, Any] | None = None, agent: str = "claude") -> Any:

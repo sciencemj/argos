@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useParams, useSearchParams } from "react-router";
-import { useChannels, useConfig } from "../api";
+import { registerAgents } from "../agents";
+import { useAgents, useChannels, useConfig } from "../api";
 import { setZone } from "../dates";
 import { useRealtime } from "../realtime";
 import { QuickSwitcher } from "./QuickSwitcher";
@@ -15,11 +16,16 @@ export function Shell() {
   const link = useRealtime();
   const config = useConfig();
   const channels = useChannels();
+  const agents = useAgents();
+  // Custom agents' names and avatars for every place that shows an agent.
+  if (agents.data) registerAgents(agents.data);
   const { channelId } = useParams();
   const [params] = useSearchParams();
   const taskId = params.get("task");
   const threadId = taskId ? null : params.get("thread");
-  const panel = Boolean(taskId || threadId);
+  // "넓게 보기": the thread takes the feed's place instead of the side panel.
+  const wide = Boolean(threadId && params.get("wide"));
+  const panel = Boolean(taskId || threadId) && !wide;
   const [pickedArea, setPickedArea] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
@@ -57,10 +63,14 @@ export function Shell() {
       <Rail areaId={areaId} onPickArea={setPickedArea} />
       <Sidebar areaId={areaId} onOpenSwitcher={() => setSwitcherOpen(true)} />
       <main className="flex min-h-0 min-w-0 flex-col bg-page">
-        <Outlet />
+        {wide && threadId ? (
+          <ThreadPanel messageId={threadId} wide />
+        ) : (
+          <Outlet />
+        )}
       </main>
       {taskId && <TaskPanel taskId={taskId} />}
-      {threadId && <ThreadPanel messageId={threadId} />}
+      {threadId && !wide && <ThreadPanel messageId={threadId} />}
       <StatusBar link={link} />
       <QuickSwitcher
         open={switcherOpen}

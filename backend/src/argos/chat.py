@@ -23,6 +23,7 @@ from argos.models import (
     AuthorType,
     Channel,
     ChannelKind,
+    Debate,
     InboxItem,
     InboxStatus,
     Message,
@@ -57,6 +58,7 @@ class Posted:
     classify_item_id: str | None = None  # plain text captured into the inbox
     agents: list[Agent] = field(default_factory=list[Agent])  # who should answer
     job: JobRequest | None = None  # /job: a coding job for the runner
+    debate: Debate | None = None  # /debate: turns for the debate runner
 
 
 async def post_message(
@@ -81,12 +83,19 @@ async def post_message(
         else None
     )
 
-    if thread_root_id is not None:  # replies are conversation, not capture
+    root: Message | None = None
+    if thread_root_id is not None:
         root = await services.get_message(session, thread_root_id)
         root = await services.get_message(session, root.thread_root_id or root.id)
+
+    # A reply is conversation, not capture; slash commands work in threads too (their
+    # cards and agent answers stay in the thread).
+    if root is not None and not body.startswith("/"):
         message = await services.create_message(
             session, channel_id=channel.id, body=body, actor="user", thread_root_id=root.id
         )
+        if root.ref_type == "debate" or await services.running_debate(session, root.id):
+            return Posted(message)  # the debate reads it at the next turn
         if len(mentioned) == 1:  # an @mention re-sticks the thread to that agent
             await services.update_message(
                 session, root.id, {"sticky_agent_id": mentioned[0].id}, "user"
@@ -96,10 +105,11 @@ async def post_message(
         if root.sticky_agent_id:
             return Posted(message, agents=[await services.get_agent(session, root.sticky_agent_id)])
         return Posted(message, agents=[dm_agent] if dm_agent else [])
+    in_thread = root.id if root is not None else None
 
-    # /job names its agent with @ too, but it is a command, not a conversation.
-    is_job = body.lstrip().startswith("/job")
-    if (mentioned or dm_agent) and not is_job:  # addressed to an agent: a conversation
+    # /job and /debate name agents with @ too, but they are commands, not conversations.
+    names_agents = body.lstrip().startswith(("/job", "/debate"))
+    if (mentioned or dm_agent) and not names_agents and root is None:  # a conversation
         targets = mentioned or ([dm_agent] if dm_agent else [])
         message = await _say(session, channel, body, None)
         if len(targets) == 1:
@@ -122,12 +132,14 @@ async def post_message(
                 channel_id=channel.id,
                 actor="user",
             )
-            return Posted(await _say(session, channel, body, item), classify_item_id=item.id)
+            return Posted(
+                await _say(session, channel, body, item, in_thread), classify_item_id=item.id
+            )
         case commands.TaskCommand(title=title, due_at=due_at):
             task = await services.create_task(
                 session, channel_id=channel.id, title=title, due_at=due_at, actor="user"
             )
-            return Posted(await _say(session, channel, body, task))
+            return Posted(await _say(session, channel, body, task, in_thread))
         case commands.EventCommand() as event_cmd:
             event = await services.create_event(
                 session,
@@ -138,7 +150,7 @@ async def post_message(
                 start_date=event_cmd.all_day,
                 actor="user",
             )
-            return Posted(await _say(session, channel, body, event))
+            return Posted(await _say(session, channel, body, event, in_thread))
         case commands.NoteCommand(text=text):
             # Becomes a Markdown file once the vault is connected (Phase 8); kept until then.
             item = await services.create_inbox_item(
@@ -155,7 +167,7 @@ async def post_message(
                     "confidence": 1.0,
                 },
             )
-            return Posted(await _say(session, channel, body, item))
+            return Posted(await _say(session, channel, body, item, in_thread))
         case commands.JobCommand(agent=handle, instructions=instructions, directory=directory):
             agent = await services.find_agent(session, handle)
             if agent is None or agent.backend not in (
@@ -169,10 +181,36 @@ async def post_message(
             task = await services.create_task(
                 session, channel_id=channel.id, title=title, description=instructions, actor="user"
             )
-            message = await _say(session, channel, body, task)
+            message = await _say(session, channel, body, task, in_thread)
             return Posted(message, job=JobRequest(agent, task, instructions, workspace))
+        case commands.DebateCommand() as debate_cmd:
+            found = [await services.find_agent(session, h) for h in debate_cmd.agents]
+            missing = [f"@{h}" for h, a in zip(debate_cmd.agents, found, strict=True) if a is None]
+            if missing:
+                raise services.InvalidError(f"없는 에이전트예요: {', '.join(missing)}")
+            participants = [a for a in found if a is not None]
+            moderator = (
+                await services.default_agent(session, channel, settings.default_agent)
+                or participants[0]
+            )
+            debate = await services.create_debate(
+                session,
+                channel_id=channel.id,
+                topic=debate_cmd.topic,
+                mode=debate_cmd.mode,
+                participants=[a.name for a in participants],
+                moderator=moderator.name,
+                max_rounds=debate_cmd.rounds,
+                use_tools=debate_cmd.tools,
+                actor="user",
+            )
+            message = await _say(session, channel, body, debate, in_thread)
+            debate = await services.update_debate(
+                session, debate.id, {"thread_root_id": in_thread or message.id}, "system"
+            )
+            return Posted(message, debate=debate)
         case commands.AskCommand():
-            message = await _say(session, channel, body, None)
+            message = await _say(session, channel, body, None, in_thread)
             agent = await services.default_agent(session, channel, settings.default_agent)
             if agent is None:
                 await services.create_message(
@@ -180,19 +218,30 @@ async def post_message(
                     channel_id=channel.id,
                     body=NO_AGENT,
                     author_type=AuthorType.SYSTEM,
-                    thread_root_id=message.id,
+                    thread_root_id=in_thread or message.id,
                     actor="system",
                 )
                 return Posted(message)
             await services.update_message(
-                session, message.id, {"sticky_agent_id": agent.id}, "user"
+                session, in_thread or message.id, {"sticky_agent_id": agent.id}, "user"
             )
             return Posted(message, agents=[agent])
 
 
-async def _say(session: AsyncSession, channel: Channel, body: str, ref: Record | None) -> Message:
+async def _say(
+    session: AsyncSession,
+    channel: Channel,
+    body: str,
+    ref: Record | None,
+    thread_root_id: str | None = None,
+) -> Message:
     return await services.create_message(
-        session, channel_id=channel.id, body=body, actor="user", ref=ref
+        session,
+        channel_id=channel.id,
+        body=body,
+        actor="user",
+        ref=ref,
+        thread_root_id=thread_root_id,
     )
 
 

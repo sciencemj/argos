@@ -16,13 +16,15 @@ import os
 import re
 import shutil
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
+    ClaudeSDKClient,
     ClaudeSDKError,
     CLINotFoundError,
     ResultMessage,
@@ -131,6 +133,110 @@ class OpenAICompatAdapter:
                     yield Token(text)
         finally:
             await response.close()
+
+
+class ToolClient(Protocol):
+    """What LLMToolAdapter needs from an MCP client (tests pass a fake)."""
+
+    async def list_tools(self) -> list[dict[str, Any]]: ...
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> str: ...
+
+
+class MCPToolClient:
+    """The Argos MCP server over HTTP, as the agent (so its whitelist applies)."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        listed = await self._client.list_tools()
+        return [
+            {"name": t.name, "description": t.description or "", "parameters": t.input_schema}
+            for t in listed.tools
+        ]
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
+        result = await self._client.call_tool(name, arguments)
+        text = "\n".join(getattr(c, "text", "") for c in result.content)
+        return f"오류: {text}" if result.is_error else text
+
+
+@asynccontextmanager
+async def mcp_tools(url: str) -> AsyncGenerator[ToolClient]:
+    from mcp.client import Client
+
+    async with Client(url) as client:
+        yield MCPToolClient(client)
+
+
+class LLMToolAdapter:
+    """A local model (OpenAI-compatible function calling) that may call the Argos tools
+    on a custom agent's list (PLAN Phase 10). Tool calls go through the MCP server as
+    the agent, so the server's whitelist is the final word. Answers arrive whole."""
+
+    MAX_STEPS = 6
+
+    def __init__(
+        self,
+        client: AsyncOpenAI,
+        model: str,
+        name: str,
+        mcp_url: str,
+        tools: list[str],
+        connect: Callable[[str], Any] = mcp_tools,
+    ) -> None:
+        self._client = client
+        self._model = model
+        self._name = name
+        self._mcp_url = mcp_url
+        self._tools = tools
+        self._connect = connect
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        messages: list[dict[str, Any]] = [{"role": "system", "content": context}]
+        for turn in transcript:
+            role = "assistant" if turn.speaker == self._name else "user"
+            text = (
+                turn.text
+                if turn.speaker in (self._name, "user")
+                else f"[{turn.speaker}]: {turn.text}"
+            )
+            messages.append({"role": role, "content": text})
+        async with self._connect(self._mcp_url) as tools:
+            specs = [
+                {"type": "function", "function": t}
+                for t in await tools.list_tools()
+                if t["name"] in self._tools
+            ]
+            for _ in range(self.MAX_STEPS):
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=self._model,
+                        messages=cast(Any, messages),
+                        tools=cast(Any, specs),
+                    )
+                except Exception as exc:
+                    raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+                message = response.choices[0].message
+                calls = message.tool_calls or []
+                if not calls:
+                    yield Token(message.content or "")
+                    return
+                messages.append(message.model_dump(exclude_none=True))
+                for call in calls:
+                    function = getattr(call, "function", None)
+                    if function is None:
+                        continue
+                    yield Status(f"도구 사용 중: {function.name}")
+                    try:
+                        arguments = json.loads(function.arguments or "{}")
+                    except ValueError:
+                        arguments = {}
+                    result = await tools.call_tool(function.name, arguments)
+                    messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+            yield Failure("도구를 너무 여러 번 불러서 멈췄어요")
 
 
 def _obj(value: Any) -> dict[str, Any]:
@@ -368,7 +474,9 @@ class ClaudeSDKAdapter:
         mcp_url: str,
         cli_path: str | None,
         job_budget_usd: float | None = None,
+        tools: list[str] | None = None,
     ) -> None:
+        self._tools = tools  # Argos tools it may use; None = all, [] = none (PLAN Phase 10)
         self._name = name
         self._model = model
         self._workspace = workspace
@@ -384,8 +492,12 @@ class ClaudeSDKAdapter:
         exists = (
             await asyncio.to_thread(get_session_info, session_id, str(self._workspace))
         ) is not None
+        argos = {"argos": {"type": "http", "url": self._mcp_url}} if self._tools != [] else {}
+        allowed = (
+            ["mcp__argos"] if self._tools is None else [f"mcp__argos__{t}" for t in self._tools]
+        )
         common: dict[str, Any] = {
-            "mcp_servers": {"argos": {"type": "http", "url": self._mcp_url}},
+            "mcp_servers": argos,
             "strict_mcp_config": True,
             "setting_sources": [],  # none of the user's settings, hooks or plugins
             "cwd": str(self._workspace),
@@ -397,7 +509,7 @@ class ClaudeSDKAdapter:
         }
         if self._job_budget is None:  # chat: Argos tools only, Argos context as the prompt
             options = ClaudeAgentOptions(
-                system_prompt=context, tools=[], allowed_tools=["mcp__argos"], **common
+                system_prompt=context, tools=[], allowed_tools=allowed, **common
             )
         else:  # coding job: file and shell tools, confined to the job's workspace
             options = ClaudeAgentOptions(
@@ -484,7 +596,7 @@ class CodexAppServerAdapter:
         name: str,
         model: str | None,
         workspace: Path,
-        mcp_url: str,
+        mcp_url: str | None,
         binary: str,
         home: Path,
         sessions: SessionIds,
@@ -501,11 +613,18 @@ class CodexAppServerAdapter:
         self._next_id = 0
 
     def _argv(self) -> list[str]:
+        tools = (  # no Argos tools at all: e.g. a debate turn (PLAN Phase 10)
+            []
+            if self._mcp_url is None
+            else [
+                "-c", f'mcp_servers.argos.url="{self._mcp_url}"',
+                "-c", 'mcp_servers.argos.default_tools_approval_mode="approve"',
+            ]
+        )  # fmt: skip
         return [
             self._binary,
             "app-server",
-            "-c", f'mcp_servers.argos.url="{self._mcp_url}"',
-            "-c", 'mcp_servers.argos.default_tools_approval_mode="approve"',
+            *tools,
             "-c", f"features.shell_tool={'true' if self._job else 'false'}",
             "-c", "features.browser_use=false",
             "-c", "features.computer_use=false",
@@ -643,6 +762,90 @@ def prepare_codex_home(home: Path, auth: Path) -> Path:
     return home
 
 
+# --- model choices (custom agent form, PLAN Phase 10) --------------------------------------
+
+
+@dataclass(frozen=True)
+class ModelChoice:
+    id: str  # what goes into Agent.model
+    label: str
+    description: str = ""
+    default: bool = False  # what the backend uses when no model is set
+
+
+async def claude_models(settings: Settings) -> list[ModelChoice]:
+    """The models Claude Code offers this login (its own /model list)."""
+    cli = shutil.which(settings.claude_bin)
+    if cli is None:
+        raise AgentUnavailable(f"{settings.claude_bin} 명령을 찾을 수 없어요")
+    workspace = settings.agent_workspace.resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    options = ClaudeAgentOptions(setting_sources=[], tools=[], cwd=str(workspace), cli_path=cli)
+    info: dict[str, Any] = {}
+    async with ClaudeSDKClient(options) as client:
+        info = await client.get_server_info() or {}
+    found: list[ModelChoice] = []
+    for raw in cast(list[Any], info.get("models") or []):
+        model = _obj(raw)
+        value = str(model.get("value") or "")
+        if not value or value == "default":
+            continue
+        found.append(
+            ModelChoice(
+                value, str(model.get("displayName") or value), str(model.get("description") or "")
+            )
+        )
+    return found
+
+
+async def codex_models(settings: Settings) -> list[ModelChoice]:
+    """The models the signed-in Codex offers (app-server `model/list`)."""
+    binary = shutil.which(settings.codex_bin)
+    if binary is None:
+        raise AgentUnavailable(f"{settings.codex_bin} 명령을 찾을 수 없어요")
+    home = prepare_codex_home(settings.codex_home, settings.codex_auth)
+    process = await asyncio.create_subprocess_exec(
+        binary,
+        "app-server",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+        env={**os.environ, "CODEX_HOME": str(home)},
+    )
+    assert process.stdin is not None and process.stdout is not None
+    hello: dict[str, Any] = {"clientInfo": {"name": "argos", "version": "1"}}
+    try:
+        messages: list[dict[str, Any]] = [
+            {"id": 1, "method": "initialize", "params": hello},
+            {"method": "initialized"},
+            {"id": 2, "method": "model/list", "params": {}},
+        ]
+        for message in messages:
+            process.stdin.write((json.dumps(message) + "\n").encode())
+        await process.stdin.drain()
+        async with asyncio.timeout(20):
+            while line := await process.stdout.readline():
+                reply = _obj(json.loads(line))
+                if reply.get("id") != 2:
+                    continue
+                rows = cast(list[Any], _obj(reply.get("result")).get("data") or [])
+                return [
+                    ModelChoice(
+                        str(m.get("id")),
+                        str(m.get("displayName") or m.get("id")),
+                        str(m.get("description") or ""),
+                        bool(m.get("isDefault")),
+                    )
+                    for m in map(_obj, rows)
+                    if m.get("id") and not m.get("hidden")
+                ]
+        raise AgentUnavailable("Codex가 모델 목록을 주지 않았어요")
+    except TimeoutError as exc:
+        raise AgentUnavailable("Codex 모델 목록을 가져오지 못했어요") from exc
+    finally:
+        await _close(process)
+
+
 # --- factory --------------------------------------------------------------------------------------
 
 
@@ -659,8 +862,11 @@ def build_adapter(
     settings: Settings,
     sessions: SessionIds | None = None,
     job_workspace: Path | None = None,
+    no_tools: bool = False,
 ) -> AgentAdapter:
-    """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only."""
+    """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only.
+    `no_tools`: plain conversation without Argos tools (debate turns, PLAN Phase 10).
+    Custom agents get only the Argos tools on their list."""
     if job_workspace is not None and agent.backend not in (
         AgentBackend.CLAUDE_CODE,
         AgentBackend.CODEX,
@@ -668,6 +874,7 @@ def build_adapter(
         raise AgentUnavailable("코딩 잡은 Claude나 Codex에게만 맡길 수 있어요")
     workspace = settings.agent_workspace.resolve()
     mcp = f"{settings.mcp_url}?agent={agent.name}"
+    tools: list[str] | None = [] if no_tools else agent.tools_json
     match agent.backend:
         case AgentBackend.HERMES:
             if settings.hermes_api_key is None:
@@ -689,6 +896,8 @@ def build_adapter(
             client = AsyncOpenAI(
                 base_url=base, api_key="ollama", timeout=settings.agent_timeout, max_retries=0
             )
+            if tools:  # a custom agent with tools: the model calls them through MCP
+                return LLMToolAdapter(client, model, agent.name, mcp, tools)
             return OpenAICompatAdapter(
                 client, model, agent.name, extra={"reasoning_effort": "none"}
             )
@@ -700,7 +909,7 @@ def build_adapter(
                 return ClaudeSDKAdapter(
                     agent.name, agent.model, job_workspace, mcp, cli, settings.job_max_budget_usd
                 )
-            return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli)
+            return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli, tools=tools)
         case AgentBackend.CODEX:
             binary = shutil.which(settings.codex_bin)
             if binary is None:
@@ -711,7 +920,7 @@ def build_adapter(
                     agent.name,
                     agent.model,
                     job_workspace or workspace,
-                    mcp,
+                    None if tools == [] else mcp,
                     binary,
                     home,
                     sessions or _NoSessions(),

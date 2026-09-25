@@ -1,8 +1,12 @@
 import asyncio
+import socket
+import threading
+import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,3 +54,25 @@ async def session(settings: Settings) -> AsyncIterator[AsyncSession]:
 def client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as c:
         yield c
+
+
+# A real uvicorn server on a free port, for MCP over HTTP (tests/test_mcp.py and others).
+@pytest.fixture
+def server(settings: Settings) -> Iterator[str]:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    config = uvicorn.Config(
+        create_app(settings), host="127.0.0.1", port=port, log_level="warning", ws="none"
+    )
+    uv = uvicorn.Server(config)
+    thread = threading.Thread(target=uv.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    while not uv.started:
+        if time.time() > deadline:
+            raise RuntimeError("uvicorn did not start")
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    uv.should_exit = True
+    thread.join(timeout=5)

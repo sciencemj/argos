@@ -259,7 +259,104 @@ export interface paths {
         /** List Agents */
         get: operations["list_agents_api_v1_agents_get"];
         put?: never;
+        /** Create Agent */
+        post: operations["create_agent_api_v1_agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Tools
+         * @description Argos tools a custom agent can be allowed (the MCP server's list).
+         */
+        get: operations["agent_tools_api_v1_agents_tools_get"];
+        put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Models
+         * @description Models a custom agent can use on this backend, as the backend itself lists
+         *     them (cached for a few minutes: listing starts the CLI).
+         */
+        get: operations["agent_models_api_v1_agents_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Agent */
+        delete: operations["delete_agent_api_v1_agents__name__delete"];
+        options?: never;
+        head?: never;
+        /** Update Agent */
+        patch: operations["update_agent_api_v1_agents__name__patch"];
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Agent
+         * @description The PLAN Phase 10 YAML form, for sharing or backup.
+         */
+        get: operations["export_agent_api_v1_agents__name__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Agent */
+        post: operations["import_agent_api_v1_agents_import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -633,6 +730,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/debates/{debate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Debate */
+        get: operations["get_debate_api_v1_debates__debate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debates/{debate_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Debate
+         * @description Stops after the current turn is cut off; no summary is written.
+         */
+        post: operations["cancel_debate_api_v1_debates__debate_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debates/{debate_id}/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Debate To Task
+         * @description The conclusion as a card to act on (PLAN Phase 10).
+         */
+        post: operations["debate_to_task_api_v1_debates__debate_id__task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/debates/{debate_id}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Debate To Note
+         * @description The summary as a new note in the channel's vault folder.
+         */
+        post: operations["debate_to_note_api_v1_debates__debate_id__note_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -975,6 +1149,27 @@ export interface components {
          * @enum {string}
          */
         AgentBackend: "hermes" | "ollama" | "claude_code" | "codex";
+        /**
+         * AgentIn
+         * @description Create or change a custom agent (PLAN Phase 10 "봇 만들기").
+         */
+        AgentIn: {
+            /** Name */
+            name?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Avatar */
+            avatar?: string | null;
+            backend?: components["schemas"]["AgentBackend"] | null;
+            /** Model */
+            model?: string | null;
+            /** System Prompt */
+            system_prompt?: string | null;
+            /** Tools */
+            tools?: string[] | null;
+            /** Channel Ids */
+            channel_ids?: string[] | null;
+        };
         /** AgentOut */
         AgentOut: {
             /** Id */
@@ -990,6 +1185,15 @@ export interface components {
             model: string | null;
             /** Is Builtin */
             is_builtin: boolean;
+            /** System Prompt */
+            system_prompt?: string | null;
+            /** Tools */
+            tools?: string[] | null;
+            /**
+             * Channel Ids
+             * @default []
+             */
+            channel_ids: string[];
             /**
              * Available
              * @default true
@@ -1002,6 +1206,11 @@ export interface components {
         AgentSettingsIn: {
             /** Default Agent */
             default_agent: string;
+        };
+        /** AgentYaml */
+        AgentYaml: {
+            /** Yaml */
+            yaml: string;
         };
         /** ApprovalOut */
         ApprovalOut: {
@@ -1195,6 +1404,49 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * DebateMode
+         * @enum {string}
+         */
+        DebateMode: "round_robin" | "pro_con" | "moderated";
+        /** DebateOut */
+        DebateOut: {
+            /** Id */
+            id: string;
+            /** Channel Id */
+            channel_id: string;
+            /** Topic */
+            topic: string;
+            mode: components["schemas"]["DebateMode"];
+            /** Participants */
+            participants: string[];
+            /** Moderator */
+            moderator: string;
+            /** Max Rounds */
+            max_rounds: number;
+            /** Rounds Done */
+            rounds_done: number;
+            /** Use Tools */
+            use_tools: boolean;
+            status: components["schemas"]["DebateStatus"];
+            /** Thread Root Id */
+            thread_root_id: string | null;
+            /** Summary Message Id */
+            summary_message_id: string | null;
+            /** Summary Task Id */
+            summary_task_id: string | null;
+            /** Summary Note Id */
+            summary_note_id: string | null;
+            /** Error */
+            error: string | null;
+            /** Summary */
+            summary?: string | null;
+        };
+        /**
+         * DebateStatus
+         * @enum {string}
+         */
+        DebateStatus: "running" | "done" | "cancelled" | "error";
         /** EventCreate */
         EventCreate: {
             /** Channel Id */
@@ -1533,6 +1785,24 @@ export interface components {
             /** Pinned */
             pinned?: boolean | null;
         };
+        /** ModelOut */
+        ModelOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Default */
+            default: boolean;
+        };
+        /** ModelsOut */
+        ModelsOut: {
+            /** Models */
+            models: components["schemas"]["ModelOut"][];
+            /** Error */
+            error?: string | null;
+        };
         /** NoteDetailOut */
         NoteDetailOut: {
             /** Id */
@@ -1627,6 +1897,7 @@ export interface components {
             task?: components["schemas"]["TaskOut"] | null;
             event?: components["schemas"]["EventOut"] | null;
             approval?: components["schemas"]["ApprovalOut"] | null;
+            debate?: components["schemas"]["DebateOut"] | null;
         };
         /** RoutineCheckIn */
         RoutineCheckIn: {
@@ -1812,6 +2083,18 @@ export interface components {
             due_tasks: components["schemas"]["TaskOut"][];
             /** Inbox Count */
             inbox_count: number;
+        };
+        /** ToolOut */
+        ToolOut: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "read" | "write" | "approval";
+            /** Description */
+            description: string;
         };
         /** UsageOut */
         UsageOut: {
@@ -2478,6 +2761,216 @@ export interface operations {
             };
         };
     };
+    create_agent_api_v1_agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_tools_api_v1_agents_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolOut"][];
+                };
+            };
+        };
+    };
+    agent_models_api_v1_agents_models_get: {
+        parameters: {
+            query: {
+                backend: components["schemas"]["AgentBackend"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_api_v1_agents__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_api_v1_agents__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_agent_api_v1_agents__name__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_agent_api_v1_agents_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentYaml"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     open_dm_api_v1_agents__name__dm_post: {
         parameters: {
             query?: never;
@@ -3102,6 +3595,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageOut"];
+                };
+            };
+        };
+    };
+    get_debate_api_v1_debates__debate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                debate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_debate_api_v1_debates__debate_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                debate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    debate_to_task_api_v1_debates__debate_id__task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                debate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    debate_to_note_api_v1_debates__debate_id__note_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                debate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DebateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

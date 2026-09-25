@@ -30,10 +30,36 @@ const KNOWN: Record<
   },
 };
 
-export function agentInfo(id: string | null | undefined) {
+type Info = { name: string; initials: string; bg: string; text: string };
+
+// Custom agents (PLAN Phase 10), filled from the agent list by the shell.
+const custom = new Map<string, Info>();
+
+export function registerAgents(
+  list: {
+    name: string;
+    display_name: string;
+    avatar?: string | null;
+    is_builtin: boolean;
+  }[],
+) {
+  custom.clear();
+  for (const a of list) {
+    if (a.is_builtin) continue;
+    custom.set(a.name, {
+      name: a.display_name,
+      initials: a.avatar || a.display_name.slice(0, 1),
+      bg: "var(--step-4)",
+      text: "var(--text-2)",
+    });
+  }
+}
+
+export function agentInfo(id: string | null | undefined): Info {
   const key = (id ?? "").toLowerCase().replace(/^agent:/, "");
   return (
-    KNOWN[key] ?? {
+    KNOWN[key] ??
+    custom.get(key) ?? {
       name: key || "에이전트",
       initials: (key || "?").slice(0, 2).toUpperCase(),
       bg: "var(--step-4)",

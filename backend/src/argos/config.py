@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     vault_daily_days: int = 14  # open tasks in daily notes older than this are left out
     vault_backup_dir: Path = Path("data/vault-backups")
 
+    # Debates (PLAN Phase 10): the whole debate must end within this many seconds.
+    debate_budget_seconds: int = 900
+
     job_roots: list[Path] = [Path("data/jobs")]
     job_concurrency: int = 1  # jobs running at once; the rest wait as "queued"
     job_timeout: float = 1800.0

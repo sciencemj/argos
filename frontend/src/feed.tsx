@@ -23,6 +23,7 @@ import {
 } from "./api";
 import {
   ApprovalCard,
+  DebateCard,
   EventRefCard,
   SuggestionCard,
   TaskRefCard,
@@ -39,7 +40,7 @@ import {
 import { Markdown } from "./markdown";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
-const SLASH = ["/task", "/event", "/note", "/ask", "/job"];
+const SLASH = ["/task", "/event", "/note", "/ask", "/job", "/debate"];
 
 export function useOpenThread() {
   const [params, setParams] = useSearchParams();
@@ -144,7 +145,7 @@ export function MessageItem({
   const system = message.author_type === "system";
   const agent =
     message.author_type === "agent" ? agentInfo(message.author_id) : null;
-  const { inbox_item, task, event, approval } = message.ref ?? {};
+  const { inbox_item, task, event, approval, debate } = message.ref ?? {};
   return (
     <article className="group relative flex gap-3.5">
       <Author message={message} />
@@ -172,6 +173,11 @@ export function MessageItem({
         </div>
         {message.run ? (
           <AgentBody message={message} />
+        ) : message.body.includes("```") ? (
+          // Code or a document pasted for review: show the blocks as blocks.
+          <div className="text-[15px] leading-[1.65] text-text">
+            <Markdown text={message.body} />
+          </div>
         ) : (
           <div
             className={`whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
@@ -194,6 +200,12 @@ export function MessageItem({
         {task && <TaskRefCard task={task} />}
         {event && <EventRefCard event={event} />}
         {approval && <ApprovalCard approval={approval} />}
+        {debate && (
+          <DebateCard
+            debate={debate}
+            onThread={onThread ? () => onThread(message.id) : undefined}
+          />
+        )}
         {onThread && message.reply_count > 0 && (
           <button
             type="button"
@@ -517,7 +529,17 @@ function EventFromMessage({
  * being composed only commits the syllable. */
 const MENTION_AT_END = /(^|\s)@([\w가-힣-]*)$/;
 
-function Composer({ channel }: { channel: Channel }) {
+/** Message box of a channel feed, or of a thread (`threadRootId`): the same slash
+ * commands and @mentions work in both. */
+export function Composer({
+  channel,
+  threadRootId,
+  narrow = false,
+}: {
+  channel: Channel;
+  threadRootId?: string;
+  narrow?: boolean;
+}) {
   const post = usePostMessage();
   const agents = useAgents();
   const settings = useAgentSettings();
@@ -548,7 +570,7 @@ function Composer({ channel }: { channel: Channel }) {
     const body = text.trim();
     if (!body || post.isPending) return;
     post.mutate(
-      { channelId: channel.id, body },
+      { channelId: channel.id, body, thread_root_id: threadRootId },
       { onSuccess: () => setText("") },
     );
   };
@@ -573,13 +595,14 @@ function Composer({ channel }: { channel: Channel }) {
     input.current?.focus();
   };
 
+  const inputId = threadRootId ? "thread-reply" : "composer";
   return (
-    <div className="relative px-8 pb-6">
+    <div className={`relative ${narrow ? "px-5 pb-[18px]" : "px-8 pb-6"}`}>
       {suggestions.length > 0 && (
         <div
           role="listbox"
           aria-label="에이전트 부르기"
-          className="absolute bottom-full left-8 mb-2 flex min-w-[220px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift"
+          className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex min-w-[220px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
         >
           {suggestions.map((a) => (
             <button
@@ -600,24 +623,26 @@ function Composer({ channel }: { channel: Channel }) {
         </div>
       )}
       <div className={`${card} flex flex-col gap-3 px-[18px] pt-4 pb-3`}>
-        <label htmlFor="composer" className="sr-only">
-          메시지 입력
+        <label htmlFor={inputId} className="sr-only">
+          {threadRootId ? "스레드에 답장" : "메시지 입력"}
         </label>
         <textarea
-          id="composer"
+          id={inputId}
           ref={input}
           rows={Math.min(6, Math.max(1, text.split("\n").length))}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            dm
-              ? `${dmAgent?.display_name ?? "에이전트"}에게 메시지`
-              : `#${channel.name}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+            threadRootId
+              ? "스레드에 답장… (/task, /debate 같은 명령도 돼요)"
+              : dm
+                ? `${dmAgent?.display_name ?? "에이전트"}에게 메시지`
+                : `#${channel.name}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
           }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {!dm &&
             SLASH.map((c) => (
               <button
@@ -634,7 +659,7 @@ function Composer({ channel }: { channel: Channel }) {
             <span role="alert" className="text-[12px] text-danger">
               {post.error.message}
             </span>
-          ) : (
+          ) : narrow ? null : (
             <span className="text-[12px] text-meta">
               {dm ? (
                 <>
@@ -678,51 +703,37 @@ export function ThreadReplies({
   root,
   replies,
   channelId,
+  wide = false,
 }: {
   root: Message;
   replies: Message[];
   channelId: string;
+  wide?: boolean;
 }) {
   const channels = useChannels();
-  const post = usePostMessage();
-  const [text, setText] = useState("");
   const channel = channels.data?.channels.find((c) => c.id === channelId);
   if (!channel) return null;
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    post.mutate(
-      { channelId, body: text.trim(), thread_root_id: root.id },
-      { onSuccess: () => setText("") },
-    );
-  };
+  const column = wide ? "mx-auto w-full max-w-[880px]" : "";
 
   return (
     <>
-      <div className="flex min-h-0 grow flex-col gap-5 overflow-y-auto px-5 pb-4">
-        <MessageItem message={root} channel={channel} inlineReplies={false} />
-        <div className="h-px bg-line-soft" />
-        {replies.length === 0 && (
-          <p className="m-0 text-[13px] text-meta">아직 답글이 없어요.</p>
-        )}
-        {replies.map((m) => (
-          <MessageItem key={m.id} message={m} channel={channel} />
-        ))}
+      <div className="flex min-h-0 grow flex-col overflow-y-auto">
+        <div
+          className={`flex flex-col gap-5 pb-4 ${wide ? "px-8" : "px-5"} ${column}`}
+        >
+          <MessageItem message={root} channel={channel} inlineReplies={false} />
+          <div className="h-px bg-line-soft" />
+          {replies.length === 0 && (
+            <p className="m-0 text-[13px] text-meta">아직 답글이 없어요.</p>
+          )}
+          {replies.map((m) => (
+            <MessageItem key={m.id} message={m} channel={channel} />
+          ))}
+        </div>
       </div>
-      <form onSubmit={submit} className="px-5 pt-3 pb-[18px]">
-        <label htmlFor="thread-reply" className="sr-only">
-          스레드에 답장
-        </label>
-        <input
-          id="thread-reply"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="스레드에 답장…"
-          className={`${field} focus-visible:outline-none`}
-        />
-        <ErrorText error={post.error} />
-      </form>
+      <div className={column}>
+        <Composer channel={channel} threadRootId={root.id} narrow={!wide} />
+      </div>
     </>
   );
 }

@@ -29,6 +29,9 @@ from argos.models import (
     AuthorType,
     Channel,
     ChannelKind,
+    Debate,
+    DebateMode,
+    DebateStatus,
     Event,
     InboxItem,
     InboxStatus,
@@ -1135,6 +1138,90 @@ async def find_agent(session: AsyncSession, handle: str) -> Agent | None:
     return None
 
 
+AGENT_NAME = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
+CUSTOM_BACKENDS = (AgentBackend.CLAUDE_CODE, AgentBackend.CODEX, AgentBackend.OLLAMA)
+
+
+async def _check_agent_fields(
+    session: AsyncSession, fields: dict[str, Any], known_tools: Sequence[str], agent_id: str | None
+) -> dict[str, Any]:
+    """Custom agents (PLAN Phase 10): a lowercase @handle nobody else uses, a backend
+    whose tools Argos can limit (Hermes brings its own), and tools Argos offers."""
+    if "name" in fields:
+        name = str(fields["name"]).strip().lower().lstrip("@")
+        if not AGENT_NAME.match(name):
+            raise InvalidError("이름은 영문 소문자로 시작하는 2~40자(소문자·숫자·-·_)예요")
+        taken = await session.scalar(select(Agent).where(func.lower(Agent.name) == name))
+        if taken is not None and taken.id != agent_id:
+            raise ConflictError(f"@{name}은(는) 이미 있는 에이전트예요")
+        fields["name"] = name
+    if "display_name" in fields:
+        fields["display_name"] = str(fields["display_name"]).strip()[:100]
+        if not fields["display_name"]:
+            raise InvalidError("표시 이름을 적어 주세요")
+    if "backend" in fields and fields["backend"] not in CUSTOM_BACKENDS:
+        raise InvalidError("커스텀 에이전트는 Claude, Codex, 로컬 모델 위에서만 만들 수 있어요")
+    if "tools_json" in fields:
+        tools = list(dict.fromkeys(fields["tools_json"] or []))
+        unknown = [t for t in tools if t not in known_tools]
+        if unknown:
+            raise InvalidError(f"모르는 도구예요: {', '.join(unknown)}")
+        fields["tools_json"] = tools
+    if "avatar" in fields and fields["avatar"] is not None:
+        fields["avatar"] = str(fields["avatar"]).strip()[:10] or None
+    return fields
+
+
+async def create_agent(
+    session: AsyncSession, fields: dict[str, Any], known_tools: Sequence[str], actor: str
+) -> Agent:
+    fields = await _check_agent_fields(
+        session, {"tools_json": [], **fields}, known_tools, agent_id=None
+    )
+    agent = Agent(**fields, is_builtin=False)
+    return await _create(session, agent, actor)
+
+
+async def update_agent(
+    session: AsyncSession,
+    agent_id: str,
+    changes: dict[str, Any],
+    known_tools: Sequence[str],
+    actor: str,
+) -> Agent:
+    agent = await get_agent(session, agent_id)
+    if agent.is_builtin:
+        raise ConflictError("기본 에이전트는 바꿀 수 없어요")
+    changes = await _check_agent_fields(session, changes, known_tools, agent_id=agent.id)
+    return await _update(session, agent, changes, actor)
+
+
+async def delete_agent(session: AsyncSession, agent_id: str, actor: str) -> None:
+    """Channels that had it as their default fall back to the app default; its 1:1
+    conversation goes with it."""
+    agent = await get_agent(session, agent_id)
+    if agent.is_builtin:
+        raise ConflictError("기본 에이전트는 지울 수 없어요")
+    for channel in (
+        await session.scalars(select(Channel).where(Channel.default_agent_id == agent.id))
+    ).all():
+        if channel.kind == ChannelKind.DM:
+            await delete_channel(session, channel.id, actor, force=True)
+        else:
+            await _update(session, channel, {"default_agent_id": None}, actor)
+    await _delete(session, agent, actor)
+
+
+async def set_agent_channels(
+    session: AsyncSession, agent: Agent, channel_ids: Sequence[str], actor: str
+) -> None:
+    """Makes the agent the default (/ask) of these channels (YAML `default_channels`)."""
+    for channel_id in channel_ids:
+        channel = await get_channel(session, channel_id)
+        if channel.default_agent_id != agent.id:
+            await _update(session, channel, {"default_agent_id": agent.id}, actor)
+
+
 async def default_agent(session: AsyncSession, channel: Channel, fallback: str) -> Agent | None:
     """Channel's default agent, else the app-wide default (`fallback` agent name)."""
     if channel.default_agent_id:
@@ -1157,6 +1244,55 @@ async def ensure_dm_channel(session: AsyncSession, agent: Agent) -> Channel:
     )
 
 
+# --- debates (PLAN Phase 10) -----------------------------------------------------------
+
+
+async def create_debate(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    topic: str,
+    mode: str,
+    participants: Sequence[str],
+    moderator: str,
+    max_rounds: int,
+    use_tools: bool,
+    actor: str,
+) -> Debate:
+    debate = Debate(
+        channel_id=channel_id,
+        topic=topic,
+        mode=DebateMode(mode),
+        participants_json=list(participants),
+        moderator=moderator,
+        max_rounds=max_rounds,
+        use_tools=use_tools,
+    )
+    return await _create(session, debate, actor)
+
+
+async def running_debate(session: AsyncSession, thread_root_id: str) -> Debate | None:
+    return await session.scalar(
+        select(Debate).where(
+            Debate.thread_root_id == thread_root_id, Debate.status == DebateStatus.RUNNING
+        )
+    )
+
+
+async def get_debate(session: AsyncSession, debate_id: str) -> Debate:
+    return await _get(session, Debate, debate_id)
+
+
+async def update_debate(
+    session: AsyncSession, debate_id: str, changes: dict[str, Any], actor: str
+) -> Debate:
+    return await _update(session, await get_debate(session, debate_id), changes, actor)
+
+
+async def get_run(session: AsyncSession, run_id: str) -> AgentRun:
+    return await _get(session, AgentRun, run_id)
+
+
 async def start_run(
     session: AsyncSession,
     *,
@@ -1166,6 +1302,7 @@ async def start_run(
     reply_thread_root_id: str | None,
     actor: str,
     job: tuple[Task, str, Path] | None = None,
+    kind: str = "chat",
 ) -> tuple[AgentRun, Message]:
     """Creates the run and its (still empty) reply message, filled in when the run ends.
     `job` = (card, instructions, workspace) makes it a queued coding job."""
@@ -1174,6 +1311,7 @@ async def start_run(
         channel_id=channel_id,
         thread_root_id=trigger.thread_root_id or trigger.id,
         trigger_message_id=trigger.id,
+        kind=kind,
     )
     if job is not None:
         task, instructions, workspace = job
@@ -1307,6 +1445,14 @@ async def abandon_running_runs(session: AsyncSession) -> None:
             text="",
             status=RunStatus.ERROR,
             error="서버가 다시 시작되어 중단됐어요",
+        )
+    running = select(Debate).where(Debate.status == DebateStatus.RUNNING)
+    for debate in (await session.scalars(running)).all():
+        await _update(
+            session,
+            debate,
+            {"status": DebateStatus.ERROR, "error": "서버가 다시 시작되어 중단됐어요"},
+            "system",
         )
 
 
