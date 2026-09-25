@@ -8,6 +8,9 @@ const backend = process.env.ARGOS_BACKEND ?? "http://127.0.0.1:8000";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // Reachable from other devices on the user's tailnet via `tailscale serve`
+    // (https://<machine>.<tailnet>.ts.net); other Host headers stay blocked.
+    allowedHosts: [".ts.net"],
     proxy: {
       "/api": backend,
       "/ws": { target: backend, ws: true },
