@@ -388,6 +388,12 @@ class AgentSettingsIn(BaseModel):
     default_agent: str = Field(min_length=1, max_length=40)
 
 
+class JobSettingsIn(BaseModel):
+    """Folders coding jobs may write in; the first one gets jobs without --dir."""
+
+    roots: list[str] = Field(max_length=20)
+
+
 class MessagePage(BaseModel):
     items: list[MessageOut]
     next_cursor: str | None
@@ -791,6 +797,24 @@ async def put_agent_settings(
         request.app.state.base_settings, overrides
     )
     return AgentSettingsIn(default_agent=agent.name)
+
+
+@router.get("/settings/jobs")
+async def get_job_settings(config: Config) -> JobSettingsIn:
+    return JobSettingsIn(roots=[str(r.expanduser().resolve()) for r in config.job_roots])
+
+
+@router.put("/settings/jobs")
+async def put_job_settings(
+    request: Request, session: Session, config: Config, body: JobSettingsIn
+) -> JobSettingsIn:
+    roots = services.check_job_roots(body.roots, config.db_path, config.job_roots)
+    await services.set_setting(session, "job_roots", roots, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    return JobSettingsIn(roots=roots)
 
 
 @router.get("/routines")

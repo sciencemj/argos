@@ -11,6 +11,7 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
@@ -314,12 +315,14 @@ def build_classifier(settings: Settings) -> Classifier | None:
 # --- runtime settings ------------------------------------------------------------
 
 # Keys in the app_setting table that override the matching Settings fields.
-OVERRIDABLE = ("classifier_model", "default_agent")
+OVERRIDABLE = ("classifier_model", "default_agent", "job_roots")
 
 
 def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> Settings:
     """.env gives the defaults; what the user picked in the app wins."""
     update = {k: v for k, v in overrides.items() if k in OVERRIDABLE}
+    if "job_roots" in update:  # stored as JSON strings
+        update["job_roots"] = [Path(p) for p in update["job_roots"]]
     return settings.model_copy(update=update) if update else settings
 
 

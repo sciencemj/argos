@@ -1061,6 +1061,40 @@ async def mark_run_started(session: AsyncSession, run_id: str) -> AgentRun:
     )
 
 
+def check_job_roots(
+    requested: Sequence[str], db_path: Path, current: Sequence[Path] = ()
+) -> list[str]:
+    """Job directories the user allows (settings screen): existing folders, absolute or
+    ~-relative, neither the filesystem root, the home folder itself, nor anything that
+    holds Argos's own database. Folders already allowed are created if missing (the
+    default one appears with the first job). Returns them resolved, without duplicates."""
+    home = Path.home().resolve()
+    known = {r.expanduser().resolve() for r in current}
+    database = db_path.expanduser().resolve()
+    roots: list[str] = []
+    for raw in requested:
+        text = raw.strip()
+        if not text:
+            continue
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            raise InvalidError(f"절대 경로나 ~로 시작하는 경로를 적어 주세요: {text}")
+        path = path.resolve()
+        if path in known:
+            path.mkdir(parents=True, exist_ok=True)
+        if not path.is_dir():
+            raise InvalidError(f"없는 폴더예요: {text}")
+        if path in (Path(path.anchor), home):
+            raise InvalidError(f"너무 넓은 범위예요. 하위 폴더를 골라 주세요: {text}")
+        if database.is_relative_to(path):
+            raise InvalidError(f"Argos 데이터가 들어 있는 폴더는 허용할 수 없어요: {text}")
+        if str(path) not in roots:
+            roots.append(str(path))
+    if not roots:
+        raise InvalidError("작업 디렉터리를 하나 이상 남겨 주세요")
+    return roots
+
+
 def job_workspace(roots: Sequence[Path], requested: str | None, title: str) -> Path:
     """Where a job may write (PLAN §8.1: an allowlist). A requested path, relative to the
     first root or absolute, must resolve inside one of the roots (symlinks resolved, so

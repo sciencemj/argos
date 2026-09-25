@@ -318,6 +318,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job Settings */
+        get: operations["get_job_settings_api_v1_settings_jobs_get"];
+        /** Put Job Settings */
+        put: operations["put_job_settings_api_v1_settings_jobs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routines": {
         parameters: {
             query?: never;
@@ -1023,6 +1041,14 @@ export interface components {
             trigger_message_id: string | null;
             /** Summary */
             summary?: string | null;
+        };
+        /**
+         * JobSettingsIn
+         * @description Folders coding jobs may write in; the first one gets jobs without --dir.
+         */
+        JobSettingsIn: {
+            /** Roots */
+            roots: string[];
         };
         /** MessageConvert */
         MessageConvert: {
@@ -2019,6 +2045,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSettingsIn"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_settings_api_v1_settings_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSettingsIn"];
+                };
+            };
+        };
+    };
+    put_job_settings_api_v1_settings_jobs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSettingsIn"];
                 };
             };
             /** @description Validation Error */

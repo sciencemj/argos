@@ -169,3 +169,43 @@ def test_config_lists_job_roots(app: TestClient, tmp_path: Path) -> None:
     config = app.get("/api/v1/config").json()
     assert config["job_roots"] == [str((tmp_path / "jobs").resolve())]
     assert config["job_concurrency"] == 1
+
+
+def test_user_manages_job_folders(app: TestClient, tmp_path: Path) -> None:
+    """Settings screen: add and remove folders jobs may write in (user decision)."""
+    homework = tmp_path / "homework"
+    homework.mkdir()
+    default = str((tmp_path / "jobs").resolve())
+    saved = app.put("/api/v1/settings/jobs", json={"roots": [default, str(homework), default]})
+    assert saved.json()["roots"] == [default, str(homework.resolve())]
+    assert app.get("/api/v1/config").json()["job_roots"] == saved.json()["roots"]
+
+    course = channel_id(app)
+    inside = send(app, course, f"/job @codex 과제 초안 --dir {homework / 'lab1'}")
+    assert inside.status_code == 201
+    assert (homework / "lab1").is_dir()
+
+    app.put("/api/v1/settings/jobs", json={"roots": [default]})
+    removed = send(app, course, f"/job @codex 과제 초안 --dir {homework / 'lab2'}")
+    assert removed.status_code == 422
+    assert app.get("/api/v1/settings/jobs").json() == {"roots": [default]}
+
+
+@pytest.mark.parametrize(
+    ("roots", "reason"),
+    [
+        (["relative/dir"], "절대 경로"),
+        (["/definitely/not/here"], "없는 폴더"),
+        (["/"], "너무 넓은"),
+        (["~"], "너무 넓은"),
+        (["DB_PARENT"], "Argos 데이터"),
+        ([], "하나 이상"),
+    ],
+)
+def test_unsafe_job_folders_are_refused(
+    app: TestClient, job_settings: Settings, roots: list[str], reason: str
+) -> None:
+    roots = [str(job_settings.db_path.parent) if r == "DB_PARENT" else r for r in roots]
+    refused = app.put("/api/v1/settings/jobs", json={"roots": roots})
+    assert refused.status_code == 422
+    assert reason in refused.json()["error"]["message"]

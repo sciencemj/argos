@@ -596,3 +596,21 @@ export const useStartJob = () =>
       }),
     ),
   );
+
+export const useJobSettings = () =>
+  useQuery({
+    queryKey: ["settings", "jobs"],
+    queryFn: () => call(client.GET("/api/v1/settings/jobs")),
+  });
+
+export function useSaveJobRoots() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (roots: string[]) =>
+      call(client.PUT("/api/v1/settings/jobs", { body: { roots } })),
+    onSuccess: (data) => {
+      qc.setQueryData(["settings", "jobs"], data);
+      void qc.invalidateQueries({ queryKey: ["config"] });
+    },
+  });
+}

@@ -4,11 +4,13 @@ import {
   useAgentSettings,
   useAgents,
   useClassifierSettings,
+  useJobSettings,
   useOllamaModels,
   useSaveClassifier,
   useSaveDefaultAgent,
+  useSaveJobRoots,
 } from "../api";
-import { btn, card, ErrorText } from "../ui";
+import { btn, card, ErrorText, field, label } from "../ui";
 
 const OFF = "";
 
@@ -20,6 +22,7 @@ export function SettingsPage() {
       </h1>
       <AgentSection />
       <ClassifierSection />
+      <JobRootsSection />
     </div>
   );
 }
@@ -274,6 +277,86 @@ function AgentSection() {
           저장
         </button>
       </div>
+    </section>
+  );
+}
+
+/** Folders coding jobs may write in (PLAN §8.1 allowlist), managed by the user. */
+function JobRootsSection() {
+  const current = useJobSettings();
+  const save = useSaveJobRoots();
+  const [draft, setDraft] = useState("");
+  const roots = current.data?.roots ?? [];
+
+  const add = () => {
+    const path = draft.trim();
+    if (!path) return;
+    save.mutate([...roots, path], { onSuccess: () => setDraft("") });
+  };
+
+  return (
+    <section
+      aria-label="코딩 잡 작업 디렉터리"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        코딩 잡 작업 디렉터리
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        Claude·Codex 잡은 이 폴더 안에서만 파일을 만들고 고쳐요. 폴더를 정하지
+        않은 잡은 첫 번째 폴더 아래에 새 폴더를 만들어요.
+      </p>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {roots.map((root, i) => (
+          <li
+            key={root}
+            className="flex items-center gap-3 rounded-2xl border border-line-soft bg-card px-4 py-3"
+          >
+            <span className="grow font-mono text-[12.5px] break-all text-ink">
+              {root}
+            </span>
+            {i === 0 && (
+              <span className="text-[11.5px] whitespace-nowrap text-meta">
+                기본
+              </span>
+            )}
+            <button
+              type="button"
+              className={`${btn.ghost} shrink-0 whitespace-nowrap`}
+              aria-label={`${root} 삭제`}
+              disabled={save.isPending || roots.length === 1}
+              onClick={() => save.mutate(roots.filter((r) => r !== root))}
+            >
+              삭제
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="flex items-end gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <label className="flex grow flex-col gap-1">
+          <span className={label}>폴더 추가</span>
+          <input
+            className={`${field} font-mono text-[13px]`}
+            placeholder="~/Desktop/SCHOOL"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        </label>
+        <button
+          type="submit"
+          className={btn.outline}
+          disabled={save.isPending || !draft.trim()}
+        >
+          추가
+        </button>
+      </form>
+      <ErrorText error={save.error} />
     </section>
   );
 }
