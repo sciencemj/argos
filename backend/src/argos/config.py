@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Demo areas/channels loaded into an empty database on first run (PLAN §9).
     seed_path: Path = Path("seed.example.toml")
     timezone: str = "Asia/Seoul"
+    # Address other devices use to reach Argos (e.g. the Tailscale serve URL); links such as
+    # the calendar feed use it instead of whatever address the browser happened to open.
+    public_url: str | None = None
     # "Today" lists open tasks that are overdue or due within this many days.
     due_soon_days: int = 3
     # Kanban warns (never blocks) when In Progress holds more cards than this.

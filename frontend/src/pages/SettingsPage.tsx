@@ -3,9 +3,11 @@ import { AgentAvatar } from "../agents";
 import {
   useAgentSettings,
   useAgents,
+  useCalendarFeed,
   useClassifierSettings,
   useJobSettings,
   useOllamaModels,
+  useRotateCalendarFeed,
   useSaveClassifier,
   useSaveDefaultAgent,
   useSaveJobRoots,
@@ -22,6 +24,7 @@ export function SettingsPage() {
       </h1>
       <AgentSection />
       <ClassifierSection />
+      <CalendarFeedSection />
       <JobRootsSection />
     </div>
   );
@@ -357,6 +360,71 @@ function JobRootsSection() {
         </button>
       </form>
       <ErrorText error={save.error} />
+    </section>
+  );
+}
+
+/** ICS feed URL for Apple Calendar to subscribe to (PLAN 7a, one-way). */
+function CalendarFeedSection() {
+  const feed = useCalendarFeed();
+  const rotate = useRotateCalendarFeed();
+  const [copied, setCopied] = useState(false);
+  const url = feed.data
+    ? (feed.data.url ?? `${location.origin}${feed.data.path}`)
+    : "";
+
+  return (
+    <section
+      aria-label="애플 캘린더 구독"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        애플 캘린더 구독
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        Argos의 일정과 마감(완료하지 않은 할 일)을 캘린더 앱에서 볼 수 있어요.
+        캘린더 앱에서 "구독 캘린더 추가"에 아래 주소를 넣으면 10분마다 새로
+        가져와요. 읽기 전용이라 캘린더 앱에서 고친 내용은 Argos에 반영되지
+        않아요.
+      </p>
+      <div className="flex items-center gap-3 rounded-2xl border border-line-soft bg-card px-4 py-3">
+        <span className="grow font-mono text-[12px] break-all text-ink">
+          {url || "…"}
+        </span>
+        <button
+          type="button"
+          className={`${btn.outline} shrink-0`}
+          disabled={!url}
+          onClick={() =>
+            void navigator.clipboard.writeText(url).then(() => setCopied(true))
+          }
+        >
+          {copied ? "복사했어요" : "복사"}
+        </button>
+      </div>
+      <p className="m-0 text-[12px] leading-relaxed text-meta">
+        주소를 아는 사람은 누구나 일정을 볼 수 있어요. 이 주소는 Tailscale에
+        연결된 기기에서만 열려요. 주소가 새어 나갔다면 새 주소로 바꾸세요.
+      </p>
+      <ErrorText error={rotate.error} />
+      <div>
+        <button
+          type="button"
+          className={btn.ghost}
+          disabled={rotate.isPending}
+          onClick={() => {
+            if (
+              confirm(
+                "새 주소로 바꿀까요? 지금 주소로 구독한 캘린더는 더 이상 갱신되지 않아요.",
+              )
+            ) {
+              rotate.mutate(undefined, { onSuccess: () => setCopied(false) });
+            }
+          }}
+        >
+          새 주소로 바꾸기
+        </button>
+      </div>
     </section>
   );
 }

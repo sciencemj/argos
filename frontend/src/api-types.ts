@@ -318,6 +318,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Calendar Settings */
+        get: operations["get_calendar_settings_api_v1_settings_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/calendar/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Calendar Token
+         * @description New feed URL; calendars subscribed to the old one stop updating.
+         */
+        post: operations["rotate_calendar_token_api_v1_settings_calendar_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/feed.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar Feed */
+        get: operations["calendar_feed_api_v1_calendar_feed_ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -754,6 +808,15 @@ export interface components {
          * @enum {string}
          */
         AuthorType: "user" | "agent" | "system";
+        /** CalendarFeedOut */
+        CalendarFeedOut: {
+            /** Token */
+            token: string;
+            /** Path */
+            path: string;
+            /** Url */
+            url: string | null;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /** Name */
@@ -2045,6 +2108,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSettingsIn"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calendar_settings_api_v1_settings_calendar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedOut"];
+                };
+            };
+        };
+    };
+    rotate_calendar_token_api_v1_settings_calendar_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedOut"];
+                };
+            };
+        };
+    };
+    calendar_feed_api_v1_calendar_feed_ics_get: {
+        parameters: {
+            query?: {
+                token?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
                 };
             };
             /** @description Validation Error */

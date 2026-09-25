@@ -2,6 +2,7 @@
 activity_log row in the same transaction."""
 
 import re
+import secrets
 import tomllib
 import uuid
 from collections.abc import Sequence
@@ -163,6 +164,24 @@ async def set_setting(session: AsyncSession, key: str, value: Any, actor: str) -
     if row is None:
         return await _create(session, AppSetting(key=key, value=value), actor)
     return await _update(session, row, {"value": value}, actor)
+
+
+FEED_TOKEN = "calendar_feed_token"
+
+
+async def feed_token(session: AsyncSession, *, rotate: bool = False) -> str:
+    """Secret in the ICS feed URL (PLAN 7a). Written directly, not through _create/_update:
+    those copy values into activity_log and WebSocket events, which must not carry it."""
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == FEED_TOKEN))
+    if row is not None and not rotate:
+        return str(row.value)
+    token = secrets.token_urlsafe(24)
+    if row is None:
+        session.add(AppSetting(key=FEED_TOKEN, value=token))
+    else:
+        row.value = token
+    await session.commit()
+    return token
 
 
 # --- activity -----------------------------------------------------------------

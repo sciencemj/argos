@@ -614,3 +614,19 @@ export function useSaveJobRoots() {
     },
   });
 }
+
+// --- calendar feed (PLAN Phase 7a) ------------------------------------------------
+
+export const useCalendarFeed = () =>
+  useQuery({
+    queryKey: ["settings", "calendar"],
+    queryFn: () => call(client.GET("/api/v1/settings/calendar")),
+  });
+
+export function useRotateCalendarFeed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.POST("/api/v1/settings/calendar/rotate")),
+    onSuccess: (data) => qc.setQueryData(["settings", "calendar"], data),
+  });
+}

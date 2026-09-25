@@ -1,5 +1,6 @@
 import asyncio
 import re
+import secrets
 import shutil
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, date, datetime
@@ -18,13 +19,13 @@ from fastapi import (
     status,
 )
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, chat, classifier, services
+from argos import agents, chat, classifier, ics, services
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
@@ -797,6 +798,49 @@ async def put_agent_settings(
         request.app.state.base_settings, overrides
     )
     return AgentSettingsIn(default_agent=agent.name)
+
+
+class CalendarFeedOut(BaseModel):
+    token: str
+    path: str  # feed URL path
+    url: str | None  # full URL when ARGOS_PUBLIC_URL is set; else the client adds its origin
+
+
+def _feed_out(token: str, config: Settings) -> CalendarFeedOut:
+    path = f"/api/v1/calendar/feed.ics?token={token}"
+    base = config.public_url.rstrip("/") if config.public_url else None
+    return CalendarFeedOut(token=token, path=path, url=f"{base}{path}" if base else None)
+
+
+@router.get("/settings/calendar")
+async def get_calendar_settings(session: Session, config: Config) -> CalendarFeedOut:
+    return _feed_out(await services.feed_token(session), config)
+
+
+@router.post("/settings/calendar/rotate")
+async def rotate_calendar_token(session: Session, config: Config) -> CalendarFeedOut:
+    """New feed URL; calendars subscribed to the old one stop updating."""
+    return _feed_out(await services.feed_token(session, rotate=True), config)
+
+
+@router.get(
+    "/calendar/feed.ics",
+    response_class=Response,
+    responses={200: {"content": {"text/calendar": {}}}},
+)
+async def calendar_feed(session: Session, config: Config, token: str = "") -> Response:
+    expected = await services.feed_token(session)
+    if not secrets.compare_digest(token.encode(), expected.encode()):
+        raise services.NotFoundError("calendar", "feed")  # no hint that the path exists
+    body = await ics.build_feed(session, datetime.now(UTC), config.timezone)
+    return Response(
+        body,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Disposition": 'inline; filename="argos.ics"',
+        },
+    )
 
 
 @router.get("/settings/jobs")
