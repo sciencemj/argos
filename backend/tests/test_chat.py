@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -8,7 +8,7 @@ from fakes import FakeClassifier
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from argos import services
+from argos import commands, services
 from argos.classifier import ClassifyContext, Suggestion
 from argos.config import Settings
 from argos.main import create_app
@@ -79,7 +79,11 @@ def test_plain_text_becomes_suggestion_then_task(chat: TestClient, fake: FakeCla
 
     [task] = chat.get("/api/v1/tasks", params={"channel_id": course}).json()
     assert (task["title"], task["status"]) == ("과제2 제출", "todo")
-    assert task["due_at"] == "2026-09-25T14:59:00Z"
+    # "금요일까지" is read from the text against today (models get weekdays wrong).
+    friday = commands.find_date("금요일까지", datetime.now(SEOUL).date())
+    assert friday is not None
+    due = datetime.combine(friday, commands.DEFAULT_DUE, SEOUL).astimezone(UTC)
+    assert task["due_at"] == due.strftime("%Y-%m-%dT%H:%M:%SZ")
     [message] = feed(chat, course)
     assert message["ref_type"] == "task"
     assert message["ref"]["task"]["id"] == task["id"]
