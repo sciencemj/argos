@@ -31,7 +31,7 @@ export function Rail({
       aria-label="영역"
       className="flex flex-col items-center gap-2.5 border-r border-line-soft bg-rail py-3.5"
     >
-      <div className="flex size-[42px] items-center justify-center rounded-xl bg-step-5 text-on-dark">
+      <div className="flex size-[42px] shrink-0 items-center justify-center rounded-xl bg-step-5 text-on-dark">
         <DogIcon />
       </div>
       <div className="my-1 h-px w-6 bg-line" />
