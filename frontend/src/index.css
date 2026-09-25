@@ -226,3 +226,13 @@ body {
   letter-spacing: -0.02em;
   color: var(--ink);
 }
+
+/* Running job bar on a kanban card: a short segment sliding across (Phase 6). */
+@keyframes job-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

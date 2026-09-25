@@ -4,6 +4,7 @@
     /event <title> <date> [HH:MM[-HH:MM]]  no time → all-day
     /note <text>
     /ask <question>
+    /job @agent <instructions> [--dir <path>]
 
 Dates: 오늘, 내일, 모레, weekdays (금, 금요일, 금요일까지), 다음주 <weekday>, M/D,
 YYYY-MM-DD. Times: HH:MM or N시. Date and time are read from the end of the text.
@@ -47,7 +48,16 @@ class AskCommand:
     text: str
 
 
-Command = TaskCommand | EventCommand | NoteCommand | AskCommand
+@dataclass(frozen=True)
+class JobCommand:
+    """/job @agent <instructions> [--dir <path>] (PLAN Phase 6)."""
+
+    agent: str
+    instructions: str
+    directory: str | None = None
+
+
+Command = TaskCommand | EventCommand | NoteCommand | AskCommand | JobCommand
 
 _TIME = re.compile(r"^(\d{1,2}):(\d{2})$|^(\d{1,2})시$")
 _RANGE = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$")
@@ -131,13 +141,26 @@ def parse(text: str, now: datetime, tz: ZoneInfo) -> Command | None:
     rest = rest.strip()
     today = now.astimezone(tz).date()
 
+    if name == "/job":
+        words = rest.split()
+        directory = None
+        if "--dir" in words:
+            at = words.index("--dir")
+            if at + 1 >= len(words):
+                raise CommandError("--dir 뒤에 작업 디렉터리를 적어 주세요")
+            directory = words[at + 1]
+            del words[at : at + 2]
+        if not words or not words[0].startswith("@") or len(words) < 2:
+            raise CommandError("/job @claude 또는 @codex 다음에 맡길 일을 적어 주세요")
+        return JobCommand(words[0][1:], " ".join(words[1:]), directory)
+
     if name in ("/note", "/ask"):
         if not rest:
             raise CommandError(f"{name} 뒤에 내용을 적어 주세요")
         return NoteCommand(rest) if name == "/note" else AskCommand(rest)
 
     if name not in ("/task", "/event"):
-        raise CommandError(f"모르는 명령이에요: {name} (/task, /event, /note, /ask)")
+        raise CommandError(f"모르는 명령이에요: {name} (/task, /event, /note, /ask, /job)")
 
     words, day, at, span = _split_when(rest.split(), today)
     title = " ".join(words)

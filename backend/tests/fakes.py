@@ -34,6 +34,7 @@ class FakeAgent:
         self.transcripts: list[list[Turn]] = []
         self.contexts: list[str] = []
         self.sessions: list[str] = []
+        self.workspaces: list[Any] = []  # job_workspace per call (None for chat)
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
@@ -52,9 +53,13 @@ def fake_agents(**agents: FakeAgent) -> Any:
     """Adapter factory for Runner: agent name → fake; unknown names fail like a real
     unreachable backend."""
 
-    def factory(agent: Agent, settings: Settings, sessions: Any = None) -> FakeAgent:
+    def factory(
+        agent: Agent, settings: Settings, sessions: Any = None, job_workspace: Any = None
+    ) -> FakeAgent:
         if agent.name not in agents:
             raise AgentUnavailable(f"{agent.name} unavailable in tests")
-        return agents[agent.name]
+        fake = agents[agent.name]
+        fake.workspaces.append(job_workspace)
+        return fake
 
     return factory

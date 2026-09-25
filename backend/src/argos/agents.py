@@ -349,6 +349,9 @@ def claude_sdk_event(message: Any) -> AgentEvent | None:
     return None
 
 
+JOB_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+
+
 class ClaudeSDKAdapter:
     """Claude through the official Claude Agent SDK, one session per Argos thread/DM.
 
@@ -358,13 +361,20 @@ class ClaudeSDKAdapter:
     as before: no built-in tools, no user settings/hooks, only the Argos MCP server."""
 
     def __init__(
-        self, name: str, model: str | None, workspace: Path, mcp_url: str, cli_path: str | None
+        self,
+        name: str,
+        model: str | None,
+        workspace: Path,
+        mcp_url: str,
+        cli_path: str | None,
+        job_budget_usd: float | None = None,
     ) -> None:
         self._name = name
         self._model = model
         self._workspace = workspace
         self._mcp_url = mcp_url
         self._cli_path = cli_path
+        self._job_budget = job_budget_usd  # set = coding job in `workspace` (PLAN Phase 6)
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
@@ -374,20 +384,36 @@ class ClaudeSDKAdapter:
         exists = (
             await asyncio.to_thread(get_session_info, session_id, str(self._workspace))
         ) is not None
-        options = ClaudeAgentOptions(
-            system_prompt=context,  # a chat agent, not Claude Code's coding prompt
-            tools=[],
-            allowed_tools=["mcp__argos"],
-            mcp_servers={"argos": {"type": "http", "url": self._mcp_url}},
-            strict_mcp_config=True,
-            setting_sources=[],  # none of the user's settings, hooks or plugins
-            cwd=str(self._workspace),
-            model=self._model,
-            include_partial_messages=True,
-            resume=session_id if exists else None,
-            session_id=None if exists else session_id,
-            cli_path=self._cli_path,
-        )
+        common: dict[str, Any] = {
+            "mcp_servers": {"argos": {"type": "http", "url": self._mcp_url}},
+            "strict_mcp_config": True,
+            "setting_sources": [],  # none of the user's settings, hooks or plugins
+            "cwd": str(self._workspace),
+            "model": self._model,
+            "include_partial_messages": True,
+            "resume": session_id if exists else None,
+            "session_id": None if exists else session_id,
+            "cli_path": self._cli_path,
+        }
+        if self._job_budget is None:  # chat: Argos tools only, Argos context as the prompt
+            options = ClaudeAgentOptions(
+                system_prompt=context, tools=[], allowed_tools=["mcp__argos"], **common
+            )
+        else:  # coding job: file and shell tools, confined to the job's workspace
+            options = ClaudeAgentOptions(
+                system_prompt={"type": "preset", "preset": "claude_code", "append": context},
+                tools=JOB_TOOLS,
+                allowed_tools=[*JOB_TOOLS, "mcp__argos"],
+                # Anything not pre-approved is refused: no edits outside the workspace.
+                permission_mode="dontAsk",
+                sandbox={
+                    "enabled": True,  # Bash runs sandboxed: writes stay in the workspace
+                    "autoAllowBashIfSandboxed": True,
+                    "allowUnsandboxedCommands": False,
+                },
+                max_budget_usd=self._job_budget,
+                **common,
+            )
         prompt = (
             render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
             if exists
@@ -417,6 +443,12 @@ def parse_codex_notification(method: str, params: dict[str, Any]) -> AgentEvent 
         item = _obj(params.get("item"))
         if item.get("type") in ("mcpToolCall", "dynamicToolCall"):
             return Status(f"도구 사용 중: {item.get('tool') or item.get('name') or ''}")
+        if item.get("type") == "commandExecution":
+            return Status(f"명령 실행: {str(item.get('command') or '')[:200]}")
+        if item.get("type") == "fileChange":
+            changes: list[Any] = item.get("changes") or []
+            paths = [str(_obj(c).get("path") or "") for c in changes]
+            return Status(f"파일 수정: {', '.join(p for p in paths if p)[:200]}")
     if method == "error" and not params.get("willRetry"):
         return Failure(str(_obj(params.get("error")).get("message") or "Codex error"))
     if method == "turn/completed":
@@ -442,7 +474,9 @@ class CodexAppServerAdapter:
         binary: str,
         home: Path,
         sessions: SessionIds,
+        job: bool = False,
     ) -> None:
+        self._job = job  # coding job: shell on, writes allowed inside the workspace
         self._name = name
         self._model = model
         self._workspace = workspace
@@ -458,7 +492,7 @@ class CodexAppServerAdapter:
             "app-server",
             "-c", f'mcp_servers.argos.url="{self._mcp_url}"',
             "-c", 'mcp_servers.argos.default_tools_approval_mode="approve"',
-            "-c", "features.shell_tool=false",
+            "-c", f"features.shell_tool={'true' if self._job else 'false'}",
             "-c", "features.browser_use=false",
             "-c", "features.computer_use=false",
             "-c", "features.image_generation=false",
@@ -535,7 +569,8 @@ class CodexAppServerAdapter:
 
         common: dict[str, Any] = {
             "cwd": str(self._workspace),
-            "sandbox": "read-only",
+            # Jobs may write inside their workspace only (no network); chat stays read-only.
+            "sandbox": "workspace-write" if self._job else "read-only",
             "approvalPolicy": "never",
             "developerInstructions": context,
             "model": self._model,
@@ -608,8 +643,17 @@ class _NoSessions:
 
 
 def build_adapter(
-    agent: Agent, settings: Settings, sessions: SessionIds | None = None
+    agent: Agent,
+    settings: Settings,
+    sessions: SessionIds | None = None,
+    job_workspace: Path | None = None,
 ) -> AgentAdapter:
+    """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only."""
+    if job_workspace is not None and agent.backend not in (
+        AgentBackend.CLAUDE_CODE,
+        AgentBackend.CODEX,
+    ):
+        raise AgentUnavailable("코딩 잡은 Claude나 Codex에게만 맡길 수 있어요")
     workspace = settings.agent_workspace.resolve()
     mcp = f"{settings.mcp_url}?agent={agent.name}"
     match agent.backend:
@@ -640,6 +684,10 @@ def build_adapter(
             cli = shutil.which(settings.claude_bin)
             if cli is None:
                 raise AgentUnavailable(f"{settings.claude_bin} 명령을 찾을 수 없어요")
+            if job_workspace is not None:
+                return ClaudeSDKAdapter(
+                    agent.name, agent.model, job_workspace, mcp, cli, settings.job_max_budget_usd
+                )
             return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli)
         case AgentBackend.CODEX:
             binary = shutil.which(settings.codex_bin)
@@ -648,8 +696,17 @@ def build_adapter(
             if settings.codex_mode == "app-server":
                 home = prepare_codex_home(settings.codex_home, settings.codex_auth)
                 return CodexAppServerAdapter(
-                    agent.name, agent.model, workspace, mcp, binary, home, sessions or _NoSessions()
+                    agent.name,
+                    agent.model,
+                    job_workspace or workspace,
+                    mcp,
+                    binary,
+                    home,
+                    sessions or _NoSessions(),
+                    job=job_workspace is not None,
                 )
+            if job_workspace is not None:
+                raise AgentUnavailable("코딩 잡은 codex app-server 모드에서만 실행돼요")
             argv = [
                 settings.codex_bin,
                 "exec",

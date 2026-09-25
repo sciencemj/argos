@@ -1,7 +1,9 @@
 """Domain services. Every write in the app goes through here (PLAN §4) and leaves an
 activity_log row in the same transaction."""
 
+import re
 import tomllib
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -1003,18 +1005,21 @@ async def start_run(
     trigger: Message,
     reply_thread_root_id: str | None,
     actor: str,
+    job: tuple[Task, str, Path] | None = None,
 ) -> tuple[AgentRun, Message]:
-    """Creates the run and its (still empty) reply message, filled in when the run ends."""
-    run = await _create(
-        session,
-        AgentRun(
-            agent_id=agent.id,
-            channel_id=channel_id,
-            thread_root_id=trigger.thread_root_id or trigger.id,
-            trigger_message_id=trigger.id,
-        ),
-        actor,
+    """Creates the run and its (still empty) reply message, filled in when the run ends.
+    `job` = (card, instructions, workspace) makes it a queued coding job."""
+    run = AgentRun(
+        agent_id=agent.id,
+        channel_id=channel_id,
+        thread_root_id=trigger.thread_root_id or trigger.id,
+        trigger_message_id=trigger.id,
     )
+    if job is not None:
+        task, instructions, workspace = job
+        run.kind, run.status = "job", RunStatus.QUEUED
+        run.task_id, run.instructions, run.workspace = task.id, instructions, str(workspace)
+    run = await _create(session, run, actor)
     reply = await create_message(
         session,
         channel_id=channel_id,
@@ -1030,18 +1035,50 @@ async def start_run(
 
 
 async def finish_run(
-    session: AsyncSession, run_id: str, *, text: str, status: RunStatus, error: str | None
+    session: AsyncSession,
+    run_id: str,
+    *,
+    text: str,
+    status: RunStatus,
+    error: str | None,
+    log: str | None = None,
 ) -> None:
     run = await _get(session, AgentRun, run_id)
     reply = await session.get(Message, run.reply_message_id) if run.reply_message_id else None
     if reply is not None and text != reply.body:
         await _update(session, reply, {"body": text}, "system")
-    await _update(
-        session,
-        run,
-        {"status": status, "error": error, "finished_at": datetime.now(UTC)},
-        "system",
+    changes: dict[str, Any] = {"status": status, "error": error, "finished_at": datetime.now(UTC)}
+    if log is not None:
+        changes["log"] = log
+    await _update(session, run, changes, "system")
+
+
+async def mark_run_started(session: AsyncSession, run_id: str) -> AgentRun:
+    """A queued job got its slot."""
+    run = await _get(session, AgentRun, run_id)
+    return await _update(
+        session, run, {"status": RunStatus.RUNNING, "started_at": datetime.now(UTC)}, "system"
     )
+
+
+def job_workspace(roots: Sequence[Path], requested: str | None, title: str) -> Path:
+    """Where a job may write (PLAN §8.1: an allowlist). A requested path, relative to the
+    first root or absolute, must resolve inside one of the roots (symlinks resolved, so
+    they cannot point out); none requested → a new folder in the first root."""
+    allowed = [r.expanduser().resolve() for r in roots]
+    if not allowed:
+        raise InvalidError("허용된 작업 디렉터리가 없어요 (ARGOS_JOB_ROOTS)")
+    if requested:
+        path = Path(requested).expanduser()
+        path = (path if path.is_absolute() else allowed[0] / path).resolve()
+        if not any(path == root or path.is_relative_to(root) for root in allowed):
+            roots_text = ", ".join(map(str, allowed))
+            raise InvalidError(f"허용된 작업 디렉터리 밖이에요: {requested} (허용: {roots_text})")
+    else:
+        slug = re.sub(r"[^0-9A-Za-z가-힣]+", "-", title).strip("-")[:40] or "job"
+        path = allowed[0] / f"{slug}-{uuid.uuid4().hex[:6]}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 async def get_agent_session(session: AsyncSession, agent_id: str, key: str) -> str | None:
@@ -1068,7 +1105,7 @@ async def set_agent_session(session: AsyncSession, agent_id: str, key: str, valu
 
 async def abandon_running_runs(session: AsyncSession) -> None:
     """At startup: runs that were streaming when the server stopped cannot resume."""
-    query = select(AgentRun.id).where(AgentRun.status == RunStatus.RUNNING)
+    query = select(AgentRun.id).where(AgentRun.status.in_([RunStatus.RUNNING, RunStatus.QUEUED]))
     for run_id in (await session.scalars(query)).all():
         await finish_run(
             session,

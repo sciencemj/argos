@@ -252,6 +252,7 @@ class AgentBackend(StrEnum):
 
 
 class RunStatus(StrEnum):
+    QUEUED = "queued"  # a job waiting for a free slot (settings.job_concurrency)
     RUNNING = "running"
     DONE = "done"
     ERROR = "error"
@@ -286,7 +287,11 @@ class AgentRun(Record):
     started_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     error: Mapped[str | None] = mapped_column(Text)
-    task_id: Mapped[str | None] = mapped_column(String(36))  # Phase 6 jobs
+    task_id: Mapped[str | None] = mapped_column(String(36), index=True)  # jobs: the card
+    # Jobs (PLAN Phase 6): what was asked, where the agent may write, what it did.
+    instructions: Mapped[str | None] = mapped_column(Text)
+    workspace: Mapped[str | None] = mapped_column(String(500))
+    log: Mapped[str | None] = mapped_column(Text)  # tool-use trace, one line per step
 
 
 class AgentSession(Record):

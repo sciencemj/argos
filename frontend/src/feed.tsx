@@ -39,7 +39,7 @@ import {
 import { Markdown } from "./markdown";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
-const SLASH = ["/task", "/event", "/note", "/ask"];
+const SLASH = ["/task", "/event", "/note", "/ask", "/job"];
 
 export function useOpenThread() {
   const [params, setParams] = useSearchParams();
@@ -212,6 +212,7 @@ export function MessageItem({
 function runLabel(message: Message, liveStatus?: string): string {
   const run = message.run;
   if (!run) return "";
+  if (run.status === "queued") return "잡 대기 중 · 앞 잡이 끝나면 시작해요";
   if (run.status === "running") {
     return liveStatus && liveStatus !== "thinking" ? liveStatus : "입력 중…";
   }
@@ -238,7 +239,7 @@ function AgentBody({
 }) {
   const live = useLive(message.id);
   const run = message.run;
-  const running = run?.status === "running";
+  const running = run?.status === "running" || run?.status === "queued";
   const text = running ? (live?.text ?? "") : message.body;
   return (
     <div className="flex flex-col gap-1.5">
@@ -266,6 +267,19 @@ function AgentBody({
           {run.error}
         </p>
       )}
+      {run?.log && !running && (
+        <details className="text-[12px] text-text-3">
+          <summary className="cursor-pointer">
+            작업 로그 {run.log.split("\n").length}줄
+            {run.workspace && (
+              <span className="ml-2 font-mono text-meta">{run.workspace}</span>
+            )}
+          </summary>
+          <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-inset p-2.5 font-mono text-[11px] leading-[1.6] whitespace-pre-wrap text-text-2">
+            {run.log}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }
@@ -287,7 +301,8 @@ function CancelButton({ runId, name }: { runId: string; name: string }) {
 function AgentReplyCard({ message }: { message: Message }) {
   const agent = agentInfo(message.author_id);
   const live = useLive(message.id);
-  const running = message.run?.status === "running";
+  const running =
+    message.run?.status === "running" || message.run?.status === "queued";
   return (
     <div className={`${card} flex flex-col gap-2.5 px-[18px] py-4`}>
       <div className="flex items-center gap-2">

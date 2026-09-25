@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "../dates";
 import { CloseIcon } from "../icons";
+import { JobSection } from "../jobs";
 import { btn, Chip, DdayBadge, ErrorText, field, label } from "../ui";
 
 export const PRIORITIES = [
@@ -173,6 +174,8 @@ function TaskDetail({
         </label>
       </div>
       <ErrorText error={update.error} />
+
+      <JobSection task={task} />
 
       <Trail taskId={task.id} />
 

@@ -36,6 +36,7 @@ import {
 } from "../api";
 import { dday, localInputToIso } from "../dates";
 import { CheckIcon, PlusIcon } from "../icons";
+import { JobLine } from "../jobs";
 import {
   anchorFor,
   applyColumns,
@@ -336,13 +337,19 @@ function SortableCard({
           </div>
         </div>
       ) : (
-        <CardBody task={task} />
+        <CardBody task={task} onOpen={onOpen} />
       )}
     </div>
   );
 }
 
-function CardBody({ task }: { task: Task }) {
+function CardBody({
+  task,
+  onOpen,
+}: {
+  task: Task;
+  onOpen?: (id: string) => void;
+}) {
   if (task.status === "done") {
     return (
       <article className="flex cursor-pointer items-center gap-2 rounded-2xl border border-line px-3.5 py-3 text-meta">
@@ -352,8 +359,11 @@ function CardBody({ task }: { task: Task }) {
     );
   }
   return (
-    <article className="flex cursor-grab flex-col gap-2.5 rounded-2xl border border-line-soft bg-card p-3.5 shadow-sm">
+    <article
+      className={`flex cursor-grab flex-col gap-2.5 rounded-2xl border bg-card p-3.5 shadow-sm ${task.job?.status === "error" ? "border-danger-line" : "border-line-soft"}`}
+    >
       <div className="text-[13.5px] font-medium text-ink">{task.title}</div>
+      {task.job && <JobLine task={task} onOpen={onOpen ?? (() => {})} />}
       <div className="flex flex-wrap items-center gap-1.5">
         {task.due_at ? (
           <DdayBadge days={dday(task.due_at)} />

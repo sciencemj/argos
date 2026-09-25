@@ -84,7 +84,7 @@ export function invalidateFor(
     message: feeds,
     routine: [["routines"]],
     approval: [["approvals"], ...feeds],
-    agent_run: feeds,
+    agent_run: [["tasks"], ["task"], ...feeds], // job status lives on the card
     routine_check: [["routines"]],
     channel: [["channels"], ["tasks"]],
     area: [["channels"]],
@@ -581,4 +581,18 @@ export const cancelRun = (runId: string) =>
     client.POST("/api/v1/runs/{run_id}/cancel", {
       params: { path: { run_id: runId } },
     }),
+  );
+
+// --- coding jobs (PLAN Phase 6) ---------------------------------------------------
+
+export type Job = Schemas["JobOut"];
+
+export const useStartJob = () =>
+  useWrite("task", ({ id, ...body }: Schemas["JobCreate"] & { id: string }) =>
+    call(
+      client.POST("/api/v1/tasks/{task_id}/jobs", {
+        params: { path: { task_id: id } },
+        body,
+      }),
+    ),
   );

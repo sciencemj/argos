@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.
     agent_workspace: Path = Path("data/agent-workspace")
     agent_timeout: float = 300.0  # seconds before a chat run is stopped
+    # Coding jobs (PLAN Phase 6, §9: allowed directories are the user's choice). A job
+    # may only write inside one of these roots; without --dir it gets a fresh folder in
+    # the first one.
+    job_roots: list[Path] = [Path("data/jobs")]
+    job_concurrency: int = 1  # jobs running at once; the rest wait as "queued"
+    job_timeout: float = 1800.0
+    job_max_budget_usd: float = 2.0  # Claude jobs stop past this API-cost estimate
     context_limit: int = 4000  # characters of channel context sent with each run
 
     @property

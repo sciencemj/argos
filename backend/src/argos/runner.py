@@ -14,7 +14,9 @@ import asyncio
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -25,7 +27,6 @@ from argos.agents import (
     AgentAdapter,
     AgentUnavailable,
     Failure,
-    SessionIds,
     Status,
     Token,
     Turn,
@@ -128,6 +129,38 @@ async def build_transcript(session: AsyncSession, trigger: Message) -> list[Turn
     return turns[-TRANSCRIPT_LIMIT:]
 
 
+@dataclass
+class _Job:
+    task_id: str
+    workspace: Path
+    slot: bool = False  # holds one of the job_concurrency slots
+
+
+async def _move(session: AsyncSession, task_id: str, status: TaskStatus, agent: Agent) -> None:
+    """Card moves made by a job (PLAN Phase 6); `done` is left to the user. A card the
+    user deleted meanwhile is skipped."""
+    try:
+        task = await services.get_task(session, task_id)
+        if task.status != status:
+            await services.move_task(session, task_id, status=status, actor=f"agent:{agent.name}")
+    except services.NotFoundError:
+        return
+
+
+def job_context(agent: Agent, channel: Channel, task: Task, workspace: Path) -> str:
+    return "\n".join(
+        [
+            f"너는 개인 학업·프로젝트 관리 앱 Argos에서 코딩 작업(잡)을 맡은 에이전트 "
+            f'"{agent.display_name}"다.',
+            f"작업 디렉터리: {workspace}",
+            "(이 밖의 파일은 바꿀 수 없고, 네트워크는 막혀 있을 수 있다)",
+            f"연결된 할 일: {task.title} (#{channel.name})",
+            "작업을 마치면 마지막 답변으로 한국어 요약을 남긴다: 무엇을 했는지, 바꾼 파일, "
+            "실행한 테스트와 결과, 남은 일.",
+        ]
+    )
+
+
 class _AgentSessions:
     """SessionIds backed by the agent_session table."""
 
@@ -151,12 +184,13 @@ class Runner:
         self,
         sessionmaker: async_sessionmaker[AsyncSession],
         settings: Settings,
-        adapter_factory: Callable[[Agent, Settings, SessionIds], AgentAdapter] = build_adapter,
+        adapter_factory: Callable[..., AgentAdapter] = build_adapter,
     ) -> None:
         self._sessionmaker = sessionmaker
         self.settings = settings
         self.adapter_factory = adapter_factory  # tests swap in a fake (PLAN §8.6)
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._job_slots = asyncio.Semaphore(max(1, settings.job_concurrency))
 
     def running(self) -> list[str]:
         return list(self._tasks)
@@ -190,6 +224,43 @@ class Runner:
             run_ids.append(run.id)
         return run_ids
 
+    async def start_job(
+        self,
+        session: AsyncSession,
+        trigger: Message,
+        agent: Agent,
+        task: Task,
+        instructions: str,
+        workspace: Path,
+    ) -> str:
+        """A coding job (PLAN Phase 6): runs in `workspace` (already checked against the
+        allowlist), answers in the trigger's thread, and moves `task` along the board
+        (in_progress → review)."""
+        channel = await services.get_channel(session, trigger.channel_id)
+        run, reply = await services.start_run(
+            session,
+            agent=agent,
+            channel_id=channel.id,
+            trigger=trigger,
+            reply_thread_root_id=trigger.thread_root_id or trigger.id,
+            actor="user",
+            job=(task, instructions, workspace),
+        )
+        context = job_context(agent, channel, task, workspace)
+        job = _Job(task_id=task.id, workspace=workspace)
+        coro = self._run(
+            run.id, agent, reply.id, [Turn("user", instructions)], context, f"job-{run.id}", job
+        )
+        running = asyncio.create_task(coro)
+        self._tasks[run.id] = running
+        running.add_done_callback(lambda _t, rid=run.id: self._tasks.pop(rid, None))
+        return run.id
+
+    async def _job_started(self, run_id: str, agent: Agent, job: _Job) -> None:
+        async with self._sessionmaker() as session:
+            await services.mark_run_started(session, run_id)
+            await _move(session, job.task_id, TaskStatus.IN_PROGRESS, agent)
+
     def cancel(self, run_id: str) -> bool:
         task = self._tasks.get(run_id)
         if task is None:
@@ -210,22 +281,36 @@ class Runner:
         transcript: list[Turn],
         context: str,
         session_key: str,
+        job: "_Job | None" = None,
     ) -> None:
         ids = {"run_id": run_id, "agent_id": agent.name, "message_id": message_id}
-        await hub.publish("agent.status", ids | {"status": "thinking"})
         parts: list[str] = []
+        trace: list[str] = []  # job log: one line per tool step
         status, error = RunStatus.DONE, None
         try:
-            adapter = self.adapter_factory(
-                agent, self.settings, _AgentSessions(self._sessionmaker, agent.id)
-            )
-            async with asyncio.timeout(self.settings.agent_timeout):
+            if job is not None:
+                await hub.publish("agent.status", ids | {"status": "대기 중"})
+                await self._job_slots.acquire()
+                job.slot = True
+                await self._job_started(run_id, agent, job)
+            await hub.publish("agent.status", ids | {"status": "thinking"})
+            sessions = _AgentSessions(self._sessionmaker, agent.id)
+            if job is not None:
+                adapter = self.adapter_factory(
+                    agent, self.settings, sessions, job_workspace=job.workspace
+                )
+            else:
+                adapter = self.adapter_factory(agent, self.settings, sessions)
+            limit = self.settings.job_timeout if job is not None else self.settings.agent_timeout
+            async with asyncio.timeout(limit):
                 async for event in adapter.stream(transcript, context, session_key):
                     match event:
                         case Token(text=text):
                             parts.append(text)
                             await hub.publish("agent.token", ids | {"text": text})
                         case Status(text=text):
+                            now = datetime.now(self.settings.zoneinfo)
+                            trace.append(f"{now:%H:%M:%S} {text}")
                             await hub.publish("agent.status", ids | {"status": text})
                         case Failure(message=message):
                             raise AgentUnavailable(message)
@@ -238,9 +323,21 @@ class Runner:
         except Exception as exc:  # an adapter bug must not take the server down
             log.exception("agent run %s failed", run_id)
             status, error = RunStatus.ERROR, f"{type(exc).__name__}: {exc}"
+        finally:
+            if job is not None and job.slot:
+                self._job_slots.release()
         text = "".join(parts).strip()
         async with self._sessionmaker() as session:
-            await services.finish_run(session, run_id, text=text, status=status, error=error)
+            await services.finish_run(
+                session,
+                run_id,
+                text=text,
+                status=status,
+                error=error,
+                log="\n".join(trace) if job is not None else None,
+            )
+            if job is not None and status == RunStatus.DONE:
+                await _move(session, job.task_id, TaskStatus.REVIEW, agent)
         if status == RunStatus.ERROR:
             await hub.publish("agent.error", ids | {"error": error})
         else:

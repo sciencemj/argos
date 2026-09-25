@@ -9,6 +9,7 @@ in the background.
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -18,6 +19,7 @@ from argos.classifier import Classifier, ClassifierError, ClassifyContext, ancho
 from argos.config import Settings
 from argos.models import (
     Agent,
+    AgentBackend,
     AuthorType,
     Channel,
     ChannelKind,
@@ -25,10 +27,28 @@ from argos.models import (
     InboxStatus,
     Message,
     Record,
+    Task,
 )
 from argos.runner import mentioned_agents
 
 NO_AGENT = "답할 에이전트를 찾지 못했어요. 설정에서 기본 에이전트를 확인해 주세요."
+
+
+def job_title(instructions: str) -> str:
+    """Card title: the first line, cut at a word near 40 characters."""
+    line = instructions.strip().splitlines()[0]
+    if len(line) <= 40:
+        return line
+    cut = line[:40].rsplit(" ", 1)[0]
+    return (cut if len(cut) >= 20 else line[:40]) + "…"
+
+
+@dataclass
+class JobRequest:
+    agent: Agent
+    task: Task
+    instructions: str
+    workspace: Path
 
 
 @dataclass
@@ -36,6 +56,7 @@ class Posted:
     message: Message
     classify_item_id: str | None = None  # plain text captured into the inbox
     agents: list[Agent] = field(default_factory=list[Agent])  # who should answer
+    job: JobRequest | None = None  # /job: a coding job for the runner
 
 
 async def post_message(
@@ -76,7 +97,9 @@ async def post_message(
             return Posted(message, agents=[await services.get_agent(session, root.sticky_agent_id)])
         return Posted(message, agents=[dm_agent] if dm_agent else [])
 
-    if mentioned or dm_agent:  # addressed to an agent: a conversation, not capture
+    # /job names its agent with @ too, but it is a command, not a conversation.
+    is_job = body.lstrip().startswith("/job")
+    if (mentioned or dm_agent) and not is_job:  # addressed to an agent: a conversation
         targets = mentioned or ([dm_agent] if dm_agent else [])
         message = await _say(session, channel, body, None)
         if len(targets) == 1:
@@ -133,6 +156,21 @@ async def post_message(
                 },
             )
             return Posted(await _say(session, channel, body, item))
+        case commands.JobCommand(agent=handle, instructions=instructions, directory=directory):
+            agent = await services.find_agent(session, handle)
+            if agent is None or agent.backend not in (
+                AgentBackend.CLAUDE_CODE,
+                AgentBackend.CODEX,
+            ):
+                raise services.InvalidError("코딩 잡은 @claude나 @codex에게만 맡길 수 있어요")
+            title = job_title(instructions)
+            # Validate the directory before anything is stored (PLAN §8.1 allowlist).
+            workspace = services.job_workspace(settings.job_roots, directory, title)
+            task = await services.create_task(
+                session, channel_id=channel.id, title=title, description=instructions, actor="user"
+            )
+            message = await _say(session, channel, body, task)
+            return Posted(message, job=JobRequest(agent, task, instructions, workspace))
         case commands.AskCommand():
             message = await _say(session, channel, body, None)
             agent = await services.default_agent(session, channel, settings.default_agent)

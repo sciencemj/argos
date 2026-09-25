@@ -1,6 +1,7 @@
 import asyncio
+import re
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal, cast
 
@@ -181,11 +182,29 @@ class ConfigOut(BaseModel):
     wip_limit: int
     due_soon_days: int
     classifier_enabled: bool
+    job_roots: list[str]
+    job_concurrency: int
 
 
 class ChannelsOut(BaseModel):
     areas: list[AreaOut]
     channels: list[ChannelOut]
+
+
+class JobOut(BaseModel):
+    """The latest coding job on a card (PLAN Phase 6)."""
+
+    run_id: str
+    agent: str
+    status: RunStatus
+    error: str | None
+    instructions: str | None
+    workspace: str | None
+    log: str | None
+    started_at: datetime
+    finished_at: datetime | None
+    trigger_message_id: str | None
+    summary: str | None = None  # start of the agent's final reply, for the card
 
 
 class TaskOut(Out):
@@ -199,6 +218,13 @@ class TaskOut(Out):
     priority: int | None
     created_at: datetime
     updated_at: datetime
+    job: JobOut | None = None
+
+
+class JobCreate(BaseModel):
+    agent: str = Field(min_length=1, max_length=40)
+    instructions: str = Field(min_length=1, max_length=10_000)
+    directory: str | None = Field(default=None, max_length=500)  # inside ARGOS_JOB_ROOTS
 
 
 class TaskCreate(BaseModel):
@@ -336,10 +362,14 @@ class MessageOut(Out):
 class RunOut(Out):
     id: str
     agent_id: str
+    kind: str
     status: RunStatus
     error: str | None
     started_at: datetime
     finished_at: datetime | None
+    task_id: str | None
+    workspace: str | None
+    log: str | None
 
 
 class AgentOut(Out):
@@ -598,10 +628,15 @@ async def post_message(
         settings=config,
     )
     _classify_later(request, background, config, posted.classify_item_id)
+    runner: Runner = request.app.state.runner
+    runner.settings = config
     if posted.agents:
-        runner: Runner = request.app.state.runner
-        runner.settings = config
         await runner.respond(session, posted.message, posted.agents)
+    if posted.job:
+        job = posted.job
+        await runner.start_job(
+            session, posted.message, job.agent, job.task, job.instructions, job.workspace
+        )
     [out] = await _messages_out(session, [posted.message])
     return out
 
@@ -860,7 +895,56 @@ async def get_config(request: Request, config: Config) -> ConfigOut:
         wip_limit=config.wip_limit,
         due_soon_days=config.due_soon_days,
         classifier_enabled=request.app.state.classifier is not None,
+        job_roots=[str(r.expanduser().resolve()) for r in config.job_roots],
+        job_concurrency=config.job_concurrency,
     )
+
+
+def _summary(body: str | None) -> str | None:
+    """The reply's conclusion as plain text: its last prose paragraph, since agents
+    narrate first and conclude last (lists are details, not the conclusion)."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    prose = [p for p in paragraphs if not re.match(r"[-*+] |\d+\. |#|```|\|", p)]
+    chosen = (prose or paragraphs or [""])[-1]
+    text = " ".join(re.sub(r"`|\*\*|__", "", chosen).split())
+    return text[:140] + ("…" if len(text) > 140 else "") if text else None
+
+
+async def _tasks_out(session: AsyncSession, tasks: Sequence[Task]) -> list[TaskOut]:
+    """Cards with their latest job, in one query."""
+    runs = (
+        await session.scalars(
+            select(AgentRun)
+            .where(AgentRun.task_id.in_([t.id for t in tasks]), AgentRun.kind == "job")
+            .order_by(AgentRun.created_at)
+        )
+    ).all()
+    agents = {a.id: a.name for a in await services.list_agents(session)}
+    latest = {r.task_id: r for r in runs}  # later runs overwrite earlier ones
+    reply_ids = [r.reply_message_id for r in latest.values() if r.reply_message_id]
+    replies = {
+        m.id: m.body
+        for m in await session.scalars(select(Message).where(Message.id.in_(reply_ids)))
+    }
+    out: list[TaskOut] = []
+    for t in tasks:
+        item = TaskOut.model_validate(t)
+        if (run := latest.get(t.id)) is not None:
+            item.job = JobOut(
+                run_id=run.id,
+                agent=agents.get(run.agent_id, "?"),
+                status=run.status,
+                error=run.error,
+                instructions=run.instructions,
+                workspace=run.workspace,
+                log=run.log,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                trigger_message_id=run.trigger_message_id,
+                summary=_summary(replies.get(run.reply_message_id or "")),
+            )
+        out.append(item)
+    return out
 
 
 @router.get("/tasks")
@@ -868,7 +952,7 @@ async def list_tasks(
     session: Session, channel_id: str | None = None, status: TaskStatus | None = None
 ) -> list[TaskOut]:
     tasks = await services.list_tasks(session, channel_id=channel_id, status=status)
-    return [TaskOut.model_validate(t) for t in tasks]
+    return await _tasks_out(session, tasks)
 
 
 @router.post("/tasks", status_code=status.HTTP_201_CREATED)
@@ -879,7 +963,32 @@ async def create_task(session: Session, body: TaskCreate) -> TaskOut:
 
 @router.get("/tasks/{task_id}")
 async def get_task(session: Session, task_id: str) -> TaskOut:
-    return TaskOut.model_validate(await services.get_task(session, task_id))
+    [out] = await _tasks_out(session, [await services.get_task(session, task_id)])
+    return out
+
+
+@router.post("/tasks/{task_id}/jobs", status_code=status.HTTP_201_CREATED)
+async def start_job(
+    request: Request, session: Session, config: Config, task_id: str, body: JobCreate
+) -> TaskOut:
+    """Hand an existing card to Claude/Codex (or run its job again)."""
+    task = await services.get_task(session, task_id)
+    agent = await services.find_agent(session, body.agent)
+    if agent is None or agent.backend not in (AgentBackend.CLAUDE_CODE, AgentBackend.CODEX):
+        raise services.InvalidError("코딩 잡은 claude나 codex에게만 맡길 수 있어요")
+    workspace = services.job_workspace(config.job_roots, body.directory, task.title)
+    trigger = await services.create_message(
+        session,
+        channel_id=task.channel_id,
+        body=f"@{agent.name} 잡: {body.instructions}",
+        ref=task,
+        actor=USER,
+    )
+    runner: Runner = request.app.state.runner
+    runner.settings = config
+    await runner.start_job(session, trigger, agent, task, body.instructions, workspace)
+    [out] = await _tasks_out(session, [task])
+    return out
 
 
 @router.get("/tasks/{task_id}/activity")

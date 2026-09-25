@@ -463,6 +463,26 @@ export interface paths {
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Job
+         * @description Hand an existing card to Claude/Codex (or run its job again).
+         */
+        post: operations["start_job_api_v1_tasks__task_id__jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/activity": {
         parameters: {
             query?: never;
@@ -801,6 +821,10 @@ export interface components {
             due_soon_days: number;
             /** Classifier Enabled */
             classifier_enabled: boolean;
+            /** Job Roots */
+            job_roots: string[];
+            /** Job Concurrency */
+            job_concurrency: number;
         };
         /** EventCreate */
         EventCreate: {
@@ -960,6 +984,45 @@ export interface components {
             } | null;
             /** Confidence */
             confidence?: number | null;
+        };
+        /** JobCreate */
+        JobCreate: {
+            /** Agent */
+            agent: string;
+            /** Instructions */
+            instructions: string;
+            /** Directory */
+            directory?: string | null;
+        };
+        /**
+         * JobOut
+         * @description The latest coding job on a card (PLAN Phase 6).
+         */
+        JobOut: {
+            /** Run Id */
+            run_id: string;
+            /** Agent */
+            agent: string;
+            status: components["schemas"]["RunStatus"];
+            /** Error */
+            error: string | null;
+            /** Instructions */
+            instructions: string | null;
+            /** Workspace */
+            workspace: string | null;
+            /** Log */
+            log: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Trigger Message Id */
+            trigger_message_id: string | null;
+            /** Summary */
+            summary?: string | null;
         };
         /** MessageConvert */
         MessageConvert: {
@@ -1133,6 +1196,8 @@ export interface components {
             id: string;
             /** Agent Id */
             agent_id: string;
+            /** Kind */
+            kind: string;
             status: components["schemas"]["RunStatus"];
             /** Error */
             error: string | null;
@@ -1143,12 +1208,18 @@ export interface components {
             started_at: string;
             /** Finished At */
             finished_at: string | null;
+            /** Task Id */
+            task_id: string | null;
+            /** Workspace */
+            workspace: string | null;
+            /** Log */
+            log: string | null;
         };
         /**
          * RunStatus
          * @enum {string}
          */
-        RunStatus: "running" | "done" | "error" | "cancelled";
+        RunStatus: "queued" | "running" | "done" | "error" | "cancelled";
         /** TaskCreate */
         TaskCreate: {
             /** Channel Id */
@@ -1199,6 +1270,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            job?: components["schemas"]["JobOut"] | null;
         };
         /**
          * TaskStatus
@@ -2355,6 +2427,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_job_api_v1_tasks__task_id__jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

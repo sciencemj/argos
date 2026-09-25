@@ -75,3 +75,9 @@
 | 2026-09-25 | Codex는 Argos 전용 `CODEX_HOME`(`data/codex-home`)에서 실행, 사용자 `~/.codex`에서는 auth.json만 링크 | app-server에는 `--ignore-user-config`가 없음. 사용자 MCP·설정이 섞이지 않고 Argos 대화가 사용자 Codex 기록에 쌓이지 않음 |
 | 2026-09-25 | 서버의 승인·입력 요청(JSON-RPC server request)은 모두 거절 | 도구는 Argos MCP만 허용, 그 외 권한 부여 없음 |
 | 2026-09-25 | `make dev`의 uvicorn은 `--reload-dir src`만 감시 | Codex가 data/codex-home에 넣는 .py 파일 때문에 개발 서버가 재시작되던 문제(실측) |
+| 2026-09-25 | 코딩 잡 생성: 채팅 `/job @claude\|@codex <할 일> [--dir <경로>]`, 카드 상세의 "코딩 잡" 섹션(시작·다시 실행). 잡 모드 선택 대신 명령으로 구분 | PLAN P6 "잡 모드 선택"을 기존 슬래시 명령 방식에 맞춤. 에이전트 이름이 들어 있어도 `/job`은 대화가 아니라 명령으로 처리 |
+| 2026-09-25 | 잡은 `agent_run(kind=job)`에 task_id·지시·작업 디렉터리·로그를 저장. 새 상태 `queued`: 동시 실행 한도(`ARGOS_JOB_CONCURRENCY`, 기본 1)를 넘으면 대기. 카드 이동은 실행 시작 `in_progress`, 완료 `review`, 실패·중단은 그대로 두고 카드에 표시 | PLAN P6 |
+| 2026-09-25 | 작업 디렉터리 허용 목록 `ARGOS_JOB_ROOTS`(기본 `backend/data/jobs`). 요청 경로는 심볼릭 링크까지 풀어서 허용 루트 안인지 검사하고, 저장 전에 거절. 지정하지 않으면 첫 루트 아래 새 폴더 | PLAN §8.1. 실제 허용 경로는 사용자 확인 필요(§9) |
+| 2026-09-25 | Claude 잡: Claude Code 기본 프롬프트 + Argos 컨텍스트, 도구 Read/Write/Edit/Glob/Grep/Bash + Argos MCP, `permission_mode=dontAsk`, Bash는 OS 샌드박스 안에서만(샌드박스 밖 실행 불허), 비용 한도 `ARGOS_JOB_MAX_BUDGET_USD`. Codex 잡: `workspace-write` 샌드박스 + shell 도구, app-server 모드에서만 | 쓰기는 작업 디렉터리로 제한. 읽기는 두 샌드박스 모두 디스크 전체 허용(실측: Codex가 `~/.agents/skills`를 읽음) — 비밀 파일 차단이 필요하면 후속 과제 |
+| 2026-09-25 | 잡 로그는 도구 단계마다 한 줄(`HH:MM:SS 명령 실행: …`/`파일 수정: …`), 결과 요약은 에이전트 최종 답의 마지막 산문 문단(마크다운 제거, 140자). 로그·요약 모두 스레드와 카드 상세에 표시 | PLAN P6 "실행 로그와 결과 요약" |
+| 2026-09-25 | 칸반 카드의 진행 표시는 "4/6" 단계 대신 경과 시간 + 흐르는 막대 | 에이전트가 전체 단계 수를 미리 알려주지 않음 |
