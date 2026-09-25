@@ -365,7 +365,9 @@ empty = {"threads": [], "requests": [], "replies": []}
 data = json.loads(state.read_text()) if state.exists() else empty
 fixture = [json.loads(l) for l in open(os.environ["FAKE_CODEX_FIXTURE"])]
 def out(obj): print(json.dumps(obj, ensure_ascii=False), flush=True)
-def save(): state.write_text(json.dumps(data, ensure_ascii=False))
+def save():  # atomic, so a reader never sees a half-written file
+    tmp = state.with_suffix(".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False))
+    os.replace(tmp, state)
 for line in sys.stdin:
     msg = json.loads(line)
     if "method" not in msg:  # the client's answer to our approval request

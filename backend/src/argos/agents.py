@@ -458,6 +458,20 @@ def parse_codex_notification(method: str, params: dict[str, Any]) -> AgentEvent 
     return None
 
 
+async def _close(process: asyncio.subprocess.Process, grace: float = 2.0) -> None:
+    """End the app-server: EOF on stdin lets it finish writing its thread history;
+    kill it if it is still there after `grace` seconds."""
+    if process.returncode is not None:
+        return
+    if process.stdin is not None:
+        process.stdin.close()
+    try:
+        await asyncio.wait_for(process.wait(), grace)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+
+
 class CodexAppServerAdapter:
     """Codex through `codex app-server`: token streaming and one persistent Codex thread
     per Argos thread/DM (`thread/resume`). A process per run keeps the lifecycle simple;
@@ -515,9 +529,7 @@ class CodexAppServerAdapter:
             async for event in self._converse(process, transcript, context, session):
                 yield event
         finally:
-            if process.returncode is None:
-                process.kill()
-                await process.wait()
+            await _close(process)
 
     async def _converse(
         self,
