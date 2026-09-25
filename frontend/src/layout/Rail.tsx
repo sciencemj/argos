@@ -1,5 +1,5 @@
-import { type FormEvent, useState } from "react";
-import { NavLink, useMatch, useNavigate } from "react-router";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
 import { useChannels, useCreateArea } from "../api";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
@@ -19,6 +19,12 @@ export function Rail({
   const { data } = useChannels();
   const [adding, setAdding] = useState(false);
   const onSettings = useMatch("/settings") !== null;
+  const location = useLocation();
+  // The last page outside settings, however settings were opened (rail, status bar, links).
+  const lastPage = useRef("/");
+  useEffect(() => {
+    if (!onSettings) lastPage.current = location.pathname + location.search;
+  }, [onSettings, location.pathname, location.search]);
 
   const openArea = (id: string) => {
     onPickArea(id);
@@ -69,8 +75,17 @@ export function Rail({
       <span className="grow" />
       <NavLink
         to="/settings"
-        aria-label="설정"
-        title="설정"
+        // Remember where settings were opened from; pressing it again goes back there.
+        state={
+          onSettings ? undefined : { from: location.pathname + location.search }
+        }
+        aria-label={onSettings ? "설정 닫기" : "설정"}
+        title={onSettings ? "설정 닫기 (이전 화면으로)" : "설정"}
+        onClick={(e) => {
+          if (!onSettings) return;
+          e.preventDefault();
+          navigate(lastPage.current); // pressed again: back to where settings were opened
+        }}
         className={({ isActive }) =>
           `${railButton} ${isActive ? active : "text-text-3"}`
         }

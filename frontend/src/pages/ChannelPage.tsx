@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import {
   NavLink,
   Outlet,
@@ -25,6 +25,104 @@ const tab =
   "flex h-8 items-center rounded-full border border-transparent px-3.5 text-text-3 aria-[current=page]:border-line-soft aria-[current=page]:bg-card aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:shadow-sm";
 
 export const useChannel = () => useOutletContext<Channel>();
+
+const TABS = [
+  { path: "", label: "피드" },
+  { path: "kanban", label: "칸반" },
+  { path: "calendar", label: "캘린더" },
+  { path: "notes", label: "노트" },
+  { path: "materials", label: "자료" },
+];
+
+const SYSTEM_TABS = TABS.slice(0, 3); // #today-style channels have no vault folder
+
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const ALT = isMac ? "⌥" : "Alt+";
+
+/** Feed · kanban · calendar · notes · materials. ⌥1–5 jumps to a tab and ⌥[ / ⌥]
+ * steps left/right (by key position, so it works with any keyboard layout or IME);
+ * holding ⌥ shows the keys on the tabs. */
+function ChannelTabs({ channel }: { channel: Channel }) {
+  const navigate = useNavigate();
+  const [showKeys, setShowKeys] = useState(false);
+  const tabs = channel.kind === "system" ? SYSTEM_TABS : TABS;
+  const base = `/c/${channel.id}`;
+
+  useEffect(() => {
+    // The current tab is read from the address at each key press, so fast repeats
+    // (⌥]⌥]⌥]) step correctly even before the page has re-rendered.
+    const currentTab = () => {
+      const rest = window.location.pathname
+        .slice(base.length)
+        .replace(/^\//, "");
+      return Math.max(
+        0,
+        tabs.findIndex((t) => t.path === rest.split("/")[0]),
+      );
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "Alt") setShowKeys(true);
+      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      const now = currentTab();
+      let target: number | null = null;
+      if (e.code === "BracketRight") target = (now + 1) % tabs.length;
+      else if (e.code === "BracketLeft")
+        target = (now - 1 + tabs.length) % tabs.length;
+      else if (digit && Number(digit[1]) <= tabs.length)
+        target = Number(digit[1]) - 1;
+      if (target === null) return;
+      e.preventDefault(); // ⌥[ would otherwise type “ into the message box
+      navigate(`${base}/${tabs[target].path}${window.location.search}`);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Alt" || !e.altKey) setShowKeys(false);
+    };
+    const hide = () => setShowKeys(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", hide);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", hide);
+    };
+  }, [navigate, base, tabs]);
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <nav
+        aria-label="채널 탭"
+        className="flex gap-0.5 rounded-full bg-inset p-[3px] text-[13.5px] whitespace-nowrap"
+      >
+        {tabs.map((t, i) => (
+          <NavLink
+            key={t.path || "feed"}
+            to={t.path || "."}
+            end={t.path === ""}
+            className={tab}
+            title={`${t.label} (${ALT}${i + 1})`}
+            aria-keyshortcuts={`Alt+${i + 1}`}
+          >
+            {t.label}
+            {showKeys && (
+              <kbd className="ml-1.5 rounded bg-card px-1 font-mono text-[10.5px] font-normal text-meta">
+                {ALT}
+                {i + 1}
+              </kbd>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+      <span
+        className={`font-mono text-[11px] text-meta transition-opacity ${showKeys ? "opacity-100" : "opacity-0"}`}
+        aria-hidden={!showKeys}
+      >
+        {ALT}[ {ALT}] 이전·다음
+      </span>
+    </div>
+  );
+}
 
 export function ChannelPage() {
   const { channelId } = useParams();
@@ -65,30 +163,7 @@ export function ChannelPage() {
           )}
         </div>
         <div className="flex items-center gap-3.5">
-          <nav
-            aria-label="채널 탭"
-            className="flex gap-0.5 rounded-full bg-inset p-[3px] text-[13.5px] whitespace-nowrap"
-          >
-            <NavLink to="." end className={tab}>
-              피드
-            </NavLink>
-            <NavLink to="kanban" className={tab}>
-              칸반
-            </NavLink>
-            <NavLink to="calendar" className={tab}>
-              캘린더
-            </NavLink>
-            {channel.kind !== "system" && (
-              <>
-                <NavLink to="notes" className={tab}>
-                  노트
-                </NavLink>
-                <NavLink to="materials" className={tab}>
-                  자료
-                </NavLink>
-              </>
-            )}
-          </nav>
+          <ChannelTabs channel={channel} />
           <span className="grow" />
           {channel.vault_path && (
             <span className="truncate text-[12.5px] text-meta">

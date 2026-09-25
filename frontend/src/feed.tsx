@@ -40,7 +40,15 @@ import {
 import { Markdown } from "./markdown";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
-const SLASH = ["/task", "/event", "/note", "/ask", "/job", "/debate"];
+const COMMANDS = [
+  { name: "/task", usage: "제목 [날짜] [시간] — 할 일" },
+  { name: "/event", usage: "제목 날짜 [시작-끝] — 일정" },
+  { name: "/note", usage: "내용 — 공부 노트" },
+  { name: "/ask", usage: "질문 — 기본 에이전트에게" },
+  { name: "/job", usage: "@claude|@codex 할 일 [--dir 경로] — 코딩 잡" },
+  { name: "/debate", usage: "@a @b 주제 [--mode] [--rounds N] — 토론" },
+];
+const SLASH = COMMANDS.map((c) => c.name);
 
 export function useOpenThread() {
   const [params, setParams] = useSearchParams();
@@ -555,16 +563,47 @@ export function Composer({
   );
   const askTarget = channelDefault ?? fallback;
 
-  // "@cl" at the caret → suggest agents whose handle or display name starts with it.
+  // Completion (Tab or Enter, ↑↓ to choose, Esc to close): "@cl" at the caret →
+  // agents whose handle or display name starts with it; "/de" as the first word →
+  // slash commands.
   const typed = MENTION_AT_END.exec(text)?.[2];
-  const suggestions =
-    typed === undefined
+  const command = dm ? undefined : /^\/(\w*)$/.exec(text)?.[1];
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const options: {
+    key: string;
+    main: string;
+    side: string;
+    agent?: string;
+    pick: () => void;
+  }[] =
+    dismissed === text
       ? []
-      : (agents.data ?? []).filter((a) =>
-          [a.name, a.display_name].some((n) =>
-            n.toLowerCase().startsWith(typed.toLowerCase()),
-          ),
-        );
+      : command !== undefined
+        ? COMMANDS.filter((c) =>
+            c.name.slice(1).startsWith(command.toLowerCase()),
+          ).map((c) => ({
+            key: c.name,
+            main: c.name,
+            side: c.usage,
+            pick: () => complete(`${c.name} `),
+          }))
+        : typed !== undefined
+          ? (agents.data ?? [])
+              .filter((a) =>
+                [a.name, a.display_name].some((n) =>
+                  n.toLowerCase().startsWith(typed.toLowerCase()),
+                ),
+              )
+              .map((a) => ({
+                key: a.id,
+                main: a.display_name,
+                side: `@${a.name}`,
+                agent: a.name,
+                pick: () => mention(a.name),
+              }))
+          : [];
+  const current = Math.min(active, Math.max(0, options.length - 1));
 
   const send = () => {
     const body = text.trim();
@@ -579,14 +618,42 @@ export function Composer({
     setText((t) =>
       t.replace(MENTION_AT_END, (_m, lead: string) => `${lead}@${name} `),
     );
+    setActive(0);
+    input.current?.focus();
+  };
+
+  const complete = (value: string) => {
+    setText(value);
+    setActive(0);
     input.current?.focus();
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.nativeEvent.isComposing) return; // Korean IME still composing a syllable
+    if (options.length > 0) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setActive((current + step + options.length) % options.length);
+        return;
+      }
+      if (
+        (e.key === "Tab" && !e.shiftKey) ||
+        (e.key === "Enter" && !e.shiftKey)
+      ) {
+        e.preventDefault();
+        options[current].pick();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissed(text);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (suggestions.length > 0 && typed) mention(suggestions[0].name);
-      else send();
+      send();
     }
   };
 
@@ -598,28 +665,36 @@ export function Composer({
   const inputId = threadRootId ? "thread-reply" : "composer";
   return (
     <div className={`relative ${narrow ? "px-5 pb-[18px]" : "px-8 pb-6"}`}>
-      {suggestions.length > 0 && (
+      {options.length > 0 && (
         <div
           role="listbox"
-          aria-label="에이전트 부르기"
-          className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex min-w-[220px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
+          aria-label={command !== undefined ? "명령 고르기" : "에이전트 부르기"}
+          className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex min-w-[260px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
         >
-          {suggestions.map((a) => (
+          {options.map((o, i) => (
             <button
-              key={a.id}
+              key={o.key}
               type="button"
               role="option"
-              aria-selected={false}
-              onClick={() => mention(a.name)}
-              className="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[13.5px] hover:bg-inset"
+              aria-selected={i === current}
+              onMouseEnter={() => setActive(i)}
+              onClick={o.pick}
+              className="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[13.5px] aria-selected:bg-inset"
             >
-              <AgentAvatar id={a.name} size={20} />
-              <span className="grow text-ink">{a.display_name}</span>
-              <span className="font-mono text-[11.5px] text-meta">
-                @{a.name}
+              {o.agent && <AgentAvatar id={o.agent} size={20} />}
+              <span className={`text-ink ${o.agent ? "grow" : "font-mono"}`}>
+                {o.main}
+              </span>
+              <span
+                className={`font-mono text-[11.5px] text-meta ${o.agent ? "" : "grow truncate"}`}
+              >
+                {o.side}
               </span>
             </button>
           ))}
+          <span className="px-2.5 pt-1 pb-0.5 text-[11px] text-meta">
+            Tab·Enter 선택 · ↑↓ 이동 · Esc 닫기
+          </span>
         </div>
       )}
       <div className={`${card} flex flex-col gap-3 px-[18px] pt-4 pb-3`}>
