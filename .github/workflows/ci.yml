@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pyright
+      - name: Test
+        run: uv run pytest -q
+      - name: Migrations match the models
+        env:
+          ARGOS_DB_PATH: ${{ runner.temp }}/ci.db
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Lint
+        run: |
+          bun run lint
+          bun run typecheck
+      - name: Test
+        run: bun run test
+      - name: Build
+        run: bun run build
+
+  # frontend/src/api-types.ts is generated from the backend's OpenAPI schema.
+  api-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: cd backend && uv sync --locked
+      - run: cd frontend && bun install --frozen-lockfile
+      - run: make api-types
+      - name: Generated types are committed
+        run: |
+          git diff --exit-code frontend/src/api-types.ts \
+            || { echo "::error::api-types.ts is stale: run 'make api-types' and commit"; exit 1; }
