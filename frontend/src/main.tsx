@@ -10,6 +10,8 @@ import { ChannelPage, FeedTab } from "./pages/ChannelPage";
 import { KanbanTab } from "./pages/KanbanTab";
 import { MaterialsTab } from "./pages/MaterialsTab";
 import { NotesTab } from "./pages/NotesTab";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { ReviewPage } from "./pages/ReviewPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
 
@@ -27,6 +29,8 @@ const router = createBrowserRouter([
       { index: true, element: <TodayPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "approvals", element: <ApprovalsPage /> },
+      { path: "notifications", element: <NotificationsPage /> },
+      { path: "review", element: <ReviewPage /> },
       {
         path: "c/:channelId",
         element: <ChannelPage />,

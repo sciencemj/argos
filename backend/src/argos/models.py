@@ -373,6 +373,25 @@ class Debate(Record):
     error: Mapped[str | None] = mapped_column(Text)
 
 
+class Notification(Record):
+    """Something Argos brings up on its own (PLAN Phase 11): a deadline coming or
+    passed, a stale inbox, undated tasks, the weekly review. `key` makes each one
+    happen once (e.g. "due:<task>:D-1")."""
+
+    __tablename__ = "notification"
+
+    key: Mapped[str] = mapped_column(String(200), unique=True)
+    kind: Mapped[str] = mapped_column(String(30))  # due_soon | overdue | inbox_stale | …
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str | None] = mapped_column(Text)
+    object_type: Mapped[str | None] = mapped_column(String(30))
+    object_id: Mapped[str | None] = mapped_column(String(36))
+    channel_id: Mapped[str | None] = mapped_column(String(36))
+    read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)  # to the messenger
+    send_error: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentSession(Record):
     """A backend's own conversation id for one Argos thread/DM (e.g. a Codex thread id),
     for backends that pick their ids themselves."""

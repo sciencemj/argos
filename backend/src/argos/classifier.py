@@ -315,7 +315,17 @@ def build_classifier(settings: Settings) -> Classifier | None:
 # --- runtime settings ------------------------------------------------------------
 
 # Keys in the app_setting table that override the matching Settings fields.
-OVERRIDABLE = ("classifier_model", "default_agent", "job_roots", "vault_path", "vault_daily_folder")
+OVERRIDABLE = (
+    "classifier_model",
+    "default_agent",
+    "job_roots",
+    "vault_path",
+    "vault_daily_folder",
+    "notify_hermes_target",
+    "weekly_review_weekday",
+    "weekly_review_hour",
+    "backup_keep",
+)
 
 
 def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> Settings:

@@ -96,6 +96,7 @@ export function invalidateFor(
     note_ref: [["notes"], ["settings", "vault"]],
     agent: [["agents"], ["channels"]],
     debate: [["debates"], ...feeds],
+    notification: [["notifications"]],
     area: [["channels"]],
   };
   for (const key of keys[objectType] ?? []) {
@@ -881,3 +882,94 @@ export const useAgentModels = (backend: string) =>
       ),
     staleTime: 10 * 60_000, // listing starts the CLI; the server caches too
   });
+
+// --- notices, review, operations (PLAN Phase 11) -----------------------------------
+
+export type Notice = Schemas["NotificationOut"];
+export type NotifySettings = Schemas["NotifySettingsOut"];
+export type Ops = Schemas["OpsOut"];
+
+export const useNotifications = () =>
+  useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => call(client.GET("/api/v1/notifications")),
+  });
+
+export const useReadNotification = () =>
+  useWrite("notification", (id: string) =>
+    call(
+      client.POST("/api/v1/notifications/{notification_id}/read", {
+        params: { path: { notification_id: id } },
+      }),
+    ),
+  );
+
+export const useReadAllNotifications = () =>
+  useWrite("notification", () =>
+    call(client.POST("/api/v1/notifications/read-all")),
+  );
+
+export const useNotifySettings = () =>
+  useQuery({
+    queryKey: ["settings", "notify"],
+    queryFn: () => call(client.GET("/api/v1/settings/notify")),
+  });
+
+export function useSaveNotify() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas["NotifySettingsIn"]) =>
+      call(client.PUT("/api/v1/settings/notify", { body })),
+    onSuccess: (data) => qc.setQueryData(["settings", "notify"], data),
+  });
+}
+
+export const useNotifyTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["notify", "targets"],
+    enabled,
+    queryFn: () => call(client.GET("/api/v1/notify/targets")),
+    staleTime: 5 * 60_000,
+  });
+
+export const useTestNotify = () =>
+  useMutation({
+    mutationFn: (target: string) =>
+      call(client.POST("/api/v1/notify/test", { body: { target, label: "" } })),
+  });
+
+export const useMakeReview = () =>
+  useWrite("message", () => call(client.POST("/api/v1/review/weekly")));
+
+export const useAnalytics = () =>
+  useQuery({
+    queryKey: ["analytics"],
+    queryFn: () => call(client.GET("/api/v1/analytics")),
+  });
+
+export const useOps = () =>
+  useQuery({
+    queryKey: ["ops"],
+    queryFn: () => call(client.GET("/api/v1/ops")),
+  });
+
+function useOpsWrite<A>(fn: (args: A) => Promise<Ops>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (data) => qc.setQueryData(["ops"], data),
+  });
+}
+
+export const useBackupNow = () =>
+  useOpsWrite(() => call(client.POST("/api/v1/ops/backup")));
+export const useBackupKeep = () =>
+  useOpsWrite((keep: number) =>
+    call(client.PUT("/api/v1/ops/backup", { body: { keep } })),
+  );
+export const useInstallService = () =>
+  useOpsWrite((startNow: boolean) =>
+    call(client.POST("/api/v1/ops/service", { body: { start_now: startNow } })),
+  );
+export const useUninstallService = () =>
+  useOpsWrite(() => call(client.DELETE("/api/v1/ops/service")));

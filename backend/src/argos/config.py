@@ -80,6 +80,22 @@ class Settings(BaseSettings):
     # Debates (PLAN Phase 10): the whole debate must end within this many seconds.
     debate_budget_seconds: int = 900
 
+    # Proactive notices and reviews (PLAN Phase 11). Messenger delivery goes through
+    # `hermes send` and is turned on in the settings screen.
+    notify_interval_minutes: int = 15  # 0 turns the checks off
+    notify_digest_hour: int = 9  # daily roundups (stale inbox, undated tasks) after this hour
+    notify_hermes_target: str | None = None  # e.g. "discord" or "discord:#general"
+    hermes_bin: str = "hermes"
+    inbox_stale_hours: int = 24
+    undated_after_days: int = 3
+    backlog_stale_days: int = 14
+    weekly_review_weekday: int = 6  # Monday 0 … Sunday 6
+    weekly_review_hour: int = 20
+    review_embed_model: str | None = None  # Ollama embedding model; None: find one installed
+    backup_keep: int = 14  # daily database backups kept in data/backups
+    auto_backup: bool = True
+    backup_dir: Path = Path("data/backups")
+
     job_roots: list[Path] = [Path("data/jobs")]
     job_concurrency: int = 1  # jobs running at once; the rest wait as "queued"
     job_timeout: float = 1800.0

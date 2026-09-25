@@ -147,3 +147,16 @@ export const ShieldIcon = ({ size = 16 }: P) => (
     <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" />
   </Stroke>
 );
+
+export const BellIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M6 9a6 6 0 0 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9" />
+    <path d="M10.3 19a1.9 1.9 0 0 0 3.4 0" />
+  </Stroke>
+);
+
+export const ChartIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+  </Stroke>
+);

@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from argos import caldav_sync, services, usage, vault
+from argos import caldav_sync, notify, ops, services, usage, vault
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
@@ -37,6 +37,11 @@ def create_app(config: Settings = settings) -> FastAPI:
         if config.caldav_poll_minutes > 0:
             app.state.calendar_sync.start()
 
+        app.state.notifier = notify.Notifier(app.state.sessionmaker, lambda: app.state.settings)
+        app.state.notifier.start()
+        app.state.backups = ops.Backups(lambda: app.state.settings)
+        if config.auto_backup:
+            app.state.backups.start()
         app.state.usage = usage.UsageMonitor(lambda: app.state.settings)
         app.state.runner.usage = app.state.usage
         app.state.usage.start()
@@ -59,6 +64,8 @@ def create_app(config: Settings = settings) -> FastAPI:
         stop_listening()
         await app.state.vault_sync.stop()
         await app.state.usage.stop()
+        await app.state.notifier.stop()
+        await app.state.backups.stop()
         await app.state.calendar_sync.stop()
         await app.state.runner.shutdown()
         await engine.dispose()

@@ -9,13 +9,22 @@ import {
   useAgents,
   useChannels,
   useCreateChannel,
+  useNotifications,
   useOpenDM,
   usePendingApprovals,
   useTasks,
   useToday,
 } from "../api";
 import { dday, fmt } from "../dates";
-import { InboxIcon, PlusIcon, SearchIcon, ShieldIcon, SunIcon } from "../icons";
+import {
+  BellIcon,
+  ChartIcon,
+  InboxIcon,
+  PlusIcon,
+  SearchIcon,
+  ShieldIcon,
+  SunIcon,
+} from "../icons";
 import { btn, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
 
 type Kind = "course" | "project";
@@ -57,6 +66,7 @@ export function Sidebar({
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
   const personal = channels.find((c) => c.kind === "personal");
   const approvals = usePendingApprovals().data?.length ?? 0;
+  const unread = useNotifications().data?.unread ?? 0;
   const inScope = channels.filter(
     (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
   );
@@ -105,6 +115,15 @@ export function Sidebar({
               )}
             </NavLink>
           )}
+          <NavLink to="/notifications" className={row}>
+            <BellIcon />
+            <span className="grow">알림</span>
+            {unread > 0 && (
+              <span className="rounded-full border border-line bg-inset px-2 py-px font-mono text-[11.5px] font-semibold text-text">
+                {unread}
+              </span>
+            )}
+          </NavLink>
           <NavLink to="/approvals" className={row}>
             <ShieldIcon />
             <span className="grow">승인 대기</span>
@@ -113,6 +132,10 @@ export function Sidebar({
                 {approvals}
               </span>
             )}
+          </NavLink>
+          <NavLink to="/review" className={row}>
+            <ChartIcon />
+            <span className="grow">리뷰</span>
           </NavLink>
           {personal && (
             <ChannelRow channel={personal} days={due.get(personal.id)} />

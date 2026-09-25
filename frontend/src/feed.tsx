@@ -181,9 +181,12 @@ export function MessageItem({
         </div>
         {message.run ? (
           <AgentBody message={message} />
-        ) : message.body.includes("```") ? (
-          // Code or a document pasted for review: show the blocks as blocks.
-          <div className="text-[15px] leading-[1.65] text-text">
+        ) : system || message.body.includes("```") ? (
+          // Argos's own notes (the weekly review) and code or documents pasted for
+          // review are Markdown.
+          <div
+            className={`leading-[1.65] ${system ? "text-[14px] text-text-2" : "text-[15px] text-text"}`}
+          >
             <Markdown text={message.body} />
           </div>
         ) : (

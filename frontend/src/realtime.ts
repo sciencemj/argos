@@ -11,6 +11,22 @@ type ServerEvent = {
   ts: string;
 };
 
+/** A system notification for a new Argos notice, when the user allowed them (settings)
+ * and this page is in the background. */
+function showBrowserNotice(data: Record<string, unknown>) {
+  if (!("Notification" in window) || Notification.permission !== "granted")
+    return;
+  if (document.visibilityState === "visible") return; // the badge is enough on screen
+  try {
+    new Notification(String(data.title ?? "Argos"), {
+      body: data.body ? String(data.body) : undefined,
+      tag: String(data.id ?? ""),
+    });
+  } catch {
+    // some browsers (iPad Safari without a home-screen app) cannot show them
+  }
+}
+
 /** Keeps one WebSocket to /ws open. object.* events refresh the queries they affect;
  * after a reconnect everything is refetched, since events may have been missed (PLAN §7.2). */
 export function useRealtime(): LinkState {
@@ -36,6 +52,15 @@ export function useRealtime(): LinkState {
       };
       ws.onmessage = (msg) => {
         const event = JSON.parse(String(msg.data)) as ServerEvent;
+        if (event.type === "notification.created") {
+          void qc.invalidateQueries({ queryKey: ["notifications"] });
+          showBrowserNotice(event.data);
+          return;
+        }
+        if (event.type === "notification.read") {
+          void qc.invalidateQueries({ queryKey: ["notifications"] });
+          return;
+        }
         if (event.type === "usage.updated") {
           void qc.invalidateQueries({ queryKey: ["usage"] });
           return;

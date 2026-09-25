@@ -807,6 +807,248 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Notification */
+        post: operations["read_notification_api_v1_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read All Notifications */
+        post: operations["read_all_notifications_api_v1_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Notifications
+         * @description Runs a pass now (normally every few minutes).
+         */
+        post: operations["check_notifications_api_v1_notifications_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Notify Settings */
+        get: operations["get_notify_settings_api_v1_settings_notify_get"];
+        /** Put Notify Settings */
+        put: operations["put_notify_settings_api_v1_settings_notify_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notify/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notify Targets
+         * @description Where Hermes can deliver (its configured messaging platforms).
+         */
+        get: operations["notify_targets_api_v1_notify_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notify/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Notify Test */
+        post: operations["notify_test_api_v1_notify_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/review/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Weekly Review
+         * @description This week's review now, into #today (the automatic one still comes on its day).
+         */
+        post: operations["make_weekly_review_api_v1_review_weekly_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Analytics
+         * @description Average hours from creation to done per channel (30 days), done per week (8).
+         */
+        get: operations["get_analytics_api_v1_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefing/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Briefing
+         * @description Today for other tools (e.g. a morning briefing that uses Argos as its source).
+         */
+        get: operations["get_briefing_api_v1_briefing_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ops */
+        get: operations["get_ops_api_v1_ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Backup Keep */
+        put: operations["set_backup_keep_api_v1_ops_backup_put"];
+        /** Run Backup */
+        post: operations["run_backup_api_v1_ops_backup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Service
+         * @description Start at login (launchd). Only on the user's request from settings.
+         */
+        post: operations["install_service_api_v1_ops_service_post"];
+        /** Uninstall Service */
+        delete: operations["uninstall_service_api_v1_ops_service_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -1212,6 +1454,13 @@ export interface components {
             /** Yaml */
             yaml: string;
         };
+        /** AnalyticsOut */
+        AnalyticsOut: {
+            /** Processing */
+            processing: components["schemas"]["ProcessingOut"][];
+            /** Weekly Done */
+            weekly_done: components["schemas"]["WeekDoneOut"][];
+        };
         /** ApprovalOut */
         ApprovalOut: {
             /** Id */
@@ -1278,6 +1527,11 @@ export interface components {
          * @enum {string}
          */
         AuthorType: "user" | "agent" | "system";
+        /** BackupIn */
+        BackupIn: {
+            /** Keep */
+            keep: number;
+        };
         /** CalendarChannelIn */
         CalendarChannelIn: {
             /** Calendar Url */
@@ -1845,6 +2099,72 @@ export interface components {
             /** Snippet */
             snippet?: string | null;
         };
+        /** NotificationOut */
+        NotificationOut: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string | null;
+            /** Object Type */
+            object_type: string | null;
+            /** Object Id */
+            object_id: string | null;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Read At */
+            read_at: string | null;
+            /** Sent At */
+            sent_at: string | null;
+            /** Send Error */
+            send_error: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** NotificationsOut */
+        NotificationsOut: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+            /** Unread */
+            unread: number;
+        };
+        /** NotifySettingsIn */
+        NotifySettingsIn: {
+            /** Hermes Target */
+            hermes_target?: string | null;
+            /** Weekly Review Weekday */
+            weekly_review_weekday: number;
+            /** Weekly Review Hour */
+            weekly_review_hour: number;
+        };
+        /** NotifySettingsOut */
+        NotifySettingsOut: {
+            /** Hermes Target */
+            hermes_target: string | null;
+            /** Hermes Available */
+            hermes_available: boolean;
+            /** Weekly Review Weekday */
+            weekly_review_weekday: number;
+            /** Weekly Review Hour */
+            weekly_review_hour: number;
+            /** Digest Hour */
+            digest_hour: number;
+            /** Last Run */
+            last_run: string | null;
+        };
+        /** NotifyTarget */
+        NotifyTarget: {
+            /** Target */
+            target: string;
+            /** Label */
+            label: string;
+        };
         /** OllamaModelOut */
         OllamaModelOut: {
             /** Name */
@@ -1862,6 +2182,32 @@ export interface components {
             error?: string | null;
             /** Models */
             models?: components["schemas"]["OllamaModelOut"][];
+        };
+        /** OpsOut */
+        OpsOut: {
+            /** Backup Last */
+            backup_last: string | null;
+            /** Backup Count */
+            backup_count: number;
+            /** Backup Keep */
+            backup_keep: number;
+            /** Backup Dir */
+            backup_dir: string;
+            /** Backup Error */
+            backup_error: string | null;
+            /** Service */
+            service: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProcessingOut */
+        ProcessingOut: {
+            /** Channel */
+            channel: string;
+            /** Hours */
+            hours: number;
+            /** Count */
+            count: number;
         };
         /** PromotedOut */
         PromotedOut: {
@@ -1985,6 +2331,14 @@ export interface components {
          * @enum {string}
          */
         RunStatus: "queued" | "running" | "done" | "error" | "cancelled";
+        /** ServiceIn */
+        ServiceIn: {
+            /**
+             * Start Now
+             * @default false
+             */
+            start_now: boolean;
+        };
         /** SyncStatusOut */
         SyncStatusOut: {
             /** Running */
@@ -2164,6 +2518,16 @@ export interface components {
             last_tasks: {
                 [key: string]: number;
             } | null;
+        };
+        /** WeekDoneOut */
+        WeekDoneOut: {
+            /**
+             * Week
+             * Format: date
+             */
+            week: string;
+            /** Count */
+            count: number;
         };
     };
     responses: never;
@@ -3719,6 +4083,413 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_notification_api_v1_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_all_notifications_api_v1_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsOut"];
+                };
+            };
+        };
+    };
+    check_notifications_api_v1_notifications_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+        };
+    };
+    get_notify_settings_api_v1_settings_notify_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifySettingsOut"];
+                };
+            };
+        };
+    };
+    put_notify_settings_api_v1_settings_notify_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifySettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifySettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    notify_targets_api_v1_notify_targets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTarget"][];
+                };
+            };
+        };
+    };
+    notify_test_api_v1_notify_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyTarget"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string | null;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    make_weekly_review_api_v1_review_weekly_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+        };
+    };
+    get_analytics_api_v1_analytics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsOut"];
+                };
+            };
+        };
+    };
+    get_briefing_api_v1_briefing_today_get: {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ops_api_v1_ops_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsOut"];
+                };
+            };
+        };
+    };
+    set_backup_keep_api_v1_ops_backup_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backup_api_v1_ops_backup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsOut"];
+                };
+            };
+        };
+    };
+    install_service_api_v1_ops_service_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uninstall_service_api_v1_ops_service_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsOut"];
                 };
             };
         };

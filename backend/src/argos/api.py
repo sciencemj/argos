@@ -2,6 +2,7 @@ import asyncio
 import re
 import secrets
 import shutil
+import sqlite3
 import time as time_module
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict
@@ -29,7 +30,19 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, caldav_sync, chat, classifier, ics, mcp_server, services, usage, vault
+from argos import (
+    agents,
+    caldav_sync,
+    chat,
+    classifier,
+    ics,
+    mcp_server,
+    notify,
+    ops,
+    services,
+    usage,
+    vault,
+)
 from argos import debate as debate_module
 from argos.classifier import Classifier
 from argos.config import Settings
@@ -52,6 +65,7 @@ from argos.models import (
     InboxStatus,
     Message,
     NoteRef,
+    Notification,
     RunStatus,
     SourceLink,
     Task,
@@ -1742,6 +1756,259 @@ async def debate_to_note(session: Session, config: Config, debate_id: str) -> De
             session, debate_id, {"summary_note_id": note.id if note else None}, USER
         )
     return await _debate_out(session, debate)
+
+
+# --- notifications, review, numbers, briefing, operations (PLAN Phase 11) -------------------
+
+
+class NotificationOut(Out):
+    id: str
+    kind: str
+    title: str
+    body: str | None
+    object_type: str | None
+    object_id: str | None
+    channel_id: str | None
+    read_at: datetime | None
+    sent_at: datetime | None
+    send_error: str | None
+    created_at: datetime
+
+
+class NotificationsOut(BaseModel):
+    items: list[NotificationOut]
+    unread: int
+
+
+class NotifySettingsOut(BaseModel):
+    hermes_target: str | None  # None: messenger delivery off
+    hermes_available: bool
+    weekly_review_weekday: int
+    weekly_review_hour: int
+    digest_hour: int
+    last_run: datetime | None
+
+
+class NotifySettingsIn(BaseModel):
+    hermes_target: str | None = Field(default=None, max_length=200)
+    weekly_review_weekday: int = Field(ge=0, le=6)
+    weekly_review_hour: int = Field(ge=0, le=23)
+
+
+class NotifyTarget(BaseModel):
+    target: str
+    label: str
+
+
+class OpsOut(BaseModel):
+    backup_last: datetime | None
+    backup_count: int
+    backup_keep: int
+    backup_dir: str
+    backup_error: str | None
+    service: dict[str, Any]
+
+
+class BackupIn(BaseModel):
+    keep: int = Field(ge=1, le=365)
+
+
+class ServiceIn(BaseModel):
+    start_now: bool = False
+
+
+@router.get("/notifications")
+async def list_notifications(
+    session: Session, limit: int = Query(default=50, le=200)
+) -> NotificationsOut:
+    rows = await session.scalars(
+        select(Notification).order_by(Notification.created_at.desc()).limit(limit)
+    )
+    unread = await session.scalar(
+        select(func.count()).select_from(Notification).where(Notification.read_at.is_(None))
+    )
+    return NotificationsOut(
+        items=[NotificationOut.model_validate(n) for n in rows.all()], unread=unread or 0
+    )
+
+
+@router.post("/notifications/{notification_id}/read")
+async def read_notification(session: Session, notification_id: str) -> NotificationOut:
+    notice = await session.get(Notification, notification_id)
+    if notice is None:
+        raise services.NotFoundError("notification", notification_id)
+    notice.read_at = notice.read_at or datetime.now(UTC)
+    await session.commit()
+    await hub.publish("notification.read", {"object_type": "notification", "id": notice.id})
+    return NotificationOut.model_validate(notice)
+
+
+@router.post("/notifications/read-all")
+async def read_all_notifications(session: Session) -> NotificationsOut:
+    now = datetime.now(UTC)
+    for notice in (
+        await session.scalars(select(Notification).where(Notification.read_at.is_(None)))
+    ).all():
+        notice.read_at = now
+    await session.commit()
+    await hub.publish("notification.read", {"object_type": "notification", "id": None})
+    return await list_notifications(session, limit=50)
+
+
+@router.post("/notifications/check")
+async def check_notifications(request: Request) -> list[NotificationOut]:
+    """Runs a pass now (normally every few minutes)."""
+    fresh = await request.app.state.notifier.run()
+    return [NotificationOut.model_validate(n) for n in fresh]
+
+
+def _notify_settings(request: Request, config: Settings) -> NotifySettingsOut:
+    return NotifySettingsOut(
+        hermes_target=config.notify_hermes_target,
+        hermes_available=shutil.which(config.hermes_bin) is not None,
+        weekly_review_weekday=config.weekly_review_weekday,
+        weekly_review_hour=config.weekly_review_hour,
+        digest_hour=config.notify_digest_hour,
+        last_run=request.app.state.notifier.last_run,
+    )
+
+
+@router.get("/settings/notify")
+async def get_notify_settings(request: Request, config: Config) -> NotifySettingsOut:
+    return _notify_settings(request, config)
+
+
+@router.put("/settings/notify")
+async def put_notify_settings(
+    request: Request, session: Session, body: NotifySettingsIn
+) -> NotifySettingsOut:
+    target = (body.hermes_target or "").strip() or None
+    await services.set_setting(session, "notify_hermes_target", target, USER)
+    await services.set_setting(session, "weekly_review_weekday", body.weekly_review_weekday, USER)
+    await services.set_setting(session, "weekly_review_hour", body.weekly_review_hour, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    return _notify_settings(request, request.app.state.settings)
+
+
+@router.get("/notify/targets")
+async def notify_targets(config: Config) -> list[NotifyTarget]:
+    """Where Hermes can deliver (its configured messaging platforms)."""
+    return [NotifyTarget(**t) for t in await notify.hermes_targets(config)]
+
+
+@router.post("/notify/test")
+async def notify_test(config: Config, body: NotifyTarget) -> dict[str, str | None]:
+    error = await notify.hermes_send(config, body.target, "Argos 알림 테스트예요. 잘 도착했나요?")
+    if error:
+        raise services.InvalidError(error)
+    return {"error": None}
+
+
+@router.post("/review/weekly", status_code=status.HTTP_201_CREATED)
+async def make_weekly_review(session: Session, config: Config) -> MessageOut:
+    """This week's review now, into #today (the automatic one still comes on its day)."""
+    text = await notify.weekly_review(session, datetime.now(UTC), config)
+    today = await session.scalar(
+        select(Channel).where(Channel.name == "today", Channel.kind == ChannelKind.SYSTEM)
+    )
+    if today is None:
+        raise services.NotFoundError("channel", "today")
+    message = await services.create_message(
+        session, channel_id=today.id, body=text, author_type=AuthorType.SYSTEM, actor=USER
+    )
+    [out] = await _messages_out(session, [message])
+    return out
+
+
+class ProcessingOut(BaseModel):
+    channel: str
+    hours: float
+    count: int
+
+
+class WeekDoneOut(BaseModel):
+    week: date  # Monday
+    count: int
+
+
+class AnalyticsOut(BaseModel):
+    processing: list[ProcessingOut]
+    weekly_done: list[WeekDoneOut]
+
+
+@router.get("/analytics")
+async def get_analytics(session: Session, config: Config) -> AnalyticsOut:
+    """Average hours from creation to done per channel (30 days), done per week (8)."""
+    return AnalyticsOut.model_validate(
+        await notify.analytics(session, datetime.now(UTC), config.zoneinfo)
+    )
+
+
+@router.get("/briefing/today", response_model=None)
+async def get_briefing(
+    session: Session, config: Config, format: Literal["json", "markdown"] = "json"
+) -> dict[str, Any] | Response:
+    """Today for other tools (e.g. a morning briefing that uses Argos as its source)."""
+    data = await notify.briefing(session, datetime.now(UTC), config)
+    if format == "markdown":
+        return Response(notify.briefing_markdown(data), media_type="text/markdown; charset=utf-8")
+    return data
+
+
+def _ops_out(request: Request, config: Settings) -> OpsOut:
+    backups: ops.Backups = request.app.state.backups
+    found = ops.list_backups(config.backup_dir)
+    last = found[-1] if found else None
+    return OpsOut(
+        backup_last=datetime.fromtimestamp(last.stat().st_mtime, UTC) if last else None,
+        backup_count=len(found),
+        backup_keep=config.backup_keep,
+        backup_dir=str(config.backup_dir.resolve()),
+        backup_error=backups.last_error,
+        service=asdict(ops.service_state(config)),
+    )
+
+
+@router.get("/ops")
+async def get_ops(request: Request, config: Config) -> OpsOut:
+    return await asyncio.to_thread(_ops_out, request, config)
+
+
+@router.post("/ops/backup")
+async def run_backup(request: Request, config: Config) -> OpsOut:
+    try:
+        await request.app.state.backups.run()
+    except (OSError, sqlite3.Error) as exc:
+        raise services.InvalidError(f"백업하지 못했어요: {exc}") from None
+    return await asyncio.to_thread(_ops_out, request, config)
+
+
+@router.put("/ops/backup")
+async def set_backup_keep(request: Request, session: Session, body: BackupIn) -> OpsOut:
+    await services.set_setting(session, "backup_keep", body.keep, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    return await asyncio.to_thread(_ops_out, request, request.app.state.settings)
+
+
+@router.post("/ops/service")
+async def install_service(request: Request, config: Config, body: ServiceIn) -> OpsOut:
+    """Start at login (launchd). Only on the user's request from settings."""
+    state = await asyncio.to_thread(ops.install_service, config, body.start_now)
+    out = await asyncio.to_thread(_ops_out, request, config)
+    out.service = asdict(state)
+    return out
+
+
+@router.delete("/ops/service")
+async def uninstall_service(request: Request, config: Config) -> OpsOut:
+    await asyncio.to_thread(ops.uninstall_service, config)
+    return await asyncio.to_thread(_ops_out, request, config)
 
 
 @router.get("/settings/jobs")

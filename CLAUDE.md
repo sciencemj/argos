@@ -38,6 +38,11 @@ cd backend && uv run alembic revision --autogenerate -m "..."   # 모델 변경 
 cd frontend && bunx vitest run src/dates.test.ts
 ```
 
+개발 서버가 launchd로 떠 있을 수 있다(설정 → 백업과 자동 실행, `~/Library/LaunchAgents/app.argos.server.plist`가
+`make dev`를 실행, 기록은 `backend/data/logs/service.log`). 그때는 `make dev`를 또 띄우지 말고(포트 충돌) 코드
+변경은 자동 리로드에 맡긴다. 다시 시작: `launchctl kickstart -k gui/$(id -u)/app.argos.server`.
+모델을 바꾸면 **서버가 리로드되기 전에** `uv run alembic upgrade head`를 먼저 적용한다(새 테이블을 읽는 시작 코드가 실패함).
+
 CI(`.github/workflows/ci.yml`): backend(ruff, pyright, pytest, `alembic check`), frontend(biome, tsc,
 vitest, build), api-types 최신 여부.
 

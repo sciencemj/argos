@@ -29,6 +29,7 @@ import {
 import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
+import { NotifySection, OpsSection } from "./OpsSettings";
 
 const OFF = "";
 
@@ -41,11 +42,13 @@ export function SettingsPage() {
       <AgentSection />
       <CustomAgentsSection />
       <ClassifierSection />
+      <NotifySection />
       <UsageSection />
       <VaultSection />
       <ICloudSection />
       <CalendarFeedSection />
       <JobRootsSection />
+      <OpsSection />
     </div>
   );
 }
