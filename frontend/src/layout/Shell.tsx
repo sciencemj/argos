@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useParams, useSearchParams } from "react-router";
 import { registerAgents } from "../agents";
 import { useAgents, useChannels, useConfig } from "../api";
 import { setZone } from "../dates";
 import { useRealtime } from "../realtime";
+import { Toaster } from "../toast";
+import { useEnterOnChange } from "../ui";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
@@ -39,6 +41,10 @@ export function Shell() {
   )?.area_id;
   const areaId = channelArea ?? (channelId ? null : pickedArea);
 
+  // The page eases in when the area changes (the feed stays mounted).
+  const main = useRef<HTMLElement>(null);
+  useEnterOnChange(main, areaId);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -62,7 +68,7 @@ export function Shell() {
     >
       <Rail areaId={areaId} onPickArea={setPickedArea} />
       <Sidebar areaId={areaId} onOpenSwitcher={() => setSwitcherOpen(true)} />
-      <main className="flex min-h-0 min-w-0 flex-col bg-page">
+      <main ref={main} className="flex min-h-0 min-w-0 flex-col bg-page">
         {wide && threadId ? (
           <ThreadPanel messageId={threadId} wide />
         ) : (
@@ -72,6 +78,7 @@ export function Shell() {
       {taskId && <TaskPanel taskId={taskId} />}
       {threadId && !wide && <ThreadPanel messageId={threadId} />}
       <StatusBar link={link} />
+      <Toaster />
       <QuickSwitcher
         open={switcherOpen}
         onClose={() => setSwitcherOpen(false)}

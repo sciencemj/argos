@@ -17,10 +17,13 @@ import {
   useDebateToTask,
   useReclassify,
   useResolveApproval,
+  useUpdateTask,
 } from "./api";
+import { CheckButton, useCompleteTask } from "./complete";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "./dates";
-import { CheckIcon, PawIcon, ShieldIcon } from "./icons";
+import { PawIcon, ShieldIcon } from "./icons";
 import { Markdown } from "./markdown";
+import { PawTrail } from "./paws";
 import { btn, Chip, card, DdayBadge, ErrorText, field, label } from "./ui";
 
 type Suggestion = {
@@ -80,10 +83,7 @@ export function SuggestionCard({
     }
     return config.data?.classifier_enabled ? (
       <Quiet>
-        <span className="animate-pulse text-ink">
-          <PawIcon size={14} />
-        </span>
-        알아보는 중…
+        <PawTrail label="알아보는 중" />
       </Quiet>
     ) : (
       <Quiet>인박스에 보관됨 · 분류 모델이 설정되지 않았어요</Quiet>
@@ -407,20 +407,30 @@ export function TaskRefCard({ task }: { task: Task }) {
     setParams(next);
   };
   const done = task.status === "done";
+  const completion = useCompleteTask();
+  const reopen = useUpdateTask();
   return (
-    <button
-      type="button"
+    // biome-ignore lint/a11y/useSemanticElements: holds its own check button, so not a <button>
+    <div
+      role="button"
+      tabIndex={0}
       onClick={open}
+      onKeyDown={(e) => e.key === "Enter" && open()}
       className={`${card} flex max-w-[520px] cursor-pointer items-center gap-3 px-[18px] py-3.5 text-left`}
     >
-      <span
-        className={`flex size-6 shrink-0 items-center justify-center rounded-full border ${done ? "border-step-5 bg-step-5 text-on-dark" : "border-line text-transparent"}`}
-      >
-        <CheckIcon size={13} />
-      </span>
+      <CheckButton
+        checked={done || completion.pending.has(task.id)}
+        label={done ? `${task.title} 다시 열기` : `${task.title} 완료 처리`}
+        size={24}
+        onClick={() =>
+          done
+            ? reopen.mutate({ id: task.id, status: "todo" })
+            : completion.complete(task)
+        }
+      />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <span
-          className={`font-medium text-ink ${done ? "text-meta line-through" : ""}`}
+          className={`font-medium text-ink ${done || completion.pending.has(task.id) ? "text-meta line-through" : ""}`}
         >
           {task.title}
         </span>
@@ -429,7 +439,7 @@ export function TaskRefCard({ task }: { task: Task }) {
         </span>
       </span>
       {task.due_at && !done && <DdayBadge days={dday(task.due_at)} />}
-    </button>
+    </div>
   );
 }
 
@@ -697,7 +707,7 @@ export function DebateCard({
       </div>
       {running && (
         <div className="flex items-center gap-2 text-[12.5px] text-text-3">
-          <span className="animate-pulse">●</span>
+          <PawTrail />
           발언이 스레드에 이어지고 있어요. 스레드에 쓰면 다음 차례부터 반영돼요.
         </div>
       )}

@@ -14,11 +14,10 @@ import {
   useTasks,
   useToday,
   useUpdateInbox,
-  useUpdateTask,
 } from "../api";
 import { InboxRow } from "../cards";
+import { CheckButton, useCompleteTask } from "../complete";
 import { dday, fmt, inZone, relativeDue } from "../dates";
-import { CheckIcon } from "../icons";
 import { RoutinePanel } from "../routines";
 import { btn, card, DdayBadge } from "../ui";
 
@@ -48,38 +47,44 @@ export function TodayPage() {
   const due = today.data?.due_tasks ?? [];
 
   return (
-    <div className="flex min-h-0 grow flex-col gap-6 overflow-y-auto px-9 pt-8 pb-[26px]">
-      <header className="flex flex-wrap items-end gap-5">
-        <div className="flex grow flex-col gap-2">
-          <div className="font-mono text-[12px] text-meta">
-            {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
+    <div className="min-h-0 grow overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-9 pt-8 pb-[26px]">
+        <header className="flex flex-wrap items-end gap-5">
+          <div className="flex grow flex-col gap-2">
+            <div className="font-mono text-[12px] text-meta">
+              {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
+            </div>
+            <h1 className="m-0 text-[50px] leading-[1.1] font-light tracking-[-0.02em] text-ink">
+              오늘 챙길 것
+            </h1>
           </div>
-          <h1 className="m-0 text-[50px] leading-[1.1] font-light tracking-[-0.02em] text-ink">
-            오늘 챙길 것
-          </h1>
-        </div>
-        <div className="flex gap-2.5">
-          <Stat label="일정" value={events.length} />
-          <Stat label="마감 임박" value={due.length} />
-          <Stat label="인박스" value={today.data?.inbox_count ?? 0} />
-          <Link to="/approvals">
-            <Stat label="승인 대기" value={approvals} danger={approvals > 0} />
-          </Link>
-        </div>
-      </header>
+          <div className="flex gap-2.5">
+            <Stat label="일정" value={events.length} />
+            <Stat label="마감 임박" value={due.length} />
+            <Stat label="인박스" value={today.data?.inbox_count ?? 0} />
+            <Link to="/approvals">
+              <Stat
+                label="승인 대기"
+                value={approvals}
+                danger={approvals > 0}
+              />
+            </Link>
+          </div>
+        </header>
 
-      <div className="grid min-h-[360px] grid-cols-3 gap-[18px]">
-        <Schedule events={events} now={now} />
-        <Deadlines due={due} tasks={tasks.data ?? []} byId={byId} now={now} />
-        <Inbox items={inbox.data?.items ?? []} now={now} byId={byId} />
-      </div>
+        <div className="grid min-h-[360px] grid-cols-3 gap-[18px]">
+          <Schedule events={events} now={now} />
+          <Deadlines due={due} tasks={tasks.data ?? []} byId={byId} now={now} />
+          <Inbox items={inbox.data?.items ?? []} now={now} byId={byId} />
+        </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start gap-[18px]">
-        <RoutinePanel />
-        <Progress
-          channels={channels.data?.channels ?? []}
-          tasks={tasks.data ?? []}
-        />
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start gap-[18px]">
+          <RoutinePanel />
+          <Progress
+            channels={channels.data?.channels ?? []}
+            tasks={tasks.data ?? []}
+          />
+        </div>
       </div>
     </div>
   );
@@ -228,7 +233,7 @@ function Deadlines({
   now: Date;
 }) {
   const config = useConfig();
-  const update = useUpdateTask();
+  const completion = useCompleteTask();
   const undated = tasks.filter((t) => !t.due_at && t.status !== "done");
 
   return (
@@ -241,7 +246,7 @@ function Deadlines({
       {due.map((t) => (
         <div
           key={t.id}
-          className="flex items-start gap-3 rounded-xl bg-page px-3.5 py-3"
+          className={`flex items-start gap-3 rounded-xl bg-page px-3.5 py-3 ${completion.pending.has(t.id) ? "completing" : ""}`}
         >
           <div className="pt-0.5">
             <DdayBadge days={dday(t.due_at ?? "", now)} />
@@ -256,14 +261,11 @@ function Deadlines({
               {relativeDue(t.due_at ?? "", now)}
             </span>
           </Link>
-          <button
-            type="button"
-            aria-label={`${t.title} 완료 처리`}
-            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-card text-text-3 hover:text-ink"
-            onClick={() => update.mutate({ id: t.id, status: "done" })}
-          >
-            <CheckIcon />
-          </button>
+          <CheckButton
+            checked={completion.pending.has(t.id)}
+            label={`${t.title} 완료 처리`}
+            onClick={() => completion.complete(t)}
+          />
         </div>
       ))}
       {undated.length > 0 && (

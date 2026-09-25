@@ -33,6 +33,7 @@ import {
   useCreateTask,
   useMoveTask,
   useTasks,
+  useUpdateTask,
 } from "../api";
 import { dday, localInputToIso } from "../dates";
 import { CheckIcon, PlusIcon } from "../icons";
@@ -44,6 +45,7 @@ import {
   columnOf,
   toColumns,
 } from "../kanban";
+import { toast } from "../toast";
 import { btn, Chip, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
 import { useChannel } from "./ChannelPage";
 
@@ -81,6 +83,7 @@ export function KanbanTab() {
   const tasks = useTasks(channel.id);
   const config = useConfig();
   const move = useMoveTask(channel.id);
+  const undo = useUpdateTask();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
   // While dragging, the board renders this local copy; otherwise the server order.
@@ -157,12 +160,19 @@ export function KanbanTab() {
       byId.get(id)?.status === status &&
       serverColumns[status].join() === ids.join();
     if (unchanged) return;
+    const before = byId.get(id);
     move.move({
       id,
       status,
       ...anchorFor(ids, id),
       optimistic: applyColumns(tasks.data, final),
     });
+    if (status === "done" && before && before.status !== "done") {
+      toast(`완료했어요 · ${before.title}`, {
+        label: "되돌리기",
+        run: () => undo.mutate({ id, status: before.status }),
+      });
+    }
   };
 
   const openTask = (id: string) => {

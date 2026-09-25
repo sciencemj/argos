@@ -1,4 +1,10 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { useBusyAgents } from "../agentStream";
 import { AgentAvatar } from "../agents";
@@ -25,7 +31,16 @@ import {
   ShieldIcon,
   SunIcon,
 } from "../icons";
-import { btn, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
+import { PawTrail } from "../paws";
+import {
+  btn,
+  DdayBadge,
+  Dialog,
+  ErrorText,
+  field,
+  label,
+  useEnterOnChange,
+} from "../ui";
 
 type Kind = "course" | "project";
 const SECTIONS: { kind: Kind; title: string }[] = [
@@ -70,6 +85,11 @@ export function Sidebar({
   const inScope = channels.filter(
     (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
   );
+  // Switching areas: the name and the area's channels ease in.
+  const heading = useRef<HTMLDivElement>(null);
+  const scoped = useRef<HTMLDivElement>(null);
+  useEnterOnChange(heading, areaId, "-8px 0");
+  useEnterOnChange(scoped, areaId);
   const todayCount =
     (today.data?.events.length ?? 0) + (today.data?.due_tasks.length ?? 0);
 
@@ -77,7 +97,10 @@ export function Sidebar({
     <aside className="flex min-h-0 flex-col border-r border-line-soft bg-sidebar">
       <div className="flex flex-col gap-3.5 px-4 pt-[18px] pb-3.5">
         <div className="flex items-baseline justify-between px-1">
-          <div className="text-[22px] font-light tracking-[-0.02em] text-ink">
+          <div
+            ref={heading}
+            className="text-[22px] font-light tracking-[-0.02em] text-ink"
+          >
             {area?.name ?? "전체"}
           </div>
           <div className="font-mono text-[11px] text-meta">
@@ -142,28 +165,30 @@ export function Sidebar({
           )}
         </Section>
 
-        {SECTIONS.map(({ kind, title }) => (
-          <Section
-            key={kind}
-            title={title}
-            action={
-              <button
-                type="button"
-                aria-label={`${title} 추가`}
-                className="flex size-6 cursor-pointer items-center justify-center rounded-full text-meta hover:bg-inset hover:text-ink"
-                onClick={() => setAdding(kind)}
-              >
-                <PlusIcon size={14} />
-              </button>
-            }
-          >
-            {inScope
-              .filter((c) => c.kind === kind)
-              .map((c) => (
-                <ChannelRow key={c.id} channel={c} days={due.get(c.id)} />
-              ))}
-          </Section>
-        ))}
+        <div ref={scoped} className="flex flex-col gap-5">
+          {SECTIONS.map(({ kind, title }) => (
+            <Section
+              key={kind}
+              title={title}
+              action={
+                <button
+                  type="button"
+                  aria-label={`${title} 추가`}
+                  className="flex size-6 cursor-pointer items-center justify-center rounded-full text-meta hover:bg-inset hover:text-ink"
+                  onClick={() => setAdding(kind)}
+                >
+                  <PlusIcon size={14} />
+                </button>
+              }
+            >
+              {inScope
+                .filter((c) => c.kind === kind)
+                .map((c) => (
+                  <ChannelRow key={c.id} channel={c} days={due.get(c.id)} />
+                ))}
+            </Section>
+          ))}
+        </div>
         <AgentSection />
       </div>
 
@@ -328,9 +353,8 @@ function AgentSection() {
             <AgentAvatar id={a.name} size={22} />
             <span className="grow truncate">{a.display_name}</span>
             {busy.has(a.name) ? (
-              <span className="flex items-center gap-1.5 text-[11.5px] text-meta">
-                <span className="size-1.5 animate-pulse rounded-full bg-step-4" />
-                입력 중
+              <span className="text-[11.5px] text-meta">
+                <PawTrail label="입력 중" />
               </span>
             ) : (
               settings.data?.default_agent === a.name && (

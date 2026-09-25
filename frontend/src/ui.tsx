@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { ddayLabel, ddayTone } from "./dates";
 
 // Shared class strings (Tokens: pill buttons, 24px cards, CTA orange only on actions).
@@ -85,4 +85,29 @@ export function ErrorText({ error }: { error: unknown }) {
       {error instanceof Error ? error.message : String(error)}
     </p>
   );
+}
+
+/** Plays a short fade-and-rise on `ref` whenever `key` changes (not on first render),
+ * without remounting what is inside. Skipped when the system asks for less motion. */
+export function useEnterOnChange(
+  ref: RefObject<HTMLElement | null>,
+  key: unknown,
+  from = "0 6px",
+) {
+  const first = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs because `key` changed
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    ref.current?.animate(
+      [
+        { opacity: 0, translate: from },
+        { opacity: 1, translate: "0 0" },
+      ],
+      { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    );
+  }, [key, ref, from]);
 }

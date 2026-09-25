@@ -43,7 +43,7 @@ export function NotifySection() {
   return (
     <section
       aria-label="알림"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         알림
@@ -189,7 +189,7 @@ export function OpsSection() {
   return (
     <section
       aria-label="운영"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         백업과 자동 실행

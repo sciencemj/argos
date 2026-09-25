@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import {
   NavLink,
   Outlet,
+  useMatch,
   useNavigate,
   useOutletContext,
   useParams,
@@ -17,7 +18,7 @@ import {
   useVaultFolders,
   useVaultSettings,
 } from "../api";
-import { Feed } from "../feed";
+import { FEED_COLUMN, Feed } from "../feed";
 import { SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
 
@@ -129,6 +130,9 @@ export function ChannelPage() {
   const { data, isLoading } = useChannels();
   const [editing, setEditing] = useState(false);
   const channel = data?.channels.find((c) => c.id === channelId);
+  // The feed reads in a centered column; kanban, calendar and notes get more room.
+  const onFeed = useMatch("/c/:channelId") !== null;
+  const column = onFeed ? FEED_COLUMN : "mx-auto w-full max-w-[1480px]";
 
   if (isLoading) return null;
   if (!channel) {
@@ -146,7 +150,7 @@ export function ChannelPage() {
 
   return (
     <>
-      <header className="flex flex-col gap-3 px-8 pt-[18px] pb-4">
+      <header className={`${column} flex flex-col gap-3 px-8 pt-[18px] pb-4`}>
         <div className="flex items-center gap-3.5">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             <span className="text-hash">#</span> {channel.name}
@@ -172,7 +176,11 @@ export function ChannelPage() {
           )}
         </div>
       </header>
-      <Outlet context={channel} />
+      <div
+        className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
+      >
+        <Outlet context={channel} />
+      </div>
       {editable && (
         <ChannelSettings
           key={channel.id}
@@ -191,7 +199,9 @@ function DMPage({ channel }: { channel: Channel }) {
   const agent = agents.data?.find((a) => a.id === channel.default_agent_id);
   return (
     <>
-      <header className="flex items-center gap-3.5 px-8 pt-[18px] pb-4">
+      <header
+        className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 pt-[18px] pb-4`}
+      >
         <AgentAvatar id={agent?.name} size={36} />
         <div className="flex grow flex-col">
           <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "../agents";
 import {
   type Conflict,
@@ -33,22 +33,130 @@ import { NotifySection, OpsSection } from "./OpsSettings";
 
 const OFF = "";
 
+const GROUPS = [
+  { id: "agents", title: "에이전트", hint: "누가 답하고, 얼마나 썼는지" },
+  { id: "capture", title: "입력과 알림", hint: "정리 모델, 알림, 주간 리뷰" },
+  { id: "links", title: "연결", hint: "옵시디언, 애플 캘린더" },
+  { id: "work", title: "작업과 운영", hint: "코딩 잡 폴더, 백업, 자동 실행" },
+] as const;
+
+/** Settings, grouped (agents, capture, links, work) with a table of contents that
+ * follows the scroll on wide screens; one centred column on narrow ones. */
 export function SettingsPage() {
+  const [current, setCurrent] = useState<string>(GROUPS[0].id);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    const seen = new IntersectionObserver(
+      (entries) => {
+        const top = entries
+          .filter((e) => e.isIntersecting)
+          .sort(
+            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+          )[0];
+        if (top) setCurrent(top.target.id);
+      },
+      { root, rootMargin: "0px 0px -65% 0px" },
+    );
+    for (const g of GROUPS) {
+      const el = document.getElementById(g.id);
+      if (el) seen.observe(el);
+    }
+    return () => seen.disconnect();
+  }, []);
+
+  const section = (
+    id: (typeof GROUPS)[number]["id"],
+    children: React.ReactNode,
+  ) => {
+    const group = GROUPS.find((g) => g.id === id);
+    return (
+      <section
+        id={id}
+        aria-labelledby={`${id}-title`}
+        className="flex scroll-mt-8 flex-col gap-4"
+      >
+        <div className="flex items-baseline gap-3 px-1">
+          <h2
+            id={`${id}-title`}
+            className="m-0 text-[13px] font-semibold tracking-[0.02em] text-text-2"
+          >
+            {group?.title}
+          </h2>
+          <span className="text-[12px] text-meta">{group?.hint}</span>
+        </div>
+        {children}
+      </section>
+    );
+  };
+
   return (
-    <div className="flex min-h-0 grow flex-col gap-6 overflow-y-auto px-9 pt-8 pb-8">
-      <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-        설정
-      </h1>
-      <AgentSection />
-      <CustomAgentsSection />
-      <ClassifierSection />
-      <NotifySection />
-      <UsageSection />
-      <VaultSection />
-      <ICloudSection />
-      <CalendarFeedSection />
-      <JobRootsSection />
-      <OpsSection />
+    <div ref={scroller} className="min-h-0 grow overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[1120px] gap-12 px-9 pt-8 pb-16">
+        <nav
+          aria-label="설정 목차"
+          className="sticky top-8 hidden h-fit w-48 shrink-0 flex-col gap-1 lg:flex"
+        >
+          <h1 className="m-0 mb-4 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+            설정
+          </h1>
+          {GROUPS.map((g) => (
+            <a
+              key={g.id}
+              href={`#${g.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                document
+                  .getElementById(g.id)
+                  ?.scrollIntoView({ behavior: "smooth" });
+                setCurrent(g.id);
+              }}
+              aria-current={current === g.id ? "true" : undefined}
+              className="flex flex-col rounded-xl px-3 py-2 text-[13.5px] text-text-3 hover:text-ink aria-[current=true]:bg-card aria-[current=true]:text-ink aria-[current=true]:shadow-sm"
+            >
+              {g.title}
+              <span className="text-[11.5px] text-meta">{g.hint}</span>
+            </a>
+          ))}
+        </nav>
+        <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-10">
+          <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink lg:hidden">
+            설정
+          </h1>
+          {section(
+            "agents",
+            <>
+              <AgentSection />
+              <CustomAgentsSection />
+              <UsageSection />
+            </>,
+          )}
+          {section(
+            "capture",
+            <>
+              <ClassifierSection />
+              <NotifySection />
+            </>,
+          )}
+          {section(
+            "links",
+            <>
+              <VaultSection />
+              <ICloudSection />
+              <CalendarFeedSection />
+            </>,
+          )}
+          {section(
+            "work",
+            <>
+              <JobRootsSection />
+              <OpsSection />
+            </>,
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -124,7 +232,7 @@ function ClassifierSection() {
   return (
     <section
       aria-label="인박스 분류"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <div className="flex items-baseline gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
@@ -245,7 +353,7 @@ function AgentSection() {
   return (
     <section
       aria-label="기본 에이전트"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         기본 에이전트
@@ -284,7 +392,9 @@ function AgentSection() {
               )}
             </span>
             {a.name === active && (
-              <span className="text-[11.5px] text-meta">사용 중</span>
+              <span className="shrink-0 text-[11.5px] whitespace-nowrap text-meta">
+                사용 중
+              </span>
             )}
           </label>
         ))}
@@ -323,7 +433,7 @@ function JobRootsSection() {
   return (
     <section
       aria-label="코딩 잡 작업 디렉터리"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         코딩 잡 작업 디렉터리
@@ -399,7 +509,7 @@ function CalendarFeedSection() {
   return (
     <section
       aria-label="애플 캘린더 구독"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         애플 캘린더 구독
@@ -486,7 +596,7 @@ function ICloudSection() {
   return (
     <section
       aria-label="iCloud 캘린더"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <div className="flex items-baseline gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
@@ -762,7 +872,7 @@ function VaultSection() {
   return (
     <section
       aria-label="옵시디언 볼트"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         옵시디언 볼트
@@ -938,7 +1048,7 @@ function UsageSection() {
     <section
       id="usage"
       aria-label="에이전트 사용량"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
         에이전트 사용량

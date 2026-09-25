@@ -1,12 +1,20 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
 import { useChannels, useCreateArea } from "../api";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
 
+// The active look (card, border, shadow) is one pill that slides between buttons.
 const railButton =
-  "flex size-[42px] cursor-pointer items-center justify-center rounded-xl border border-transparent text-[15px]";
-const active = "border-line bg-card font-semibold text-ink shadow-raised";
+  "relative z-10 flex size-[42px] cursor-pointer items-center justify-center rounded-xl border border-transparent text-[15px] transition-[color,background-color,scale] duration-200 ease-out active:scale-90";
+const active = "font-semibold text-ink";
+const idle = "text-text-3 hover:bg-card/60 hover:text-ink";
 
 export function Rail({
   areaId,
@@ -26,6 +34,25 @@ export function Rail({
     if (!onSettings) lastPage.current = location.pathname + location.search;
   }, [onSettings, location.pathname, location.search]);
 
+  // Where the sliding pill sits: over whichever button is marked active.
+  const nav = useRef<HTMLElement>(null);
+  const [pill, setPill] = useState<{ top: number; moved: boolean } | null>(
+    null,
+  );
+  const activeKey = onSettings ? "settings" : (areaId ?? "home");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the buttons change
+  useLayoutEffect(() => {
+    const place = () => {
+      const el = nav.current?.querySelector<HTMLElement>("[data-active]");
+      setPill((prev) =>
+        el ? { top: el.offsetTop, moved: prev !== null } : null,
+      );
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [activeKey, data?.areas.length]);
+
   const openArea = (id: string) => {
     onPickArea(id);
     const first = data?.channels.find((c) => c.area_id === id);
@@ -34,9 +61,17 @@ export function Rail({
 
   return (
     <nav
+      ref={nav}
       aria-label="영역"
-      className="flex flex-col items-center gap-2.5 border-r border-line-soft bg-rail py-3.5"
+      className="relative flex flex-col items-center gap-2.5 border-r border-line-soft bg-rail py-3.5"
     >
+      {pill && (
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute left-1/2 size-[42px] -translate-x-1/2 rounded-xl border border-line bg-card shadow-raised ${pill.moved ? "rail-pill" : ""}`}
+          style={{ top: pill.top }}
+        />
+      )}
       <div className="flex size-[42px] shrink-0 items-center justify-center rounded-xl bg-step-5 text-on-dark">
         <DogIcon />
       </div>
@@ -44,7 +79,9 @@ export function Rail({
       <button
         type="button"
         aria-label="홈 · 오늘"
-        className={`${railButton} ${areaId === null && !onSettings ? active : "text-text-3"}`}
+        data-active={activeKey === "home" || undefined}
+        aria-current={activeKey === "home" ? "page" : undefined}
+        className={`${railButton} ${activeKey === "home" ? active : idle}`}
         onClick={() => {
           onPickArea(null);
           navigate("/");
@@ -58,7 +95,9 @@ export function Rail({
           type="button"
           aria-label={area.name}
           title={area.name}
-          className={`${railButton} ${area.id === areaId ? active : "text-text-3"}`}
+          data-active={activeKey === area.id || undefined}
+          aria-current={activeKey === area.id ? "page" : undefined}
+          className={`${railButton} ${activeKey === area.id ? active : idle}`}
           onClick={() => openArea(area.id)}
         >
           {area.icon || area.name.slice(0, 1)}
@@ -67,7 +106,7 @@ export function Rail({
       <button
         type="button"
         aria-label="영역 추가"
-        className={`${railButton} border-dashed !border-line text-meta`}
+        className={`${railButton} border-dashed !border-line text-meta hover:bg-card/60 hover:text-ink`}
         onClick={() => setAdding(true)}
       >
         <PlusIcon size={17} />
@@ -86,9 +125,8 @@ export function Rail({
           e.preventDefault();
           navigate(lastPage.current); // pressed again: back to where settings were opened
         }}
-        className={({ isActive }) =>
-          `${railButton} ${isActive ? active : "text-text-3"}`
-        }
+        data-active={onSettings || undefined}
+        className={`${railButton} ${onSettings ? active : idle}`}
       >
         <SettingsIcon size={18} />
       </NavLink>

@@ -36,7 +36,7 @@ export function CustomAgentsSection() {
   return (
     <section
       aria-label="커스텀 에이전트"
-      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <div className="flex items-center gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
@@ -91,17 +91,21 @@ export function CustomAgentsSection() {
           </span>
           <button
             type="button"
-            className={btn.ghost}
+            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
             onClick={() => setEditing(a)}
           >
             수정
           </button>
-          <a className={btn.ghost} href={agentExportUrl(a.name)} download>
+          <a
+            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
+            href={agentExportUrl(a.name)}
+            download
+          >
             내보내기
           </a>
           <button
             type="button"
-            className={btn.ghost}
+            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
             disabled={remove.isPending}
             onClick={() =>
               confirm(

@@ -19,7 +19,6 @@ import {
   useMessages,
   usePinMessage,
   usePostMessage,
-  useUpdateTask,
 } from "./api";
 import {
   ApprovalCard,
@@ -28,6 +27,7 @@ import {
   SuggestionCard,
   TaskRefCard,
 } from "./cards";
+import { useCompleteTask } from "./complete";
 import { fmt, localInputToIso } from "./dates";
 import {
   CalendarIcon,
@@ -38,6 +38,7 @@ import {
   SendIcon,
 } from "./icons";
 import { Markdown } from "./markdown";
+import { PawTrail } from "./paws";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
 const COMMANDS = [
@@ -60,6 +61,9 @@ export function useOpenThread() {
   };
 }
 
+/** The feed's reading column: centered on wide screens, header and input line up with it. */
+export const FEED_COLUMN = "mx-auto w-full max-w-[960px]";
+
 /** Channel feed: messages are the input layer, the cards show the objects (PLAN P4). */
 export function Feed({ channel }: { channel: Channel }) {
   const messages = useMessages(channel.id);
@@ -79,42 +83,48 @@ export function Feed({ channel }: { channel: Channel }) {
   return (
     <>
       {pinned.length > 0 && (
-        <div className="mx-8 mb-2 flex items-center gap-2 overflow-hidden rounded-full border border-line-soft bg-card px-4 py-2 text-[12.5px] text-text-3">
-          <PinIcon size={13} />
-          <span className="truncate">
-            {pinned.map((m) => m.body).join(" · ")}
-          </span>
+        <div className={`${FEED_COLUMN} mb-2 px-8`}>
+          <div className="flex items-center gap-2 overflow-hidden rounded-full border border-line-soft bg-card px-4 py-2 text-[12.5px] text-text-3">
+            <PinIcon size={13} />
+            <span className="truncate">
+              {pinned.map((m) => m.body).join(" · ")}
+            </span>
+          </div>
         </div>
       )}
       <section
         ref={scroller}
         aria-label="메시지"
-        className="flex min-h-0 grow flex-col gap-[26px] overflow-y-auto px-8 pt-2 pb-[18px]"
+        className="flex min-h-0 grow flex-col overflow-y-auto"
       >
-        <div className="grow" />
-        {messages.hasNextPage && (
-          <button
-            type="button"
-            className={`${btn.ghost} self-center`}
-            onClick={() => void messages.fetchNextPage()}
-          >
-            이전 메시지 더 보기
-          </button>
-        )}
-        {messages.isSuccess && items.length === 0 && (
-          <div className="text-[13px] text-text-3">
-            #{channel.name}에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할
-            일·일정으로 정리해요.
-          </div>
-        )}
-        {items.map((m) => (
-          <MessageItem
-            key={m.id}
-            message={m}
-            channel={channel}
-            onThread={openThread}
-          />
-        ))}
+        <div
+          className={`${FEED_COLUMN} flex grow flex-col gap-[26px] px-8 pt-2 pb-[18px]`}
+        >
+          <div className="grow" />
+          {messages.hasNextPage && (
+            <button
+              type="button"
+              className={`${btn.ghost} self-center`}
+              onClick={() => void messages.fetchNextPage()}
+            >
+              이전 메시지 더 보기
+            </button>
+          )}
+          {messages.isSuccess && items.length === 0 && (
+            <div className="text-[13px] text-text-3">
+              #{channel.name}에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할
+              일·일정으로 정리해요.
+            </div>
+          )}
+          {items.map((m) => (
+            <MessageItem
+              key={m.id}
+              message={m}
+              channel={channel}
+              onThread={openThread}
+            />
+          ))}
+        </div>
       </section>
       <Composer channel={channel} />
     </>
@@ -232,6 +242,24 @@ export function MessageItem({
   );
 }
 
+/** The run's state; while an agent works, paw prints walk beside what it is doing. */
+function RunLabel({
+  message,
+  liveStatus,
+}: {
+  message: Message;
+  liveStatus?: string;
+}) {
+  const text = runLabel(message, liveStatus);
+  const working =
+    message.run?.status === "running" || message.run?.status === "queued";
+  return working ? (
+    <PawTrail label={text.replace(/…$/, "")} />
+  ) : (
+    <span>{text}</span>
+  );
+}
+
 function runLabel(message: Message, liveStatus?: string): string {
   const run = message.run;
   if (!run) return "";
@@ -268,7 +296,7 @@ function AgentBody({
     <div className="flex flex-col gap-1.5">
       {!compact && (
         <div className="flex items-center gap-2 text-[11.5px] text-meta">
-          <span>{runLabel(message, live?.status)}</span>
+          <RunLabel message={message} liveStatus={live?.status} />
           {running && run && (
             <CancelButton
               runId={run.id}
@@ -338,7 +366,7 @@ function AgentReplyCard({ message }: { message: Message }) {
         </span>
         <span className="grow" />
         <span className="text-[11.5px] text-meta">
-          {runLabel(message, live?.status)}
+          <RunLabel message={message} liveStatus={live?.status} />
         </span>
         {running && message.run && (
           <CancelButton runId={message.run.id} name={agent.name} />
@@ -359,7 +387,7 @@ function QuickActions({
 }) {
   const pin = usePinMessage();
   const convert = useConvertMessage();
-  const updateTask = useUpdateTask();
+  const completion = useCompleteTask();
   const [eventOpen, setEventOpen] = useState(false);
   const ref = message.ref ?? {};
   const task = ref.task;
@@ -377,7 +405,7 @@ function QuickActions({
           type="button"
           aria-label="완료"
           className={icon}
-          onClick={() => updateTask.mutate({ id: task.id, status: "done" })}
+          onClick={() => completion.complete(task)}
         >
           <CheckIcon />
         </button>
@@ -667,7 +695,9 @@ export function Composer({
 
   const inputId = threadRootId ? "thread-reply" : "composer";
   return (
-    <div className={`relative ${narrow ? "px-5 pb-[18px]" : "px-8 pb-6"}`}>
+    <div
+      className={`relative ${narrow ? "px-5 pb-[18px]" : `${FEED_COLUMN} px-8 pb-6`}`}
+    >
       {options.length > 0 && (
         <div
           role="listbox"
@@ -791,7 +821,7 @@ export function ThreadReplies({
   const channels = useChannels();
   const channel = channels.data?.channels.find((c) => c.id === channelId);
   if (!channel) return null;
-  const column = wide ? "mx-auto w-full max-w-[880px]" : "";
+  const column = wide ? FEED_COLUMN : "";
 
   return (
     <>
