@@ -192,9 +192,10 @@ class ActivityLog(Record):
 
 
 class SourceLink(Record):
-    """Where an Argos object came from or is mirrored to outside (PLAN §5, Phase 7b):
-    one CalDAV resource per event. Change detection compares the remote ETag and the
-    object's updated_at with what they were at the last sync."""
+    """Where an Argos object came from or is mirrored to outside (PLAN §5): a CalDAV
+    resource per synced event (Phase 7b), a note line per imported task (Phase 8).
+    Change detection compares the outside state (ETag, checkbox) and the object's
+    updated_at with what they were at the last sync."""
 
     __tablename__ = "source_link"
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_source_link_external"),)
@@ -202,9 +203,10 @@ class SourceLink(Record):
     object_type: Mapped[str] = mapped_column(String(20))
     object_id: Mapped[str] = mapped_column(String(36), index=True)
     source: Mapped[str] = mapped_column(String(20))  # "icloud"
-    external_id: Mapped[str] = mapped_column(String(1000))  # resource href
-    calendar_url: Mapped[str] = mapped_column(String(1000))
-    calendar_name: Mapped[str] = mapped_column(String(200))
+    external_id: Mapped[str] = mapped_column(String(1000))  # CalDAV href / vault block id
+    # Where it lives: the calendar (URL, name) or the note (vault path, title).
+    container: Mapped[str] = mapped_column(String(1000))
+    container_name: Mapped[str] = mapped_column(String(200))
     uid: Mapped[str] = mapped_column(String(500))
     etag: Mapped[str | None] = mapped_column(String(200))
     content_hash: Mapped[str | None] = mapped_column(String(64))
@@ -214,6 +216,23 @@ class SourceLink(Record):
     last_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     # Remote fields waiting for the user when both sides changed since the last sync.
     conflict: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class NoteRef(Record):
+    """A Markdown note in the Obsidian vault (PLAN §5). The body stays in the file; its
+    text is only in the `note_fts` search index."""
+
+    __tablename__ = "note_ref"
+
+    vault_path: Mapped[str] = mapped_column(String(1000), unique=True)  # relative, "/"
+    title: Mapped[str] = mapped_column(String(500))
+    channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("channel.id", ondelete="SET NULL"), index=True
+    )
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    modified_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    indexed_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class AppSetting(Record):

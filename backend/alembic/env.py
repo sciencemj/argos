@@ -23,6 +23,11 @@ def render_item(type_: str, obj: Any, autogen_context: Any) -> str | Literal[Fal
     return False
 
 
+def include_name(name: str | None, type_: str, _parent: object) -> bool:
+    """The FTS5 index (note_fts and its shadow tables) is created by hand, not by models."""
+    return not (type_ == "table" and name is not None and name.startswith("note_fts"))
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.db_url,
@@ -31,6 +36,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
         render_item=render_item,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -43,6 +49,7 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         render_as_batch=True,
         render_item=render_item,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()

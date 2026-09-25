@@ -27,9 +27,9 @@ hermes mcp add argos --url "http://127.0.0.1:8000/mcp?agent=hermes"
 
 | 구분 | 도구 |
 |---|---|
-| 읽기 | `list_channels`, `get_today`, `get_schedule`, `list_tasks`, `list_inbox`, `get_course_progress` |
+| 읽기 | `list_channels`, `get_today`, `get_schedule`, `list_tasks`, `list_inbox`, `get_course_progress`, `search_notes` |
 | 쓰기 | `add_task`, `update_task`, `move_task`, `create_event`, `update_event`, `capture_note` |
 | 승인 필요 | `delete_task`, `delete_event` |
 
 날짜는 `YYYY-MM-DD`(할 일 마감이면 23:59, 일정이면 종일) 또는 ISO 시각. 오프셋이 없으면
-Asia/Seoul로 읽는다. 채널은 이름(`#` 생략 가능) 또는 id. `search_notes`는 옵시디언 연동(Phase 8)에서 추가된다.
+Asia/Seoul로 읽는다. 채널은 이름(`#` 생략 가능) 또는 id. `search_notes`는 연결된 옵시디언 볼트의 노트를 제목·본문으로 찾는다(볼트가 없으면 빈 결과).

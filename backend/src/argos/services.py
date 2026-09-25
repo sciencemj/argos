@@ -531,7 +531,7 @@ async def _check_event_writable(
     moving = changes is None or any(key in changes for key in EVENT_TIME_FIELDS + ("rrule",))
     # Moving an event to another channel is Argos-only, so always allowed.
     if link is not None and link.read_only and (changes is None or set(changes) - {"channel_id"}):
-        raise ConflictError(f"'{link.calendar_name}' 캘린더의 일정은 캘린더 앱에서 고쳐 주세요")
+        raise ConflictError(f"'{link.container_name}' 캘린더의 일정은 캘린더 앱에서 고쳐 주세요")
     if event.rrule and link is not None and moving:
         raise ConflictError("반복 일정은 캘린더 앱에서 고쳐 주세요")
 
@@ -762,6 +762,38 @@ async def accept_inbox_item(
     )
     await _repoint_messages(session, "inbox_item", item.id, obj, actor)
     return obj
+
+
+async def inbox_note_request(
+    session: AsyncSession, item_id: str, overrides: dict[str, Any] | None = None
+) -> tuple[InboxItem, Channel, str, str]:
+    """What a study note made from an inbox item needs: the item, its channel, a title
+    and a body (PLAN Phase 8 quick notes). The file itself is written by the vault."""
+    item = await get_inbox_item(session, item_id)
+    if item.status == InboxStatus.ACCEPTED:
+        raise ConflictError("inbox item was already accepted")
+    fields = {k: v for k, v in (item.suggestion_json or {}).items() if k != "error"} | (
+        overrides or {}
+    )
+    channel = await get_channel(session, await _resolve_channel(session, fields, item.channel_id))
+    title = (fields.get("title") or item.raw_text).strip()[:200]
+    body = str(fields.get("summary") or item.raw_text)
+    return item, channel, title, body
+
+
+async def mark_inbox_noted(
+    session: AsyncSession, item: InboxItem, note_id: str, actor: str
+) -> None:
+    result = {"object_type": "note_ref", "id": note_id}
+    await _update(
+        session,
+        item,
+        {
+            "status": InboxStatus.ACCEPTED,
+            "suggestion_json": (item.suggestion_json or {}) | {"result": result},
+        },
+        actor,
+    )
 
 
 async def _resolve_channel(

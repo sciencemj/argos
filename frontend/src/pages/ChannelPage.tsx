@@ -14,6 +14,8 @@ import {
   useChannels,
   useDeleteChannel,
   useUpdateChannel,
+  useVaultFolders,
+  useVaultSettings,
 } from "../api";
 import { Feed } from "../feed";
 import { SettingsIcon } from "../icons";
@@ -76,11 +78,21 @@ export function ChannelPage() {
             <NavLink to="calendar" className={tab}>
               캘린더
             </NavLink>
+            {channel.kind !== "system" && (
+              <>
+                <NavLink to="notes" className={tab}>
+                  노트
+                </NavLink>
+                <NavLink to="materials" className={tab}>
+                  자료
+                </NavLink>
+              </>
+            )}
           </nav>
           <span className="grow" />
           {channel.vault_path && (
             <span className="truncate text-[12.5px] text-meta">
-              볼트 <span className="font-mono">{channel.vault_path}</span>
+              옵시디언 <span className="font-mono">{channel.vault_path}/</span>
             </span>
           )}
         </div>
@@ -141,6 +153,8 @@ function ChannelSettings({
   const [vaultPath, setVaultPath] = useState(channel.vault_path ?? "");
   const [agentId, setAgentId] = useState(channel.default_agent_id ?? "");
   const agents = useAgents();
+  const vault = useVaultSettings();
+  const folders = useVaultFolders(open && Boolean(vault.data?.path));
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -206,8 +220,23 @@ function ChannelSettings({
             className={`${field} font-mono text-[13px]`}
             value={vaultPath}
             onChange={(e) => setVaultPath(e.target.value)}
-            placeholder="강의/과목명/"
+            list="vault-folders"
+            placeholder={
+              folders.data
+                ? "볼트 안의 폴더 고르기"
+                : "앱 설정에서 볼트를 먼저 지정하세요"
+            }
+            disabled={!folders.data && !vaultPath}
           />
+          <datalist id="vault-folders">
+            {folders.data?.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+          <span className="text-[11.5px] text-meta">
+            이 폴더의 노트·자료가 채널에 보이고, 노트의 체크박스 할 일이
+            칸반으로 와요.
+          </span>
         </label>
         <ErrorText error={update.error} />
         <div className="flex items-center gap-2">

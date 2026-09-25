@@ -19,7 +19,10 @@ import {
   useSaveClassifier,
   useSaveDefaultAgent,
   useSaveJobRoots,
+  useSaveVault,
   useSyncCalendars,
+  useSyncVault,
+  useVaultSettings,
 } from "../api";
 import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
@@ -34,6 +37,7 @@ export function SettingsPage() {
       </h1>
       <AgentSection />
       <ClassifierSection />
+      <VaultSection />
       <ICloudSection />
       <CalendarFeedSection />
       <JobRootsSection />
@@ -713,5 +717,185 @@ function ConflictList() {
       ))}
       <ErrorText error={resolve.error} />
     </div>
+  );
+}
+
+const TASK_TEXT: [string, string][] = [
+  ["imported", "가져온 할 일"],
+  ["checked_in_argos", "노트에 체크"],
+  ["checked_in_note", "앱에 반영"],
+  ["updated", "바뀐 할 일"],
+  ["unlinked", "연결 해제"],
+];
+
+/** Obsidian vault (PLAN Phase 8): which vault, where daily notes live, what happened. */
+function VaultSection() {
+  const vault = useVaultSettings();
+  const save = useSaveVault();
+  const sync = useSyncVault();
+  const data = vault.data;
+  const [path, setPath] = useState<string | null>(null);
+  const [daily, setDaily] = useState<string | null>(null);
+  const status = data?.status;
+  const running = Boolean(status?.running) || sync.isPending;
+  const pathValue = path ?? data?.path ?? "";
+  const dailyValue =
+    daily ??
+    (data?.daily_folder !== data?.daily_folder_detected
+      ? data?.daily_folder
+      : "") ??
+    "";
+  const tasks = status?.last_tasks
+    ? TASK_TEXT.filter(([key]) => status.last_tasks?.[key])
+        .map(([key, text]) => `${text} ${status.last_tasks?.[key]}`)
+        .join(" · ")
+    : "";
+
+  return (
+    <section
+      aria-label="옵시디언 볼트"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        옵시디언 볼트
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        볼트의 노트를 검색하고 읽을 수 있어요. 채널 설정에서 폴더를 연결하면 그
+        폴더 노트의 체크박스 할 일이 칸반으로 오고, 체크 표시가 양쪽에 반영돼요.
+        최근 데일리 노트의 할 일은 #일상으로 와요.
+      </p>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate(
+            { path: pathValue || null, daily_folder: dailyValue || null },
+            {
+              onSuccess: () => {
+                setPath(null);
+                setDaily(null);
+              },
+            },
+          );
+        }}
+      >
+        <label className="flex flex-col gap-1">
+          <span className={label}>볼트 폴더</span>
+          <input
+            className={`${field} font-mono text-[13px]`}
+            value={pathValue}
+            onChange={(e) => setPath(e.target.value)}
+            list="known-vaults"
+            placeholder="/Users/…/My Vault"
+          />
+          <datalist id="known-vaults">
+            {data?.detected.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </label>
+        {data && data.detected.length > 0 && !data.path && (
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-text-3">
+            옵시디언에서 찾은 볼트:
+            {data.detected.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`${btn.outline} h-8 text-[12.5px]`}
+                onClick={() => setPath(p)}
+              >
+                {p.split("/").pop()}
+              </button>
+            ))}
+          </div>
+        )}
+        <label className="flex flex-col gap-1">
+          <span className={label}>데일리 노트 폴더</span>
+          <input
+            className={`${field} font-mono text-[13px]`}
+            value={dailyValue}
+            onChange={(e) => setDaily(e.target.value)}
+            placeholder={
+              data?.daily_folder_detected
+                ? `${data.daily_folder_detected} (볼트 설정에서 찾음)`
+                : "없음"
+            }
+          />
+          {data && (
+            <span className="text-[11.5px] text-meta">
+              최근 {data.daily_days}일 데일리 노트의 열린 할 일만 가져와요.
+            </span>
+          )}
+        </label>
+        <p className="m-0 rounded-xl bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-text-2">
+          할 일을 가져오면 노트의 그 줄 끝에 <code>^argos-…</code> 표시를 붙여
+          다시 찾아요. 그 표시와 체크 표시 말고는 노트를 바꾸지 않고, 바꾸기
+          전에 앱 데이터 폴더에 백업을 남겨요. 새 노트는 공부 노트를 저장할 때만
+          만들어요.
+        </p>
+        <ErrorText error={save.error} />
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className={btn.cta}
+            disabled={save.isPending || (path === null && daily === null)}
+          >
+            저장
+          </button>
+          {data?.path && (
+            <button
+              type="button"
+              className={btn.ghost}
+              onClick={() => {
+                if (
+                  confirm("볼트 연결을 끊을까요? 노트 파일은 그대로 남아요.")
+                ) {
+                  save.mutate({ path: null, daily_folder: null });
+                }
+              }}
+            >
+              연결 끊기
+            </button>
+          )}
+        </div>
+      </form>
+      {data?.path && status && (
+        <>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-page px-4 py-3 text-[13px]">
+            <span className="grow text-text-2">
+              {running
+                ? "노트를 읽는 중…"
+                : status.last_run_at
+                  ? `노트 ${status.notes}개 · ${fmt(status.last_run_at, "M/d HH:mm")}${tasks ? ` · ${tasks}` : ""}`
+                  : "아직 읽지 않았어요"}
+            </span>
+            <button
+              type="button"
+              className={btn.outline}
+              disabled={running}
+              onClick={() => sync.mutate(undefined)}
+            >
+              다시 읽기
+            </button>
+          </div>
+          {status.last_error && !running && (
+            <p
+              role="alert"
+              className="m-0 rounded-xl bg-danger-bg px-3.5 py-2.5 text-[12.5px] text-danger"
+            >
+              {status.last_error}
+            </p>
+          )}
+          {status.warnings.length > 0 && (
+            <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[12px] text-text-3">
+              {status.warnings.slice(0, 5).map((w) => (
+                <li key={w}>· {w}</li>
+              ))}
+            </ul>
+          )}
+          <ErrorText error={sync.error} />
+        </>
+      )}
+    </section>
   );
 }

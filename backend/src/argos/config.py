@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     caldav_write_calendar: str = "Argos"  # the only calendar Argos writes to
     caldav_poll_minutes: int = 10
 
+    # Obsidian vault (PLAN Phase 8). Usually picked in the settings screen; the daily
+    # notes folder defaults to the vault's own Daily Notes setting.
+    vault_path: Path | None = None
+    vault_daily_folder: str | None = None
+    vault_daily_days: int = 14  # open tasks in daily notes older than this are left out
+    vault_backup_dir: Path = Path("data/vault-backups")
+
     job_roots: list[Path] = [Path("data/jobs")]
     job_concurrency: int = 1  # jobs running at once; the rest wait as "queued"
     job_timeout: float = 1800.0

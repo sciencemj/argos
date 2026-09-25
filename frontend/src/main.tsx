@@ -8,6 +8,8 @@ import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CalendarTab } from "./pages/CalendarTab";
 import { ChannelPage, FeedTab } from "./pages/ChannelPage";
 import { KanbanTab } from "./pages/KanbanTab";
+import { MaterialsTab } from "./pages/MaterialsTab";
+import { NotesTab } from "./pages/NotesTab";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
 
@@ -32,6 +34,8 @@ const router = createBrowserRouter([
           { index: true, element: <FeedTab /> },
           { path: "kanban", element: <KanbanTab /> },
           { path: "calendar", element: <CalendarTab /> },
+          { path: "notes", element: <NotesTab /> },
+          { path: "materials", element: <MaterialsTab /> },
         ],
       },
     ],

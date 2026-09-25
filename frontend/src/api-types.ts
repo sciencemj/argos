@@ -469,6 +469,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/vault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Vault Settings */
+        get: operations["get_vault_settings_api_v1_settings_vault_get"];
+        /** Put Vault Settings */
+        put: operations["put_vault_settings_api_v1_settings_vault_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Vault */
+        post: operations["sync_vault_api_v1_vault_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Vault Folders */
+        get: operations["vault_folders_api_v1_vault_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notes
+         * @description Notes, newest first by default; with `q`, best match first unless `sort` says
+         *     otherwise. `order` defaults to newest first for dates, A first for names.
+         */
+        get: operations["list_notes_api_v1_notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Note */
+        get: operations["get_note_api_v1_notes__note_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Materials
+         * @description Lecture files (PDF, slides, …) in the channel's vault folder.
+         */
+        get: operations["list_materials_api_v1_channels__channel_id__materials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vault File
+         * @description A file from the vault for reading in the browser (materials, note images).
+         */
+        get: operations["vault_file_api_v1_vault_file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -1169,7 +1299,7 @@ export interface components {
             /** Channel Id */
             channel_id?: string | null;
             /** Type */
-            type?: ("task" | "event" | "idea") | null;
+            type?: ("task" | "event" | "idea" | "study_note") | null;
         };
         /** InboxCreate */
         InboxCreate: {
@@ -1278,6 +1408,22 @@ export interface components {
             /** Roots */
             roots: string[];
         };
+        /** MaterialOut */
+        MaterialOut: {
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Folder */
+            folder: string;
+            /** Size */
+            size: number;
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+        };
         /** MessageConvert */
         MessageConvert: {
             /** Title */
@@ -1352,6 +1498,48 @@ export interface components {
         MessageUpdate: {
             /** Pinned */
             pinned?: boolean | null;
+        };
+        /** NoteDetailOut */
+        NoteDetailOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Vault Path */
+            vault_path: string;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Tags */
+            tags: string[];
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+            /** Snippet */
+            snippet?: string | null;
+            /** Body */
+            body: string;
+        };
+        /** NoteOut */
+        NoteOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Vault Path */
+            vault_path: string;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Tags */
+            tags: string[];
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+            /** Snippet */
+            snippet?: string | null;
         };
         /** OllamaModelOut */
         OllamaModelOut: {
@@ -1585,6 +1773,44 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VaultIn */
+        VaultIn: {
+            /** Path */
+            path?: string | null;
+            /** Daily Folder */
+            daily_folder?: string | null;
+        };
+        /** VaultOut */
+        VaultOut: {
+            /** Path */
+            path: string | null;
+            /** Detected */
+            detected: string[];
+            /** Daily Folder */
+            daily_folder: string | null;
+            /** Daily Folder Detected */
+            daily_folder_detected: string | null;
+            /** Daily Days */
+            daily_days: number;
+            status: components["schemas"]["VaultStatusOut"];
+        };
+        /** VaultStatusOut */
+        VaultStatusOut: {
+            /** Running */
+            running: boolean;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Notes */
+            notes: number;
+            /** Warnings */
+            warnings: string[];
+            /** Last Tasks */
+            last_tasks: {
+                [key: string]: number;
+            } | null;
         };
     };
     responses: never;
@@ -2539,6 +2765,225 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vault_settings_api_v1_settings_vault_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultOut"];
+                };
+            };
+        };
+    };
+    put_vault_settings_api_v1_settings_vault_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_vault_api_v1_vault_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultOut"];
+                };
+            };
+        };
+    };
+    vault_folders_api_v1_vault_folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    list_notes_api_v1_notes_get: {
+        parameters: {
+            query?: {
+                channel_id?: string | null;
+                q?: string | null;
+                sort?: ("relevance" | "modified" | "title" | "path") | null;
+                order?: ("asc" | "desc") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_note_api_v1_notes__note_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_materials_api_v1_channels__channel_id__materials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vault_file_api_v1_vault_file_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

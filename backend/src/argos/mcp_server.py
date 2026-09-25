@@ -20,7 +20,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from argos import chat, services
+from argos import chat, services, vault
 from argos.config import Settings
 from argos.models import Channel, ChannelKind, Event, InboxStatus, Task, TaskStatus
 
@@ -124,6 +124,29 @@ def build_mcp(app: FastAPI) -> MCPServer:
             )
             names = await _channel_names(s)
             return [_event(e, names, tz) for e in events]
+
+        return await run(work)
+
+    @mcp.tool()
+    async def search_notes(
+        query: str, channel: str | None = None, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Search the user's Obsidian notes (title and body). Returns titles, vault paths
+        and a snippet with the match in [brackets]; use it to ground answers in their notes."""
+
+        async def work(s: AsyncSession) -> list[dict[str, Any]]:
+            channel_id = (await _channel(s, channel)).id if channel else None
+            names = await _channel_names(s)
+            found = await vault.search(s, query, channel_id, max(1, min(limit, 30)))
+            return [
+                {
+                    "title": n.title,
+                    "path": n.vault_path,
+                    "channel": names.get(n.channel_id or ""),
+                    "snippet": snippet,
+                }
+                for n, snippet in found
+            ]
 
         return await run(work)
 

@@ -437,8 +437,8 @@ async def sync(
                         object_id=event.id,
                         source=SOURCE,
                         external_id=item.href,
-                        calendar_url=cal.url,
-                        calendar_name=cal.name,
+                        container=cal.url,
+                        container_name=cal.name,
                         uid=uid,
                         etag=item.etag,
                         content_hash=remote.digest(),
@@ -451,7 +451,7 @@ async def sync(
                 result.created += 1
                 continue
 
-            link.calendar_name = cal.name
+            link.container_name = cal.name
             event = await session.get(Event, link.object_id)
             if event is None:  # deleted in Argos
                 if not link.read_only:
@@ -560,8 +560,8 @@ async def _push_new(
                 object_id=event.id,
                 source=SOURCE,
                 external_id=href,
-                calendar_url=target.url,
-                calendar_name=target.name,
+                container=target.url,
+                container_name=target.name,
                 uid=uid,
                 etag=etag,
                 content_hash=ours.digest(),
@@ -598,7 +598,7 @@ async def resolve(
     else:
         ours = Fields.of(event)
         link.external_id, link.etag = await server.put(
-            link.calendar_url, link.uid, render(link.uid, ours, now), link.external_id, remote_etag
+            link.container, link.uid, render(link.uid, ours, now), link.external_id, remote_etag
         )
         link.content_hash = ours.digest()
     link.local_updated_at = event.updated_at

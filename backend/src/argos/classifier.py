@@ -315,7 +315,7 @@ def build_classifier(settings: Settings) -> Classifier | None:
 # --- runtime settings ------------------------------------------------------------
 
 # Keys in the app_setting table that override the matching Settings fields.
-OVERRIDABLE = ("classifier_model", "default_agent", "job_roots")
+OVERRIDABLE = ("classifier_model", "default_agent", "job_roots", "vault_path", "vault_daily_folder")
 
 
 def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> Settings:
@@ -323,6 +323,8 @@ def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> Settings:
     update = {k: v for k, v in overrides.items() if k in OVERRIDABLE}
     if "job_roots" in update:  # stored as JSON strings
         update["job_roots"] = [Path(p) for p in update["job_roots"]]
+    if update.get("vault_path"):
+        update["vault_path"] = Path(update["vault_path"])
     return settings.model_copy(update=update) if update else settings
 
 

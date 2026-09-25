@@ -66,9 +66,8 @@ def test_tool_list(server: str) -> None:
     assert set(names) == {
         "list_channels", "get_today", "get_schedule", "list_tasks", "list_inbox",
         "get_course_progress", "add_task", "update_task", "move_task", "create_event",
-        "update_event", "capture_note", "delete_task", "delete_event",
+        "update_event", "capture_note", "delete_task", "delete_event", "search_notes",
     }  # fmt: skip
-    assert "search_notes" not in names  # arrives with the vault (Phase 8)
 
 
 def test_add_task_is_attributed_and_announced(server: str) -> None:

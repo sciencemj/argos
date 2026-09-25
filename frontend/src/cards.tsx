@@ -184,22 +184,16 @@ function Proposal({
           </div>
           <ErrorText error={accept.error} />
           <div className="flex items-center gap-2">
-            {type === "study_note" ? (
-              <span className="text-[12.5px] text-text-3">
-                노트 파일은 옵시디언 연동 후 만들 수 있어요
-              </span>
-            ) : (
-              <button
-                type="button"
-                className={btn.cta}
-                disabled={accept.isPending || !target}
-                onClick={() =>
-                  accept.mutate({ id: item.id, channel_id: target?.id })
-                }
-              >
-                추가하기
-              </button>
-            )}
+            <button
+              type="button"
+              className={btn.cta}
+              disabled={accept.isPending || !target}
+              onClick={() =>
+                accept.mutate({ id: item.id, channel_id: target?.id })
+              }
+            >
+              {type === "study_note" ? "노트로 저장" : "추가하기"}
+            </button>
             {type !== "study_note" && (
               <button
                 type="button"
@@ -512,35 +506,39 @@ export function InboxRow({ item }: { item: InboxItem }) {
           {(item.confidence ?? 0).toFixed(2)}
         </span>
       </div>
-      {!note && (
-        <div className="flex items-center gap-1.5">
-          {!target && (
-            <select
-              aria-label="채널 고르기"
-              className={`${field} h-8 w-auto min-w-0 grow text-[12.5px]`}
-              value={picked}
-              onChange={(e) => setPicked(e.target.value)}
-            >
-              <option value="">채널 고르기</option>
-              {pickable.map((c) => (
-                <option key={c.id} value={c.id}>
-                  # {c.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            type="button"
-            className={`${btn.cta} h-8 shrink-0 px-3.5 text-[12.5px] whitespace-nowrap`}
-            disabled={accept.isPending || (!target && !picked)}
-            onClick={() =>
-              accept.mutate({ id: item.id, channel_id: target?.id ?? picked })
-            }
+      <div className="flex items-center gap-1.5">
+        {!target && (
+          <select
+            aria-label="채널 고르기"
+            className={`${field} h-8 w-auto min-w-0 grow text-[12.5px]`}
+            value={picked}
+            onChange={(e) => setPicked(e.target.value)}
           >
-            {target ? "추가하기" : "채널 골라 추가"}
-          </button>
-        </div>
-      )}
+            <option value="">채널 고르기</option>
+            {pickable.map((c) => (
+              <option key={c.id} value={c.id}>
+                # {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className={`${btn.cta} h-8 shrink-0 px-3.5 text-[12.5px] whitespace-nowrap`}
+          disabled={accept.isPending || (!target && !picked)}
+          onClick={() =>
+            accept.mutate({ id: item.id, channel_id: target?.id ?? picked })
+          }
+        >
+          {note
+            ? target
+              ? "노트로 저장"
+              : "채널 골라 저장"
+            : target
+              ? "추가하기"
+              : "채널 골라 추가"}
+        </button>
+      </div>
       <ErrorText error={accept.error} />
     </div>
   );

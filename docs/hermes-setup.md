@@ -41,7 +41,7 @@ Hermes가 디스코드 스레드처럼 대화별 세션(도구 호출 기록 포
 ```yaml
 skills:
   external_dirs:
-  - /Users/sciencemj/dev/argos/integrations/hermes/skills   # argos 스킬 (저장소에서 버전 관리)
+  - <Argos 저장소 경로>/integrations/hermes/skills   # argos 스킬 (저장소에서 버전 관리)
 
 mcp_servers:
   argos:

@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
-from argos import caldav_sync, services
+from argos import caldav_sync, services, vault
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
@@ -37,14 +37,22 @@ def create_app(config: Settings = settings) -> FastAPI:
         if config.caldav_poll_minutes > 0:
             app.state.calendar_sync.start()
 
+        app.state.vault_sync = vault.VaultSync(app.state.sessionmaker, lambda: app.state.settings)
+        app.state.vault_sync.watch()
+        app.state.vault_sync.nudge()  # index and tasks once at start
+
         def on_change(_type: str, data: dict[str, Any]) -> None:
-            if data.get("object_type") == "event":  # push Argos-side edits right away
+            kind = data.get("object_type")
+            if kind == "event":  # push Argos-side edits right away
                 app.state.calendar_sync.nudge()
+            elif kind == "task":  # a linked task may need its checkbox ticked
+                app.state.vault_sync.nudge()
 
         stop_listening = hub.listen(on_change)
         async with mcp.session_manager.run():
             yield
         stop_listening()
+        await app.state.vault_sync.stop()
         await app.state.calendar_sync.stop()
         await app.state.runner.shutdown()
         await engine.dispose()

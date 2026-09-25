@@ -5,6 +5,7 @@ import shutil
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import httpx2
@@ -20,13 +21,13 @@ from fastapi import (
     status,
 )
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, caldav_sync, chat, classifier, ics, services
+from argos import agents, caldav_sync, chat, classifier, ics, services, vault
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
@@ -43,6 +44,7 @@ from argos.models import (
     InboxItem,
     InboxStatus,
     Message,
+    NoteRef,
     RunStatus,
     SourceLink,
     Task,
@@ -431,7 +433,7 @@ class PromoteFields(BaseModel):
 
 
 class InboxAccept(PromoteFields):
-    type: Literal["task", "event", "idea"] | None = None
+    type: Literal["task", "event", "idea", "study_note"] | None = None
 
 
 class MessageConvert(PromoteFields):
@@ -522,9 +524,36 @@ async def create_channel(session: Session, body: ChannelCreate) -> ChannelOut:
 
 
 @router.patch("/channels/{channel_id}")
-async def update_channel(session: Session, channel_id: str, body: ChannelUpdate) -> ChannelOut:
-    channel = await services.update_channel(session, channel_id, _changes(body), USER)
+async def update_channel(
+    request: Request, session: Session, config: Config, channel_id: str, body: ChannelUpdate
+) -> ChannelOut:
+    changes = _changes(body)
+    if "vault_path" in changes:
+        changes["vault_path"] = _vault_folder(config, changes["vault_path"])
+    channel = await services.update_channel(session, channel_id, changes, USER)
+    if "vault_path" in changes:
+        request.app.state.vault_sync.nudge()  # notes and tasks of the new folder
     return ChannelOut.model_validate(channel)
+
+
+def _vault_folder(config: Settings, folder: str | None) -> str | None:
+    """A channel's vault folder, relative with "/" and existing in the vault."""
+    folder = (folder or "").strip().strip("/")
+    if not folder:
+        return None
+    root = _vault_root(config)
+    if not vault.resolve_inside(root, folder).is_dir():
+        raise services.InvalidError(f"볼트에 '{folder}' 폴더가 없어요")
+    return folder
+
+
+def _vault_root(config: Settings) -> Path:
+    if config.vault_path is None:
+        raise services.InvalidError("설정에서 옵시디언 볼트를 먼저 지정해 주세요")
+    root = config.vault_path.expanduser()
+    if not root.is_dir():
+        raise services.InvalidError(f"볼트 폴더를 찾을 수 없어요: {root}")
+    return root
 
 
 @router.delete("/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -679,10 +708,41 @@ async def convert_message(session: Session, message_id: str, body: MessageConver
 
 
 @router.post("/inbox/{item_id}/accept")
-async def accept_inbox_item(session: Session, item_id: str, body: InboxAccept) -> PromotedOut:
+async def accept_inbox_item(
+    request: Request, session: Session, config: Config, item_id: str, body: InboxAccept
+) -> PromotedOut:
     overrides = body.model_dump(exclude_unset=True)
+    item = await services.get_inbox_item(session, item_id)
+    kind = overrides.get("type") or (item.suggestion_json or {}).get("type")
+    if kind == "study_note":
+        note = await _save_study_note(request, session, config, item_id, overrides)
+        return PromotedOut(object_type="note_ref", id=note.id)
     obj = await services.accept_inbox_item(session, item_id, actor=USER, overrides=overrides)
     return PromotedOut(object_type=obj.__tablename__, id=obj.id)
+
+
+async def _save_study_note(
+    request: Request,
+    session: AsyncSession,
+    config: Settings,
+    item_id: str,
+    overrides: dict[str, Any],
+) -> NoteRef:
+    """A study note becomes a new Markdown file right in the channel's vault folder
+    (user decision); no existing file is touched."""
+    root = _vault_root(config)
+    item, channel, title, body = await services.inbox_note_request(session, item_id, overrides)
+    if not channel.vault_path:
+        raise services.InvalidError(f"#{channel.name} 채널 설정에서 볼트 폴더를 먼저 지정해 주세요")
+    today = datetime.now(config.zoneinfo).date()
+    relative = await asyncio.to_thread(
+        vault.create_note, root, channel.vault_path, title, body, today
+    )
+    await vault.index(session, root, datetime.now(UTC))
+    note = await session.scalar(select(NoteRef).where(NoteRef.vault_path == relative))
+    assert note is not None
+    await services.mark_inbox_noted(session, item, note.id, USER)
+    return note
 
 
 @router.post("/inbox/{item_id}/classify", status_code=status.HTTP_202_ACCEPTED)
@@ -986,7 +1046,7 @@ async def set_calendar_channel(
     await services.set_setting(session, caldav_sync.CALENDAR_CHANNELS, mapping, USER)
     target = await caldav_sync.channel_for(session, body.calendar_url)
     links = await session.scalars(
-        select(SourceLink).where(SourceLink.calendar_url == body.calendar_url)
+        select(SourceLink).where(SourceLink.container == body.calendar_url)
     )
     for link in links.all():
         event = await session.get(Event, link.object_id)
@@ -1015,7 +1075,7 @@ async def list_conflicts(session: Session) -> list[ConflictOut]:
         out.append(
             ConflictOut(
                 id=link.id,
-                calendar_name=link.calendar_name,
+                calendar_name=link.container_name,
                 event=event_out,
                 remote=link.conflict["fields"],
             )
@@ -1041,6 +1101,224 @@ async def resolve_conflict(
             await server.aclose()
     [out] = await _events_out(session, [event])
     return out
+
+
+class VaultStatusOut(BaseModel):
+    running: bool
+    last_run_at: datetime | None
+    last_error: str | None
+    notes: int
+    warnings: list[str]
+    last_tasks: dict[str, int] | None
+
+
+class VaultOut(BaseModel):
+    path: str | None
+    detected: list[str]  # vaults the Obsidian app knows on this machine
+    daily_folder: str | None  # in effect: the setting, else the vault's own
+    daily_folder_detected: str | None
+    daily_days: int
+    status: VaultStatusOut
+
+
+class VaultIn(BaseModel):
+    path: str | None = Field(default=None, max_length=1000)
+    daily_folder: str | None = Field(default=None, max_length=500)
+
+
+class NoteOut(Out):
+    id: str
+    title: str
+    vault_path: str
+    channel_id: str | None
+    tags: list[str]
+    modified_at: datetime
+    snippet: str | None = None
+
+
+class NoteDetailOut(NoteOut):
+    body: str
+
+
+class MaterialOut(BaseModel):
+    path: str  # relative to the vault
+    name: str
+    folder: str  # relative to the channel folder
+    size: int
+    modified_at: datetime
+
+
+def _vault_sync(request: Request) -> vault.VaultSync:
+    return request.app.state.vault_sync
+
+
+async def _vault_out(request: Request, config: Settings) -> VaultOut:
+    root = config.vault_path.expanduser() if config.vault_path else None
+    detected_daily = (
+        await asyncio.to_thread(vault.detect_daily_folder, root) if root and root.is_dir() else None
+    )
+    status = _vault_sync(request).status
+    return VaultOut(
+        path=str(root) if root else None,
+        detected=[str(p) for p in await asyncio.to_thread(vault.detect_vaults)],
+        daily_folder=config.vault_daily_folder or detected_daily,
+        daily_folder_detected=detected_daily,
+        daily_days=config.vault_daily_days,
+        status=VaultStatusOut(**asdict(status)),
+    )
+
+
+async def _link_daily_notes(session: AsyncSession, root: Path, daily: str | None) -> None:
+    """#일상 shows the daily notes: its folder becomes the daily notes folder when it has
+    none yet (the user can change it in the channel settings)."""
+    personal = await services.get_personal_channel(session)
+    folder = daily or await asyncio.to_thread(vault.detect_daily_folder, root)
+    if personal is None or personal.vault_path or not folder:
+        return
+    if await asyncio.to_thread(lambda: (root / folder).is_dir()):
+        await services.update_channel(session, personal.id, {"vault_path": folder}, USER)
+
+
+def _vault_choice(raw: str | None) -> str | None:
+    """An existing absolute folder (~ allowed), resolved; None when empty."""
+    if not raw or not raw.strip():
+        return None
+    root = Path(raw.strip()).expanduser()
+    if not root.is_absolute() or not root.is_dir():
+        raise services.InvalidError(f"폴더를 찾을 수 없어요: {raw}")
+    return str(root.resolve())
+
+
+@router.get("/settings/vault")
+async def get_vault_settings(request: Request, config: Config) -> VaultOut:
+    return await _vault_out(request, config)
+
+
+@router.put("/settings/vault")
+async def put_vault_settings(
+    request: Request, background: BackgroundTasks, session: Session, body: VaultIn
+) -> VaultOut:
+    current: Settings = request.app.state.settings
+    path = await asyncio.to_thread(_vault_choice, body.path)
+    try:
+        old = await asyncio.to_thread(_vault_choice, str(current.vault_path or ""))
+    except services.InvalidError:
+        old = None  # the previous vault folder is gone
+    daily = (body.daily_folder or "").strip().strip("/") or None
+    await services.set_setting(session, "vault_path", path, USER)
+    await services.set_setting(session, "vault_daily_folder", daily, USER)
+    if path != old:
+        await vault.forget_vault(session)
+    if path is not None:
+        await _link_daily_notes(session, Path(path), daily)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    sync = _vault_sync(request)
+    sync.watch()
+    background.add_task(sync.run)
+    return await _vault_out(request, request.app.state.settings)
+
+
+@router.post("/vault/sync")
+async def sync_vault(request: Request, config: Config) -> VaultOut:
+    await _vault_sync(request).run()
+    return await _vault_out(request, config)
+
+
+@router.get("/vault/folders")
+async def vault_folders(config: Config) -> list[str]:
+    return await asyncio.to_thread(vault.folders, _vault_root(config))
+
+
+NoteSort = Literal["relevance", "modified", "title", "path"]
+
+
+@router.get("/notes")
+async def list_notes(
+    session: Session,
+    channel_id: str | None = None,
+    q: str | None = None,
+    sort: NoteSort | None = None,
+    order: Literal["asc", "desc"] | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> list[NoteOut]:
+    """Notes, newest first by default; with `q`, best match first unless `sort` says
+    otherwise. `order` defaults to newest first for dates, A first for names."""
+    query_text = (q or "").strip()
+    sort = sort or ("relevance" if query_text else "modified")
+    descending = (order or ("desc" if sort == "modified" else "asc")) == "desc"
+    if query_text:
+        found = await vault.search(session, query_text, channel_id, limit)
+        notes = [NoteOut.model_validate(n).model_copy(update={"snippet": s}) for n, s in found]
+        if sort == "relevance":  # best match first ("asc"), or reversed
+            return notes[::-1] if descending else notes
+    else:
+        rows = select(NoteRef)
+        if channel_id is not None:
+            rows = rows.where(NoteRef.channel_id == channel_id)
+        notes = [NoteOut.model_validate(n) for n in (await session.scalars(rows)).all()]
+
+    def key(note: NoteOut) -> str:
+        if sort == "title":
+            return note.title.casefold()
+        if sort == "path":
+            return note.vault_path.casefold()
+        return note.modified_at.isoformat()
+
+    notes.sort(key=key, reverse=descending)
+    return notes[:limit]
+
+
+@router.get("/notes/{note_id}")
+async def get_note(session: Session, config: Config, note_id: str) -> NoteDetailOut:
+    note = await session.get(NoteRef, note_id)
+    if note is None:
+        raise services.NotFoundError("note", note_id)
+    try:
+        body = await vault.note_body(_vault_root(config), note)
+    except OSError:
+        raise services.NotFoundError("note", note_id) from None
+    return NoteDetailOut(**NoteOut.model_validate(note).model_dump(), body=body)
+
+
+@router.get("/channels/{channel_id}/materials")
+async def list_materials(session: Session, config: Config, channel_id: str) -> list[MaterialOut]:
+    """Lecture files (PDF, slides, …) in the channel's vault folder."""
+    channel = await services.get_channel(session, channel_id)
+    if not channel.vault_path or config.vault_path is None:
+        return []
+    root = _vault_root(config)
+    base = vault.resolve_inside(root, channel.vault_path)
+
+    def scan() -> list[MaterialOut]:
+        found: list[MaterialOut] = []
+        for relative, path in vault.walk(base):
+            if path.suffix.lower() not in vault.MATERIAL_TYPES:
+                continue
+            stat = path.stat()
+            found.append(
+                MaterialOut(
+                    path=path.relative_to(root.resolve()).as_posix(),
+                    name=path.name,
+                    folder=Path(relative).parent.as_posix() if "/" in relative else "",
+                    size=stat.st_size,
+                    modified_at=datetime.fromtimestamp(stat.st_mtime, UTC),
+                )
+            )
+        return sorted(found, key=lambda m: m.modified_at, reverse=True)
+
+    return await asyncio.to_thread(scan)
+
+
+@router.get("/vault/file", response_class=FileResponse)
+async def vault_file(config: Config, path: str) -> FileResponse:
+    """A file from the vault for reading in the browser (materials, note images)."""
+    target = vault.resolve_inside(_vault_root(config), path)
+    if not target.is_file():
+        raise services.NotFoundError("file", path)
+    return FileResponse(target, content_disposition_type="inline", filename=target.name)
 
 
 @router.get("/settings/jobs")
@@ -1301,7 +1579,7 @@ async def _events_out(session: AsyncSession, events: Sequence[Event]) -> list[Ev
     for e in events:
         item = EventOut.model_validate(e)
         if (link := links.get(e.id)) is not None:
-            item.source = link.calendar_name
+            item.source = link.container_name
             item.read_only = link.read_only or bool(e.rrule)
         out.append(item)
     return out

@@ -92,7 +92,8 @@ export function invalidateFor(
     approval: [["approvals"], ...feeds],
     agent_run: [["tasks"], ["task"], ...feeds], // job status lives on the card
     routine_check: [["routines"]],
-    channel: [["channels"], ["tasks"]],
+    channel: [["channels"], ["tasks"], ["notes"], ["materials"]],
+    note_ref: [["notes"], ["settings", "vault"]],
     area: [["channels"]],
   };
   for (const key of keys[objectType] ?? []) {
@@ -694,3 +695,94 @@ export const useResolveConflict = () =>
       }),
     ),
   );
+
+// --- Obsidian vault (PLAN Phase 8) ------------------------------------------------
+
+export type Note = Schemas["NoteOut"];
+export type NoteDetail = Schemas["NoteDetailOut"];
+export type Material = Schemas["MaterialOut"];
+export type VaultSettings = Schemas["VaultOut"];
+
+export const useVaultSettings = () =>
+  useQuery({
+    queryKey: ["settings", "vault"],
+    queryFn: () => call(client.GET("/api/v1/settings/vault")),
+    refetchInterval: (q) => (q.state.data?.status.running ? 1500 : false),
+  });
+
+function useVaultWrite<A>(fn: (args: A) => Promise<VaultSettings>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (data) => {
+      qc.setQueryData(["settings", "vault"], data);
+      for (const key of [["notes"], ["materials"], ["tasks"], ["vault"]]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
+}
+
+export const useSaveVault = () =>
+  useVaultWrite((body: Schemas["VaultIn"]) =>
+    call(client.PUT("/api/v1/settings/vault", { body })),
+  );
+
+export const useSyncVault = () =>
+  useVaultWrite(() => call(client.POST("/api/v1/vault/sync")));
+
+export const useVaultFolders = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["vault", "folders"],
+    enabled,
+    queryFn: () => call(client.GET("/api/v1/vault/folders")),
+    retry: false,
+  });
+
+export type NoteSort = "relevance" | "modified" | "title" | "path";
+export type SortOrder = "asc" | "desc";
+
+export const useNotes = (
+  channelId: string | undefined,
+  q: string,
+  sort?: NoteSort,
+  order?: SortOrder,
+) =>
+  useQuery({
+    queryKey: ["notes", channelId ?? "all", q, sort, order],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/notes", {
+          params: {
+            query: { channel_id: channelId, q: q || undefined, sort, order },
+          },
+        }),
+      ),
+    placeholderData: (previous) => previous,
+  });
+
+export const useNote = (noteId: string | null) =>
+  useQuery({
+    queryKey: ["notes", "detail", noteId],
+    enabled: noteId !== null,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/notes/{note_id}", {
+          params: { path: { note_id: noteId ?? "" } },
+        }),
+      ),
+  });
+
+export const useMaterials = (channelId: string) =>
+  useQuery({
+    queryKey: ["materials", channelId],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/materials", {
+          params: { path: { channel_id: channelId } },
+        }),
+      ),
+  });
+
+export const vaultFileUrl = (path: string) =>
+  `/api/v1/vault/file?path=${encodeURIComponent(path)}`;

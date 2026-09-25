@@ -2,7 +2,7 @@
 # After that the user adds/removes channels in the app; this file is not re-applied.
 # Copy to seed.toml to customise the first-run set. #today and #inbox always exist.
 #
-# kind: "course" (default) or "project". vault_path is used from Phase 8.
+# kind: "course" (default) or "project". Obsidian folders are picked per channel in the app.
 
 [[area]]
 name = "학업"
@@ -10,19 +10,15 @@ icon = "학"
 
 [[area.channel]]
 name = "컴퓨터구조"
-vault_path = "강의/컴퓨터구조/"
 
 [[area.channel]]
 name = "운영체제"
-vault_path = "강의/운영체제/"
 
 [[area.channel]]
 name = "인공지능"
-vault_path = "강의/인공지능/"
 
 [[area.channel]]
 name = "머신러닝"
-vault_path = "강의/머신러닝/"
 
 [[area]]
 name = "프로젝트"

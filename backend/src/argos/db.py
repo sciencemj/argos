@@ -10,6 +10,14 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+# Full-text index of vault notes (PLAN Phase 8). SQLAlchemy has no FTS5 type, so the
+# migration creates it with this statement; the trigram tokenizer also matches inside
+# Korean words ("알고리즘" in "알고리즘의").
+NOTE_FTS_DDL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5("
+    "note_id UNINDEXED, title, body, tokenize='trigram')"
+)
+
 
 class Base(DeclarativeBase):
     pass

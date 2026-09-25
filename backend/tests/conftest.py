@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos.config import Settings
-from argos.db import Base, make_engine, make_sessionmaker
+from argos.db import NOTE_FTS_DDL, Base, make_engine, make_sessionmaker
 from argos.main import create_app
 
 SEED_EXAMPLE = Path(__file__).parents[1] / "seed.example.toml"
@@ -17,6 +18,7 @@ async def _create_schema(url: str) -> None:
     engine = make_engine(url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(NOTE_FTS_DDL))
     await engine.dispose()
 
 
