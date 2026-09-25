@@ -10,6 +10,7 @@ from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
 from argos.mcp_server import build_mcp
+from argos.runner import Runner
 
 
 def create_app(config: Settings = settings) -> FastAPI:
@@ -25,8 +26,12 @@ def create_app(config: Settings = settings) -> FastAPI:
         app.state.base_settings = config
         app.state.settings = apply_overrides(config, overrides)
         app.state.classifier = build_classifier(app.state.settings)
+        app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
+        async with app.state.sessionmaker() as session:
+            await services.abandon_running_runs(session)
         async with mcp.session_manager.run():
             yield
+        await app.state.runner.shutdown()
         await engine.dispose()
 
     app = FastAPI(title="Argos", lifespan=lifespan)

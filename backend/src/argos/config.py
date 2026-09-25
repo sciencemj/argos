@@ -36,6 +36,29 @@ class Settings(BaseSettings):
     classifier_threshold: float = 0.85
     classifier_auto_apply: list[Literal["task", "event"]] = []
 
+    # Agents (PLAN Phase 5). The default agent is changed in the app (app_setting).
+    default_agent: str = "hermes"
+    hermes_base_url: str = "http://127.0.0.1:8642/v1"
+    hermes_api_key: SecretStr | None = None  # API_SERVER_KEY from ~/.hermes/.env
+    hermes_model: str = "hermes-agent"
+    claude_bin: str = "claude"
+    codex_bin: str = "codex"
+    # "app-server": JSON-RPC, token streaming, persistent threads (experimental protocol);
+    # "exec": the older one-shot `codex exec --json`, kept as a fallback.
+    codex_mode: Literal["app-server", "exec"] = "app-server"
+    # Codex's home for Argos runs: only auth.json is linked from the user's ~/.codex, so
+    # their config and MCP servers stay out and Argos threads stay out of their history.
+    codex_home: Path = Path("data/codex-home")
+    codex_auth: Path = Path.home() / ".codex" / "auth.json"
+    # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.
+    agent_workspace: Path = Path("data/agent-workspace")
+    agent_timeout: float = 300.0  # seconds before a chat run is stopped
+    context_limit: int = 4000  # characters of channel context sent with each run
+
+    @property
+    def mcp_url(self) -> str:
+        return f"http://{self.host}:{self.port}/mcp"
+
     @property
     def db_url(self) -> str:
         return f"sqlite+aiosqlite:///{self.db_path}"

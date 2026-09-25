@@ -52,6 +52,7 @@ class ChannelKind(StrEnum):
     PROJECT = "project"
     # The single built-in #일상 channel for everyday things outside courses/projects.
     PERSONAL = "personal"
+    DM = "dm"  # one-to-one conversation with an agent
     SYSTEM = "system"
 
 
@@ -175,6 +176,8 @@ class Message(Record):
     ref_id: Mapped[str | None] = mapped_column(String(36))
     run_id: Mapped[str | None] = mapped_column(String(36))
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # On a thread root: the agent the thread is stuck to after an @mention (PLAN Phase 5).
+    sticky_agent_id: Mapped[str | None] = mapped_column(String(36))
 
 
 class ActivityLog(Record):
@@ -239,3 +242,60 @@ class Approval(Record):
     )
     error: Mapped[str | None] = mapped_column(Text)
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class AgentBackend(StrEnum):
+    HERMES = "hermes"  # Hermes gateway, OpenAI-compatible API
+    OLLAMA = "ollama"  # local model through Ollama's OpenAI-compatible API
+    CLAUDE_CODE = "claude_code"  # `claude -p` headless
+    CODEX = "codex"  # `codex exec --json`
+
+
+class RunStatus(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+
+class Agent(Record):
+    __tablename__ = "agent"
+
+    name: Mapped[str] = mapped_column(String(40), unique=True)  # @mention handle
+    display_name: Mapped[str] = mapped_column(String(100))
+    avatar: Mapped[str | None] = mapped_column(String(10))
+    backend: Mapped[AgentBackend] = mapped_column(String(20))
+    model: Mapped[str | None] = mapped_column(String(200))  # None = the backend's default
+    system_prompt: Mapped[str | None] = mapped_column(Text)
+    tools_json: Mapped[list[str] | None] = mapped_column(JSON)  # Phase 10 whitelist
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AgentRun(Record):
+    """One agent answering one message; the reply message fills in as it streams."""
+
+    __tablename__ = "agent_run"
+
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id", ondelete="CASCADE"), index=True)
+    channel_id: Mapped[str] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"))
+    thread_root_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    trigger_message_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    reply_message_id: Mapped[str | None] = mapped_column(String(36))
+    kind: Mapped[str] = mapped_column(String(20), default="chat")  # chat | job | debate
+    status: Mapped[RunStatus] = mapped_column(String(20), default=RunStatus.RUNNING)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    error: Mapped[str | None] = mapped_column(Text)
+    task_id: Mapped[str | None] = mapped_column(String(36))  # Phase 6 jobs
+
+
+class AgentSession(Record):
+    """A backend's own conversation id for one Argos thread/DM (e.g. a Codex thread id),
+    for backends that pick their ids themselves."""
+
+    __tablename__ = "agent_session"
+    __table_args__ = (UniqueConstraint("agent_id", "session_key", name="uq_agent_session_key"),)
+
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id", ondelete="CASCADE"))
+    session_key: Mapped[str] = mapped_column(String(100))
+    external_id: Mapped[str] = mapped_column(String(200))

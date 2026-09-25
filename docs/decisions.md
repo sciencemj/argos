@@ -56,3 +56,22 @@
 | 2026-09-25 | 에이전트가 만든 할 일·일정은 해당 채널 피드에 에이전트 메시지 + 카드로 남김 | PLAN P4, 무엇이 어디서 들어왔는지 보이게 |
 | 2026-09-25 | 승인(approval): 삭제 도구는 승인 요청만 만들고 채널 피드에 승인 카드를 띄움. 승인 시 요청한 에이전트를 actor로 실행, 대상이 이미 없으면 `failed`. 카드 표시용으로 요청 시점의 제목·시각을 payload에 저장 | PLAN P5 |
 | 2026-09-25 | 전역 `a`, `:focus-visible` 스타일은 `@layer base`에 둠 | 레이어 밖 규칙이 Tailwind 색상 유틸리티를 이겨 링크 색이 적용되지 않던 문제(E2E에서 발견) |
+| 2026-09-25 | 라우팅: 멘션 없는 일반 메시지는 인박스 기록만. 에이전트는 @멘션, /ask(채널 기본 → 전역 기본), 에이전트가 고정된 스레드의 답글, DM에서만 답함. 에이전트를 부른 메시지는 인박스에 넣지 않음 | 사용자 결정. PLAN 원문의 "멘션 없으면 기본 에이전트"와 다름 |
+| 2026-09-25 | 전역 기본 에이전트는 Hermes, 설정 화면에서 Hermes/Claude/Codex/로컬 모델 중 선택(`app_setting.default_agent`), 채널별 기본 에이전트는 채널 설정 | 사용자 결정 |
+| 2026-09-25 | Claude Code·Codex 채팅 에이전트는 Argos MCP 도구만: Claude `--tools "" --strict-mcp-config --allowedTools mcp__argos --setting-sources local`, Codex `--sandbox read-only --ignore-user-config`, shell/browser/computer/image 기능 off, Argos 서버 도구만 자동 승인, 빈 작업 디렉터리 | 사용자 결정 "Argos 도구만". 사용자 훅·플러그인은 헤드리스 실행을 멈추게 해서 제외(실측) |
+| 2026-09-25 | Claude Code는 `result` 줄을 받으면 프로세스를 종료 | 사용자 훅 때문에 결과 출력 후에도 프로세스가 끝나지 않는 경우 확인(실측). `--bare`는 로그인 정보까지 건너뛰어 사용 불가 |
+| 2026-09-25 | 취소는 adapter별 `cancel(run_id)` 대신 run을 돌리는 asyncio 태스크 취소 + 어댑터 finally에서 HTTP 스트림/프로세스 정리 | 모든 어댑터에 같은 방식, PLAN 인터페이스를 단순화 |
+| 2026-09-25 | 스트리밍 토큰은 WS로만 보내고 답변 본문은 run 종료 때 한 번 저장. 서버 재시작 시 남은 running run은 error로 정리 | SQLite 쓰기 최소화(§8.5) |
+| 2026-09-25 | 에이전트 답변은 호출한 메시지의 스레드에 달리고 피드에서는 그 메시지 아래 카드로 표시(둘이면 2열). DM에서는 최상위 대화 | Main 디자인의 병렬 응답 카드 |
+| 2026-09-25 | Hermes 연결은 게이트웨이 OpenAI 호환 API(`hermes-agent`, API_SERVER_KEY). 사용자의 Hermes 설정은 건드리지 않고 `docs/hermes-setup.md`에 절차 기록 | Hermes 설정은 사용자 시스템 |
+| 2026-09-25 | 에이전트 답변은 `react-markdown`+`remark-gfm`으로 렌더링(원시 HTML 없음) | Claude·Codex 답이 마크다운 |
+| 2026-09-25 | Hermes 어댑터는 Chat Completions 대신 Responses API + `conversation`(스레드/DM별 이름). Hermes가 세션을 보관하므로 Hermes가 마지막으로 답한 뒤의 새 메시지만 전송 | 사용자 요청. 디스코드 스레드처럼 도구 호출 기록까지 이어지는 세션(실측: 두 번째 요청에서 앞 대화를 기억) |
+| 2026-09-25 | 어댑터 인터페이스 `stream(transcript, context, session)` — 세션을 스스로 보관하는 백엔드만 session을 씀 | Hermes 세션 지원 |
+| 2026-09-25 | Hermes의 Argos 지침은 SOUL.md가 아니라 스킬(`integrations/hermes/skills/argos/SKILL.md`)로, `skills.external_dirs`로 등록. MCP는 `config.yaml`의 `mcp_servers.argos` | 사용자 제안: 페르소나 파일을 오염시키지 않고 저장소에서 버전 관리. `hermes mcp add`는 대화형이라 설정 파일로 |
+| 2026-09-25 | 테스트 Settings는 `_env_file=None` | 개발자의 `backend/.env`(Hermes 키 등)가 테스트 결과를 바꾸던 문제 |
+| 2026-09-25 | Claude Code 대화는 Argos 스레드/DM마다 세션 유지: uuid5(`claude:<session key>`)로 첫 호출 `--session-id`, 이후 `--resume` + 새 메시지만. 스레드에 Claude 답이 있으면 resume 먼저, 없으면 new 먼저 시도하고, 텍스트가 나오기 전 실패하면 반대 방식으로 한 번 재시도. Argos 컨텍스트는 `--append-system-prompt` | 사용자 요청. 도구 호출·이전 턴이 이어짐(실측). 세션 파일은 `~/.claude/projects/<agent-workspace>/`에 쌓임. Codex는 계속 ephemeral |
+| 2026-09-25 | Claude는 CLI 직접 호출 대신 Claude Agent SDK(`claude-agent-sdk`). 세션 존재 여부는 `get_session_info`로 확인해 resume/new를 추측 없이 결정. 시스템 프롬프트는 Claude Code 코딩 프롬프트 대신 Argos 컨텍스트만. 격리(도구 없음·설정 소스 없음·Argos MCP만)는 동일 | 사용자 요청. PLAN 원래 스택. 파싱·재시도·프로세스 정리를 SDK가 맡음 |
+| 2026-09-25 | Codex는 `codex app-server`(JSON-RPC, 실험적) 기본, `ARGOS_CODEX_MODE=exec`로 예전 방식 대체 가능. 실행마다 프로세스 1개, Codex가 정한 thread id는 `agent_session` 테이블에 저장해 `thread/resume` | 토큰 스트리밍과 스레드 유지(실측). 프로토콜 변경 대비 대체 경로 유지(P6) |
+| 2026-09-25 | Codex는 Argos 전용 `CODEX_HOME`(`data/codex-home`)에서 실행, 사용자 `~/.codex`에서는 auth.json만 링크 | app-server에는 `--ignore-user-config`가 없음. 사용자 MCP·설정이 섞이지 않고 Argos 대화가 사용자 Codex 기록에 쌓이지 않음 |
+| 2026-09-25 | 서버의 승인·입력 요청(JSON-RPC server request)은 모두 거절 | 도구는 Argos MCP만 허용, 그 외 권한 부여 없음 |
+| 2026-09-25 | `make dev`의 uvicorn은 `--reload-dir src`만 감시 | Codex가 data/codex-home에 넣는 .py 파일 때문에 개발 서버가 재시작되던 문제(실측) |

@@ -95,7 +95,7 @@ Claude Code·Codex 사용량 파일, CLI 출력 포맷처럼 공식 계약이 �
 | 옵시디언 | `python-frontmatter` | 프론트매터 파싱. 체크박스는 정규식 |
 | MCP | 공식 `mcp` SDK (FastMCP) | Streamable HTTP를 FastAPI 앱에 마운트 (같은 프로세스, 같은 domain 서비스) |
 | LLM (분류·일반) | `openai` SDK + 설정의 `base_url` | provider는 `ollama` / `hermes` 두 개만 구현. 클라우드 API 직접 호출은 아직 만들지 않음 |
-| 코딩 에이전트 | `claude-agent-sdk` / `codex exec --json` subprocess | Phase 5 |
+| 코딩 에이전트 | `claude-agent-sdk` / `codex app-server`(JSON-RPC, 기본) · `codex exec --json`(대체) | Phase 5. Hermes는 게이트웨이 API 서버(Responses API) |
 | 프론트엔드 | React + TypeScript + Vite, `@tanstack/react-query`, `react-router` | 전역 상태 라이브러리 없음 |
 | UI | Tailwind v4 (디자인 토큰 = CSS 변수), `cmdk`(⌘K) | 디자인: `docs/design/` (라이트·다크). shadcn/ui 사용 안 함 |
 | 드래그앤드롭 | `@dnd-kit/core`, `@dnd-kit/sortable` | 칸반 |

@@ -249,6 +249,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_api_v1_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/dm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open Dm */
+        post: operations["open_dm_api_v1_agents__name__dm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancel_run_api_v1_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Settings */
+        get: operations["get_agent_settings_api_v1_settings_agents_get"];
+        /** Put Agent Settings */
+        put: operations["put_agent_settings_api_v1_settings_agents_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routines": {
         parameters: {
             query?: never;
@@ -548,6 +617,39 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * AgentBackend
+         * @enum {string}
+         */
+        AgentBackend: "hermes" | "ollama" | "claude_code" | "codex";
+        /** AgentOut */
+        AgentOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Avatar */
+            avatar: string | null;
+            backend: components["schemas"]["AgentBackend"];
+            /** Model */
+            model: string | null;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Problem */
+            problem?: string | null;
+        };
+        /** AgentSettingsIn */
+        AgentSettingsIn: {
+            /** Default Agent */
+            default_agent: string;
+        };
         /** ApprovalOut */
         ApprovalOut: {
             /** Id */
@@ -629,7 +731,7 @@ export interface components {
          * ChannelKind
          * @enum {string}
          */
-        ChannelKind: "course" | "project" | "personal" | "system";
+        ChannelKind: "course" | "project" | "personal" | "dm" | "system";
         /** ChannelOut */
         ChannelOut: {
             /** Id */
@@ -639,6 +741,8 @@ export interface components {
             /** Name */
             name: string;
             kind: components["schemas"]["ChannelKind"];
+            /** Default Agent Id */
+            default_agent_id: string | null;
             /** Vault Path */
             vault_path: string | null;
             /** Sort Order */
@@ -655,6 +759,8 @@ export interface components {
             vault_path?: string | null;
             /** Sort Order */
             sort_order?: number | null;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
         };
         /** ChannelsOut */
         ChannelsOut: {
@@ -914,6 +1020,9 @@ export interface components {
              */
             reply_count: number;
             ref?: components["schemas"]["RefOut"];
+            run?: components["schemas"]["RunOut"] | null;
+            /** Agent Replies */
+            agent_replies?: components["schemas"]["MessageOut"][];
         };
         /** MessagePage */
         MessagePage: {
@@ -1018,6 +1127,28 @@ export interface components {
             /** Routines */
             routines: components["schemas"]["RoutineOut"][];
         };
+        /** RunOut */
+        RunOut: {
+            /** Id */
+            id: string;
+            /** Agent Id */
+            agent_id: string;
+            status: components["schemas"]["RunStatus"];
+            /** Error */
+            error: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /**
+         * RunStatus
+         * @enum {string}
+         */
+        RunStatus: "running" | "done" | "error" | "cancelled";
         /** TaskCreate */
         TaskCreate: {
             /** Channel Id */
@@ -1679,6 +1810,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApprovalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_api_v1_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"][];
+                };
+            };
+        };
+    };
+    open_dm_api_v1_agents__name__dm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_settings_api_v1_settings_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsIn"];
+                };
+            };
+        };
+    };
+    put_agent_settings_api_v1_settings_agents_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsIn"];
                 };
             };
             /** @description Validation Error */

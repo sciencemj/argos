@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from argos.hub import hub
 from argos.models import (
     ActivityLog,
+    Agent,
+    AgentBackend,
+    AgentRun,
+    AgentSession,
     Approval,
     ApprovalStatus,
     AppSetting,
@@ -28,6 +32,7 @@ from argos.models import (
     Record,
     Routine,
     RoutineCheck,
+    RunStatus,
     Task,
     TaskStatus,
 )
@@ -643,7 +648,7 @@ async def _resolve_channel(
         return (await get_channel(session, fields["channel_id"])).id
     if hint := fields.get("channel_hint"):
         by_name = await session.scalar(select(Channel).where(Channel.name == hint))
-        if by_name is not None and by_name.kind != ChannelKind.SYSTEM:
+        if by_name is not None and by_name.kind not in (ChannelKind.SYSTEM, ChannelKind.DM):
             return by_name.id
     if captured_in is not None:
         channel = await session.get(Channel, captured_in)
@@ -941,6 +946,139 @@ async def resolve_approval(
     )
 
 
+# --- agents (PLAN Phase 5) -----------------------------------------------------------
+
+BUILTIN_AGENTS: tuple[tuple[str, str, str, AgentBackend], ...] = (
+    ("hermes", "Hermes", "H", AgentBackend.HERMES),
+    ("claude", "Claude", "C", AgentBackend.CLAUDE_CODE),
+    ("codex", "Codex", "Cx", AgentBackend.CODEX),
+    ("local", "로컬 모델", "L", AgentBackend.OLLAMA),
+)
+
+
+async def list_agents(session: AsyncSession) -> Sequence[Agent]:
+    return (await session.scalars(select(Agent).order_by(Agent.created_at, Agent.name))).all()
+
+
+async def get_agent(session: AsyncSession, agent_id: str) -> Agent:
+    return await _get(session, Agent, agent_id)
+
+
+async def find_agent(session: AsyncSession, handle: str) -> Agent | None:
+    """@mention lookup by name or display name, case-insensitive."""
+    key = handle.strip().lstrip("@").lower()
+    for agent in await list_agents(session):
+        if key in (agent.name.lower(), agent.display_name.lower().replace(" ", "")):
+            return agent
+    return None
+
+
+async def default_agent(session: AsyncSession, channel: Channel, fallback: str) -> Agent | None:
+    """Channel's default agent, else the app-wide default (`fallback` agent name)."""
+    if channel.default_agent_id:
+        agent = await session.get(Agent, channel.default_agent_id)
+        if agent is not None:
+            return agent
+    return await find_agent(session, fallback)
+
+
+async def ensure_dm_channel(session: AsyncSession, agent: Agent) -> Channel:
+    channel = await session.scalar(
+        select(Channel).where(Channel.kind == ChannelKind.DM, Channel.default_agent_id == agent.id)
+    )
+    if channel is not None:
+        return channel
+    return await _create(
+        session,
+        Channel(name=f"dm-{agent.name}", kind=ChannelKind.DM, default_agent_id=agent.id),
+        "system",
+    )
+
+
+async def start_run(
+    session: AsyncSession,
+    *,
+    agent: Agent,
+    channel_id: str,
+    trigger: Message,
+    reply_thread_root_id: str | None,
+    actor: str,
+) -> tuple[AgentRun, Message]:
+    """Creates the run and its (still empty) reply message, filled in when the run ends."""
+    run = await _create(
+        session,
+        AgentRun(
+            agent_id=agent.id,
+            channel_id=channel_id,
+            thread_root_id=trigger.thread_root_id or trigger.id,
+            trigger_message_id=trigger.id,
+        ),
+        actor,
+    )
+    reply = await create_message(
+        session,
+        channel_id=channel_id,
+        body="",
+        author_type=AuthorType.AGENT,
+        author_id=agent.name,
+        thread_root_id=reply_thread_root_id,
+        actor=f"agent:{agent.name}",
+    )
+    await _update(session, reply, {"run_id": run.id}, "system")
+    await _update(session, run, {"reply_message_id": reply.id}, "system")
+    return run, reply
+
+
+async def finish_run(
+    session: AsyncSession, run_id: str, *, text: str, status: RunStatus, error: str | None
+) -> None:
+    run = await _get(session, AgentRun, run_id)
+    reply = await session.get(Message, run.reply_message_id) if run.reply_message_id else None
+    if reply is not None and text != reply.body:
+        await _update(session, reply, {"body": text}, "system")
+    await _update(
+        session,
+        run,
+        {"status": status, "error": error, "finished_at": datetime.now(UTC)},
+        "system",
+    )
+
+
+async def get_agent_session(session: AsyncSession, agent_id: str, key: str) -> str | None:
+    return await session.scalar(
+        select(AgentSession.external_id).where(
+            AgentSession.agent_id == agent_id, AgentSession.session_key == key
+        )
+    )
+
+
+async def set_agent_session(session: AsyncSession, agent_id: str, key: str, value: str) -> None:
+    row = await session.scalar(
+        select(AgentSession).where(
+            AgentSession.agent_id == agent_id, AgentSession.session_key == key
+        )
+    )
+    if row is None:
+        await _create(
+            session, AgentSession(agent_id=agent_id, session_key=key, external_id=value), "system"
+        )
+    elif row.external_id != value:
+        await _update(session, row, {"external_id": value}, "system")
+
+
+async def abandon_running_runs(session: AsyncSession) -> None:
+    """At startup: runs that were streaming when the server stopped cannot resume."""
+    query = select(AgentRun.id).where(AgentRun.status == RunStatus.RUNNING)
+    for run_id in (await session.scalars(query)).all():
+        await finish_run(
+            session,
+            run_id,
+            text="",
+            status=RunStatus.ERROR,
+            error="서버가 다시 시작되어 중단됐어요",
+        )
+
+
 # --- routines -------------------------------------------------------------------
 
 STREAK_LOOKBACK_DAYS = 400
@@ -1058,6 +1196,12 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
         if exists is None:
             channel = Channel(name=name, kind=ChannelKind.SYSTEM, sort_order=order)
             await _create(session, channel, "system")
+    for name, display, avatar, backend in BUILTIN_AGENTS:
+        if await session.scalar(select(Agent.id).where(Agent.name == name)) is None:
+            agent = Agent(
+                name=name, display_name=display, avatar=avatar, backend=backend, is_builtin=True
+            )
+            await _create(session, agent, "system")
     # Found by kind, not name, so renaming #일상 sticks across restarts.
     if await get_personal_channel(session) is None:
         taken = await session.scalar(select(Channel.id).where(Channel.name == PERSONAL_CHANNEL))

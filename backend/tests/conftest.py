@@ -22,7 +22,8 @@ async def _create_schema(url: str) -> None:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    config = Settings(db_path=tmp_path / "test.db", seed_path=SEED_EXAMPLE)
+    # _env_file=None: tests must not pick up the developer's backend/.env (keys, models).
+    config = Settings(_env_file=None, db_path=tmp_path / "test.db", seed_path=SEED_EXAMPLE)  # pyright: ignore[reportCallIssue]
     asyncio.run(_create_schema(config.db_url))
     return config
 

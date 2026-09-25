@@ -20,6 +20,8 @@ export type Config = Schemas["ConfigOut"];
 export type Message = Schemas["MessageOut"];
 export type Routine = Schemas["RoutineOut"];
 export type Approval = Schemas["ApprovalOut"];
+export type Agent = Schemas["AgentOut"];
+export type Run = Schemas["RunOut"];
 export type Routines = Schemas["RoutinesOut"];
 export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
@@ -82,6 +84,7 @@ export function invalidateFor(
     message: feeds,
     routine: [["routines"]],
     approval: [["approvals"], ...feeds],
+    agent_run: feeds,
     routine_check: [["routines"]],
     channel: [["channels"], ["tasks"]],
     area: [["channels"]],
@@ -537,4 +540,45 @@ export const useResolveApproval = () =>
               params: { path: { approval_id: id } },
             }),
           ),
+  );
+
+// --- agents (PLAN Phase 5) --------------------------------------------------------
+
+export const useAgents = () =>
+  useQuery({
+    queryKey: ["agents"],
+    queryFn: () => call(client.GET("/api/v1/agents")),
+  });
+
+export const useAgentSettings = () =>
+  useQuery({
+    queryKey: ["settings", "agents"],
+    queryFn: () => call(client.GET("/api/v1/settings/agents")),
+  });
+
+export function useSaveDefaultAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      call(
+        client.PUT("/api/v1/settings/agents", {
+          body: { default_agent: name },
+        }),
+      ),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+}
+
+export const useOpenDM = () =>
+  useWrite("channel", (name: string) =>
+    call(
+      client.POST("/api/v1/agents/{name}/dm", { params: { path: { name } } }),
+    ),
+  );
+
+export const cancelRun = (runId: string) =>
+  call(
+    client.POST("/api/v1/runs/{run_id}/cancel", {
+      params: { path: { run_id: runId } },
+    }),
   );

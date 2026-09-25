@@ -1,8 +1,12 @@
 import { useState } from "react";
+import { AgentAvatar } from "../agents";
 import {
+  useAgentSettings,
+  useAgents,
   useClassifierSettings,
   useOllamaModels,
   useSaveClassifier,
+  useSaveDefaultAgent,
 } from "../api";
 import { btn, card, ErrorText } from "../ui";
 
@@ -14,6 +18,7 @@ export function SettingsPage() {
       <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
         설정
       </h1>
+      <AgentSection />
       <ClassifierSection />
     </div>
   );
@@ -187,6 +192,87 @@ function ClassifierSection() {
             저장했어요. 다음 메시지부터 적용돼요.
           </span>
         )}
+      </div>
+    </section>
+  );
+}
+
+const BACKEND_TEXT: Record<string, string> = {
+  hermes: "Hermes 게이트웨이 · 자체 도구와 메모리를 가진 에이전트",
+  claude_code: "Claude Code CLI · Argos 도구만 사용 · Claude 사용량을 씀",
+  codex: "Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀",
+  ollama: "Ollama 로컬 모델 · 이 컴퓨터에서만 실행 (인박스 분류 모델 사용)",
+};
+
+/** App-wide default agent: answers /ask where the channel sets none (user decision). */
+function AgentSection() {
+  const agents = useAgents();
+  const current = useAgentSettings();
+  const save = useSaveDefaultAgent();
+  const [choice, setChoice] = useState<string | null>(null);
+  const active = current.data?.default_agent;
+  const selected = choice ?? active;
+
+  return (
+    <section
+      aria-label="기본 에이전트"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        기본 에이전트
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        /ask를 받을 에이전트예요. 채널 설정에서 채널마다 따로 정할 수도 있어요.
+        다른 에이전트는 메시지에 @이름으로 불러요.
+      </p>
+      <div className="flex flex-col gap-2">
+        {agents.data?.map((a) => (
+          <label
+            key={a.id}
+            className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 ${selected === a.name ? "border-line bg-inset" : "border-line-soft bg-card"}`}
+          >
+            <input
+              type="radio"
+              name="default-agent"
+              value={a.name}
+              checked={selected === a.name}
+              onChange={() => setChoice(a.name)}
+              className="accent-[var(--ink)]"
+            />
+            <AgentAvatar id={a.name} size={28} />
+            <span className="flex grow flex-col gap-0.5">
+              <span className="text-[13.5px] text-ink">
+                {a.display_name}{" "}
+                <span className="font-mono text-[12px] text-meta">
+                  @{a.name}
+                </span>
+              </span>
+              <span className="text-[12px] text-text-3">
+                {BACKEND_TEXT[a.backend]}
+              </span>
+              {!a.available && (
+                <span className="text-[12px] text-danger">{a.problem}</span>
+              )}
+            </span>
+            {a.name === active && (
+              <span className="text-[11.5px] text-meta">사용 중</span>
+            )}
+          </label>
+        ))}
+      </div>
+      <ErrorText error={save.error} />
+      <div>
+        <button
+          type="button"
+          className={btn.cta}
+          disabled={!selected || selected === active || save.isPending}
+          onClick={() =>
+            selected &&
+            save.mutate(selected, { onSuccess: () => setChoice(null) })
+          }
+        >
+          저장
+        </button>
       </div>
     </section>
   );

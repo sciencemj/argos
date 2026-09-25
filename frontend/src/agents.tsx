@@ -22,6 +22,12 @@ const KNOWN: Record<
     bg: "var(--codex)",
     text: "var(--codex-text)",
   },
+  local: {
+    name: "로컬 모델",
+    initials: "L",
+    bg: "var(--step-4)",
+    text: "var(--text-2)",
+  },
 };
 
 export function agentInfo(id: string | null | undefined) {

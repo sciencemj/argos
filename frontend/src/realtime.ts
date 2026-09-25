@@ -1,12 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { onAgentEvent } from "./agentStream";
 import { invalidateFor } from "./api";
 
 export type LinkState = "connecting" | "open" | "closed";
 
 type ServerEvent = {
   type: string;
-  data: { object_type?: string; id?: string };
+  data: { object_type?: string; id?: string } & Record<string, unknown>;
   ts: string;
 };
 
@@ -35,7 +36,18 @@ export function useRealtime(): LinkState {
       };
       ws.onmessage = (msg) => {
         const event = JSON.parse(String(msg.data)) as ServerEvent;
-        if (event.type.startsWith("object.") && event.data.object_type) {
+        if (event.type.startsWith("agent.")) {
+          onAgentEvent(event.type, event.data);
+          if (event.type === "agent.done" || event.type === "agent.error") {
+            invalidateFor(qc, "agent_run");
+          }
+          return;
+        }
+        if (
+          (event.type.startsWith("object.") ||
+            event.type === "message.created") &&
+          event.data.object_type
+        ) {
           invalidateFor(qc, event.data.object_type, event.data.id);
         }
       };

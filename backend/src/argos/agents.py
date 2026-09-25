@@ -1,0 +1,675 @@
+"""Agent adapters (PLAN Phase 5): one streaming interface over Hermes, Ollama, Claude Code
+and Codex.
+
+Cancellation is task cancellation: the runner cancels the asyncio task driving
+`stream()`, and each adapter releases its HTTP stream or kills its subprocess in
+`finally`. That replaces a separate `cancel(run_id)` method on every adapter.
+
+The CLI output formats are not a public contract (PLAN P6): their parsers are pure
+functions tested against real samples in tests/fixtures/agents, and anything they do
+not recognise is ignored rather than failing the run.
+"""
+
+import asyncio
+import json
+import os
+import re
+import shutil
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKError,
+    CLINotFoundError,
+    ResultMessage,
+    StreamEvent,
+    get_session_info,
+    query,
+)
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
+
+from argos.config import Settings
+from argos.models import Agent, AgentBackend
+
+# --- events ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Token:
+    text: str
+
+
+@dataclass(frozen=True)
+class Status:
+    text: str  # e.g. "Argos 도구 사용 중: get_today"
+
+
+@dataclass(frozen=True)
+class Failure:
+    message: str
+
+
+AgentEvent = Token | Status | Failure
+
+
+@dataclass(frozen=True)
+class Turn:
+    speaker: str  # "user" or an agent name
+    text: str
+
+
+class AgentAdapter(Protocol):
+    def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        """`session` names the conversation (one per Argos thread or DM); adapters whose
+        backend keeps its own history use it, the others rebuild from `transcript`."""
+        ...
+
+
+class SessionIds(Protocol):
+    """Where an adapter remembers a backend-chosen conversation id per Argos session key
+    (the runner backs it with the agent_session table)."""
+
+    async def get(self, key: str) -> str | None: ...
+    async def set(self, key: str, value: str) -> None: ...
+
+
+class AgentUnavailable(Exception):
+    """Configuration or connection problem shown to the user in the reply bubble."""
+
+
+def render_transcript(transcript: list[Turn], me: str) -> str:
+    """Shared-record form for CLI agents (`[codex]: …`), as the debate design uses."""
+    lines = [f"[{'사용자' if t.speaker == 'user' else t.speaker}]: {t.text}" for t in transcript]
+    return (
+        "\n".join(lines)
+        + f"\n\n위 대화에 이어서 [{me}]로서 답하세요. 답에 [{me}] 같은 이름 표시는 붙이지 마세요."
+    )
+
+
+# --- OpenAI-compatible (Hermes, Ollama) ---------------------------------------------------
+
+
+class OpenAICompatAdapter:
+    def __init__(
+        self, client: AsyncOpenAI, model: str, name: str, extra: dict[str, Any] | None = None
+    ) -> None:
+        self._client = client
+        self._model = model
+        self._name = name
+        self._extra = extra or {}
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": context}]
+        for turn in transcript:
+            if turn.speaker == self._name:
+                messages.append({"role": "assistant", "content": turn.text})
+            elif turn.speaker == "user":
+                messages.append({"role": "user", "content": turn.text})
+            else:  # another agent's words, attributed so the model does not claim them
+                messages.append({"role": "user", "content": f"[{turn.speaker}]: {turn.text}"})
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                stream=True,
+                extra_body=self._extra,
+            )
+        except Exception as exc:
+            raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+        try:
+            async for chunk in response:
+                if chunk.choices and (text := chunk.choices[0].delta.content):
+                    yield Token(text)
+        finally:
+            await response.close()
+
+
+def _obj(value: Any) -> dict[str, Any]:
+    """JSON sub-object or {} (CLI formats are not a contract: missing parts are normal)."""
+    return value if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownVariableType]
+
+
+# --- Hermes (Responses API with named conversations) ---------------------------------------
+
+
+def parse_hermes_event(kind: str, data: dict[str, Any]) -> AgentEvent | None:
+    """One SSE event of Hermes `/v1/responses` streaming."""
+    if kind == "response.output_text.delta" and data.get("delta"):
+        return Token(str(data["delta"]))
+    if kind == "response.output_item.added":
+        item = _obj(data.get("item"))
+        if item.get("type") == "function_call":
+            return Status(f"도구 사용 중: {item.get('name', '')}")
+    if kind in ("response.failed", "error"):
+        error = _obj(_obj(data.get("response")).get("error")) or _obj(data.get("error"))
+        return Failure(str(error.get("message") or "Hermes error"))
+    return None
+
+
+def pending_turns(transcript: list[Turn], me: str) -> list[Turn]:
+    """What Hermes has not seen yet: everything after its own last answer. On the first
+    call in a thread that is the whole thread, other agents' answers included."""
+    last = max((i for i, t in enumerate(transcript) if t.speaker == me), default=-1)
+    return transcript[last + 1 :]
+
+
+def render_new_turns(turns: list[Turn]) -> str:
+    """What a backend that keeps its own session gets: the plain text for a single user
+    message, speaker-tagged lines when others spoke in between."""
+    if len(turns) == 1 and turns[0].speaker == "user":
+        return turns[0].text
+    return "\n".join(f"[{'사용자' if t.speaker == 'user' else t.speaker}]: {t.text}" for t in turns)
+
+
+class HermesResponsesAdapter:
+    """Hermes keeps the history itself under the `conversation` name, the way it keeps
+    a session per Discord/Slack thread; Argos only sends what is new."""
+
+    def __init__(self, client: AsyncOpenAI, model: str, name: str) -> None:
+        self._client = client
+        self._model = model
+        self._name = name
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        text = render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+        try:
+            response = await self._client.responses.create(
+                model=self._model,
+                input=text,
+                instructions=context,
+                stream=True,
+                extra_body={"conversation": session},
+            )
+        except Exception as exc:
+            raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+        try:
+            async for event in response:
+                parsed = parse_hermes_event(event.type, event.model_dump())
+                if parsed is not None:
+                    yield parsed
+        finally:
+            await response.close()
+
+
+# --- Claude Code ---------------------------------------------------------------------------
+
+
+def parse_claude_line(data: dict[str, Any]) -> AgentEvent | None:
+    """One line of `claude -p --output-format stream-json --include-partial-messages`."""
+    kind = data.get("type")
+    if kind == "stream_event":
+        event = _obj(data.get("event"))
+        if event.get("type") == "content_block_delta":
+            delta = _obj(event.get("delta"))
+            if delta.get("type") == "text_delta" and delta.get("text"):
+                return Token(delta["text"])
+        if event.get("type") == "content_block_start":
+            block = _obj(event.get("content_block"))
+            if block.get("type") == "tool_use":
+                return Status(
+                    f"도구 사용 중: {str(block.get('name', '')).removeprefix('mcp__argos__')}"
+                )
+        return None
+    if kind == "result" and data.get("is_error"):
+        return Failure(str(data.get("result") or data.get("subtype") or "Claude Code error"))
+    return None
+
+
+def is_claude_final(data: dict[str, Any]) -> bool:
+    return data.get("type") == "result"
+
+
+# --- Codex -----------------------------------------------------------------------------------
+
+
+def parse_codex_line(data: dict[str, Any]) -> AgentEvent | None:
+    """One line of `codex exec --json`. Codex sends whole messages, not token deltas."""
+    kind = data.get("type")
+    item = _obj(data.get("item"))
+    if kind == "item.started" and item.get("type") == "mcp_tool_call":
+        return Status(f"도구 사용 중: {item.get('tool', '')}")
+    if kind == "item.completed" and item.get("type") == "agent_message" and item.get("text"):
+        return Token(str(item["text"]).rstrip() + "\n\n")
+    if kind in ("turn.failed", "error"):
+        error = data.get("error")
+        return Failure(str(_obj(error).get("message") or error or "Codex error"))
+    return None
+
+
+def is_codex_final(data: dict[str, Any]) -> bool:
+    return data.get("type") in ("turn.completed", "turn.failed")
+
+
+# --- subprocess plumbing -----------------------------------------------------------------------
+
+
+class CLIAdapter:
+    """Runs a headless CLI in an empty workspace and turns its JSON lines into events.
+    The process is killed once the final line arrives (some CLIs linger on hooks), on
+    cancellation, and on errors."""
+
+    def __init__(
+        self,
+        argv: list[str],
+        workspace: Path,
+        parse: Any,
+        is_final: Any,
+        name: str,
+    ) -> None:
+        self._argv = argv
+        self._workspace = workspace
+        self._parse = parse
+        self._is_final = is_final
+        self._name = name
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        """Stateless: every run gets the context and the whole transcript."""
+        prompt = f"{context}\n\n{render_transcript(transcript, self._name)}"
+        async for event in self._exec([], prompt):
+            yield event
+
+    async def _exec(self, extra: list[str], prompt: str) -> AsyncIterator[AgentEvent]:
+        binary = shutil.which(self._argv[0])
+        if binary is None:
+            raise AgentUnavailable(f"{self._argv[0]} 명령을 찾을 수 없어요")
+        self._workspace.mkdir(parents=True, exist_ok=True)
+        process = await asyncio.create_subprocess_exec(
+            binary,
+            *self._argv[1:],
+            *extra,
+            prompt,
+            cwd=self._workspace,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "NO_COLOR": "1"},
+            limit=16 * 1024 * 1024,
+        )
+        assert process.stdout is not None
+        finished = False
+        started = False  # models sometimes echo the "[name]:" transcript format; drop it once
+        try:
+            async for raw in process.stdout:
+                try:
+                    data = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                if (event := self._parse(data)) is not None:
+                    if isinstance(event, Token) and not started:
+                        text = re.sub(rf"^\s*\[{re.escape(self._name)}\]:?\s*", "", event.text)
+                        started = bool(text)
+                        if not text:
+                            continue
+                        event = Token(text)
+                    yield event
+                if self._is_final(data):
+                    finished = True
+                    break
+            if not finished:
+                await process.wait()
+                stderr = await process.stderr.read() if process.stderr else b""
+                if process.returncode:
+                    tail = stderr.decode(errors="replace").strip()[-300:]
+                    raise AgentUnavailable(
+                        f"{self._argv[0]} 종료 코드 {process.returncode}: {tail}"
+                    )
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+
+
+# One namespace for every Argos-made backend session id (deterministic uuid5).
+SESSION_NAMESPACE = uuid.UUID("6f1d2a4e-5b0c-4f7e-9a3d-8c2b1e0f4a67")
+
+
+def claude_sdk_event(message: Any) -> AgentEvent | None:
+    """Maps a Claude Agent SDK message to an AgentEvent (StreamEvent carries the raw API
+    stream event the CLI parser already understands)."""
+    if isinstance(message, StreamEvent):
+        return parse_claude_line({"type": "stream_event", "event": message.event})
+    if isinstance(message, ResultMessage) and message.is_error:
+        detail = message.result or "; ".join(message.errors or []) or message.subtype
+        return Failure(str(detail))
+    return None
+
+
+class ClaudeSDKAdapter:
+    """Claude through the official Claude Agent SDK, one session per Argos thread/DM.
+
+    The SDK still runs the Claude Code engine with the user's login, but hands back
+    typed messages, and `get_session_info` says whether the thread's session exists,
+    so there is no guessing between --session-id and --resume. Isolation is the same
+    as before: no built-in tools, no user settings/hooks, only the Argos MCP server."""
+
+    def __init__(
+        self, name: str, model: str | None, workspace: Path, mcp_url: str, cli_path: str | None
+    ) -> None:
+        self._name = name
+        self._model = model
+        self._workspace = workspace
+        self._mcp_url = mcp_url
+        self._cli_path = cli_path
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        self._workspace.mkdir(parents=True, exist_ok=True)
+        session_id = str(uuid.uuid5(SESSION_NAMESPACE, f"{self._name}:{session}"))
+        exists = (
+            await asyncio.to_thread(get_session_info, session_id, str(self._workspace))
+        ) is not None
+        options = ClaudeAgentOptions(
+            system_prompt=context,  # a chat agent, not Claude Code's coding prompt
+            tools=[],
+            allowed_tools=["mcp__argos"],
+            mcp_servers={"argos": {"type": "http", "url": self._mcp_url}},
+            strict_mcp_config=True,
+            setting_sources=[],  # none of the user's settings, hooks or plugins
+            cwd=str(self._workspace),
+            model=self._model,
+            include_partial_messages=True,
+            resume=session_id if exists else None,
+            session_id=None if exists else session_id,
+            cli_path=self._cli_path,
+        )
+        prompt = (
+            render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+            if exists
+            else render_transcript(transcript, self._name)
+        )
+        try:
+            async for message in query(prompt=prompt, options=options):
+                if (event := claude_sdk_event(message)) is not None:
+                    yield event
+                if isinstance(message, ResultMessage):
+                    return
+        except CLINotFoundError as exc:
+            raise AgentUnavailable("claude 명령을 찾을 수 없어요") from exc
+        except ClaudeSDKError as exc:
+            raise AgentUnavailable(f"Claude: {exc}") from exc
+
+
+# --- Codex app-server (JSON-RPC over stdio) ---------------------------------------------------
+
+
+def parse_codex_notification(method: str, params: dict[str, Any]) -> AgentEvent | None:
+    """One `codex app-server` notification (protocol v2, experimental: unknown ones are
+    ignored)."""
+    if method == "item/agentMessage/delta" and params.get("delta"):
+        return Token(str(params["delta"]))
+    if method == "item/started":
+        item = _obj(params.get("item"))
+        if item.get("type") in ("mcpToolCall", "dynamicToolCall"):
+            return Status(f"도구 사용 중: {item.get('tool') or item.get('name') or ''}")
+    if method == "error" and not params.get("willRetry"):
+        return Failure(str(_obj(params.get("error")).get("message") or "Codex error"))
+    if method == "turn/completed":
+        turn = _obj(params.get("turn"))
+        if turn.get("status") == "failed":
+            return Failure(str(_obj(turn.get("error")).get("message") or "Codex turn failed"))
+    return None
+
+
+class CodexAppServerAdapter:
+    """Codex through `codex app-server`: token streaming and one persistent Codex thread
+    per Argos thread/DM (`thread/resume`). A process per run keeps the lifecycle simple;
+    the thread itself lives in Argos' own CODEX_HOME. Same isolation as the exec mode:
+    read-only sandbox, no shell/browser/computer/image tools, Argos MCP auto-approved,
+    any other approval or input request from the server is refused."""
+
+    def __init__(
+        self,
+        name: str,
+        model: str | None,
+        workspace: Path,
+        mcp_url: str,
+        binary: str,
+        home: Path,
+        sessions: SessionIds,
+    ) -> None:
+        self._name = name
+        self._model = model
+        self._workspace = workspace
+        self._mcp_url = mcp_url
+        self._binary = binary
+        self._home = home
+        self._sessions = sessions
+        self._next_id = 0
+
+    def _argv(self) -> list[str]:
+        return [
+            self._binary,
+            "app-server",
+            "-c", f'mcp_servers.argos.url="{self._mcp_url}"',
+            "-c", 'mcp_servers.argos.default_tools_approval_mode="approve"',
+            "-c", "features.shell_tool=false",
+            "-c", "features.browser_use=false",
+            "-c", "features.computer_use=false",
+            "-c", "features.image_generation=false",
+            "-c", "features.in_app_browser=false",
+        ]  # fmt: skip
+
+    async def stream(
+        self, transcript: list[Turn], context: str, session: str
+    ) -> AsyncIterator[AgentEvent]:
+        self._workspace.mkdir(parents=True, exist_ok=True)
+        process = await asyncio.create_subprocess_exec(
+            *self._argv(),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            env={**os.environ, "CODEX_HOME": str(self._home), "NO_COLOR": "1"},
+            limit=16 * 1024 * 1024,
+        )
+        try:
+            async for event in self._converse(process, transcript, context, session):
+                yield event
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+
+    async def _converse(
+        self,
+        process: asyncio.subprocess.Process,
+        transcript: list[Turn],
+        context: str,
+        session: str,
+    ) -> AsyncIterator[AgentEvent]:
+        assert process.stdin is not None and process.stdout is not None
+        stdin, stdout = process.stdin, process.stdout
+        pending: list[dict[str, Any]] = []  # notifications read while awaiting a response
+
+        async def send(method: str, params: dict[str, Any], *, notify: bool = False) -> int:
+            message: dict[str, Any] = {"method": method, "params": params}
+            if not notify:
+                self._next_id += 1
+                message["id"] = self._next_id
+            stdin.write((json.dumps(message, ensure_ascii=False) + "\n").encode())
+            await stdin.drain()
+            return self._next_id
+
+        async def read() -> dict[str, Any]:
+            line = await stdout.readline()
+            if not line:
+                raise AgentUnavailable("codex app-server가 예기치 않게 종료됐어요")
+            return _obj(json.loads(line))
+
+        async def refuse(message: dict[str, Any]) -> None:
+            """Server → client requests (approvals, user input): Argos never grants them."""
+            error = {"code": -32601, "message": "not supported by Argos"}
+            stdin.write((json.dumps({"id": message["id"], "error": error}) + "\n").encode())
+            await stdin.drain()
+
+        async def call(method: str, params: dict[str, Any]) -> dict[str, Any]:
+            request_id = await send(method, params)
+            while True:
+                message = await read()
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+                if "method" in message and "id" in message:
+                    await refuse(message)
+                elif "method" in message:
+                    pending.append(message)
+
+        init = await call("initialize", {"clientInfo": {"name": "argos", "version": "0.1"}})
+        if "error" in init:
+            raise AgentUnavailable(f"codex app-server: {_obj(init['error']).get('message')}")
+        await send("initialized", {}, notify=True)
+
+        common: dict[str, Any] = {
+            "cwd": str(self._workspace),
+            "sandbox": "read-only",
+            "approvalPolicy": "never",
+            "developerInstructions": context,
+            "model": self._model,
+        }
+        thread_id = await self._sessions.get(session)
+        resumed = False
+        if thread_id:
+            reply = await call("thread/resume", {"threadId": thread_id, **common})
+            resumed = "error" not in reply  # e.g. the thread was deleted: start over below
+        if not resumed:
+            reply = await call("thread/start", {**common, "ephemeral": False})
+            if "error" in reply:
+                raise AgentUnavailable(f"codex thread: {_obj(reply['error']).get('message')}")
+            thread_id = str(_obj(_obj(reply.get("result")).get("thread")).get("id"))
+            await self._sessions.set(session, thread_id)
+
+        text = (
+            render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+            if resumed
+            else render_transcript(transcript, self._name)
+        )
+        started = await call(
+            "turn/start",
+            {"threadId": thread_id, "input": [{"type": "text", "text": text}], "effort": "low"},
+        )
+        if "error" in started:
+            raise AgentUnavailable(f"codex turn: {_obj(started['error']).get('message')}")
+
+        tail = ""  # end of the text so far: consecutive agent messages get a blank line
+        while True:
+            message = pending.pop(0) if pending else await read()
+            method = str(message.get("method") or "")
+            if "id" in message and method:
+                await refuse(message)
+                continue
+            params = _obj(message.get("params"))
+            if method == "item/started" and _obj(params.get("item")).get("type") == "agentMessage":
+                if tail and not tail.endswith("\n\n"):
+                    yield Token("\n" if tail.endswith("\n") else "\n\n")
+            event = parse_codex_notification(method, params)
+            if event is not None:
+                if isinstance(event, Token):
+                    tail = (tail + event.text)[-2:]
+                yield event
+            if method == "turn/completed":
+                return
+
+
+def prepare_codex_home(home: Path, auth: Path) -> Path:
+    """Argos' CODEX_HOME holds only a link to the user's login (auth.json)."""
+    home = home.resolve()
+    home.mkdir(parents=True, exist_ok=True)
+    link = home / "auth.json"
+    if not auth.exists():
+        raise AgentUnavailable("Codex 로그인 정보가 없어요 (터미널에서 codex login)")
+    if not link.exists():
+        link.symlink_to(auth)
+    return home
+
+
+# --- factory --------------------------------------------------------------------------------------
+
+
+class _NoSessions:
+    async def get(self, key: str) -> str | None:
+        return None
+
+    async def set(self, key: str, value: str) -> None:
+        return None
+
+
+def build_adapter(
+    agent: Agent, settings: Settings, sessions: SessionIds | None = None
+) -> AgentAdapter:
+    workspace = settings.agent_workspace.resolve()
+    mcp = f"{settings.mcp_url}?agent={agent.name}"
+    match agent.backend:
+        case AgentBackend.HERMES:
+            if settings.hermes_api_key is None:
+                raise AgentUnavailable(
+                    "Hermes API 키가 없어요 (ARGOS_HERMES_API_KEY, docs/hermes-setup.md)"
+                )
+            client = AsyncOpenAI(
+                base_url=settings.hermes_base_url,
+                api_key=settings.hermes_api_key.get_secret_value(),
+                timeout=settings.agent_timeout,
+                max_retries=0,
+            )
+            return HermesResponsesAdapter(client, agent.model or settings.hermes_model, agent.name)
+        case AgentBackend.OLLAMA:
+            model = agent.model or settings.classifier_model
+            if not model:
+                raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
+            base = settings.classifier_base_url or "http://127.0.0.1:11434/v1"
+            client = AsyncOpenAI(
+                base_url=base, api_key="ollama", timeout=settings.agent_timeout, max_retries=0
+            )
+            return OpenAICompatAdapter(
+                client, model, agent.name, extra={"reasoning_effort": "none"}
+            )
+        case AgentBackend.CLAUDE_CODE:
+            cli = shutil.which(settings.claude_bin)
+            if cli is None:
+                raise AgentUnavailable(f"{settings.claude_bin} 명령을 찾을 수 없어요")
+            return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli)
+        case AgentBackend.CODEX:
+            binary = shutil.which(settings.codex_bin)
+            if binary is None:
+                raise AgentUnavailable(f"{settings.codex_bin} 명령을 찾을 수 없어요")
+            if settings.codex_mode == "app-server":
+                home = prepare_codex_home(settings.codex_home, settings.codex_auth)
+                return CodexAppServerAdapter(
+                    agent.name, agent.model, workspace, mcp, binary, home, sessions or _NoSessions()
+                )
+            argv = [
+                settings.codex_bin,
+                "exec",
+                "--json",
+                "--ephemeral",
+                "--skip-git-repo-check",
+                "--sandbox", "read-only",
+                "-C", str(workspace),
+                "--ignore-user-config",
+                "-c", 'approval_policy="never"',
+                "-c", f'mcp_servers.argos.url="{mcp}"',
+                "-c", 'mcp_servers.argos.default_tools_approval_mode="approve"',
+                "-c", "features.shell_tool=false",
+                "-c", "features.browser_use=false",
+                "-c", "features.computer_use=false",
+                "-c", "features.image_generation=false",
+                "-c", "features.in_app_browser=false",
+                "-c", 'model_reasoning_effort="low"',
+            ]  # fmt: skip
+            if agent.model:
+                argv += ["--model", agent.model]
+            return CLIAdapter(argv, workspace, parse_codex_line, is_codex_final, agent.name)
+    raise AgentUnavailable(f"unknown agent backend {agent.backend!r}")

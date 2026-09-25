@@ -1,0 +1,48 @@
+event: response.created
+data: {"type": "response.created", "response": {"id": "resp_e64644126e354f92b2be3ae7aae7", "object": "response", "status": "in_progress", "created_at": 1790298642, "model": "hermes-agent", "output": []}, "sequence_number": 0}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 0, "item": {"id": "fc_5b602ed682254a62b65e734a", "type": "function_call", "status": "in_progress", "name": "execute_code", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5", "arguments": "{\"code\": \"from hermes_tools import terminal\\nprint(terminal(\\\"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\\\"))\"}"}, "sequence_number": 1}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 0, "item": {"id": "fc_5b602ed682254a62b65e734a", "type": "function_call", "status": "completed", "name": "execute_code", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5", "arguments": "{\"code\": \"from hermes_tools import terminal\\nprint(terminal(\\\"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\\\"))\"}"}, "sequence_number": 2}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 1, "item": {"id": "fco_b3157080d46a48b7b900b135", "type": "function_call_output", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5", "output": [{"type": "input_text", "text": "{\"status\": \"error\", \"error\": \"BLOCKED: execute_code runs arbitrary local Python (including subprocess calls that bypass shell-string approval checks). This session runs on an unattended platform (api_server) with no user present to approve it. Use normal tools instead, or set approvals.unattended_mode: approve only if sessions on this surface are intentionally trusted.\", \"tool_calls_made\": 0, \"duration_seconds\": 0}"}], "status": "completed"}, "sequence_number": 3}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 1, "item": {"id": "fco_b3157080d46a48b7b900b135", "type": "function_call_output", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5", "output": [{"type": "input_text", "text": "{\"status\": \"error\", \"error\": \"BLOCKED: execute_code runs arbitrary local Python (including subprocess calls that bypass shell-string approval checks). This session runs on an unattended platform (api_server) with no user present to approve it. Use normal tools instead, or set approvals.unattended_mode: approve only if sessions on this surface are intentionally trusted.\", \"tool_calls_made\": 0, \"duration_seconds\": 0}"}], "status": "completed"}, "sequence_number": 4}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 2, "item": {"id": "fc_734564df307541639b9871f0", "type": "function_call", "status": "in_progress", "name": "terminal", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg", "arguments": "{\"command\": \"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\"}"}, "sequence_number": 5}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 2, "item": {"id": "fc_734564df307541639b9871f0", "type": "function_call", "status": "completed", "name": "terminal", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg", "arguments": "{\"command\": \"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\"}"}, "sequence_number": 6}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 3, "item": {"id": "fco_919677eefad04609b8eca23a", "type": "function_call_output", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg", "output": [{"type": "input_text", "text": "{\"output\": \"2026\ub144 9\uc6d4 25\uc77c\", \"exit_code\": 0, \"error\": null}"}], "status": "completed"}, "sequence_number": 7}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 3, "item": {"id": "fco_919677eefad04609b8eca23a", "type": "function_call_output", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg", "output": [{"type": "input_text", "text": "{\"output\": \"2026\ub144 9\uc6d4 25\uc77c\", \"exit_code\": 0, \"error\": null}"}], "status": "completed"}, "sequence_number": 8}
+
+event: response.output_item.added
+data: {"type": "response.output_item.added", "output_index": 4, "item": {"id": "msg_f1db4e5f64a049aa8fb0ae13", "type": "message", "status": "in_progress", "role": "assistant", "content": []}, "sequence_number": 9}
+
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "item_id": "msg_f1db4e5f64a049aa8fb0ae13", "output_index": 4, "content_index": 0, "delta": "\n\n\uc624\ub298\uc740 2026\ub144 ", "logprobs": [], "sequence_number": 10}
+
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "item_id": "msg_f1db4e5f64a049aa8fb0ae13", "output_index": 4, "content_index": 0, "delta": "9\uc6d4 25\uc77c", "logprobs": [], "sequence_number": 11}
+
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "item_id": "msg_f1db4e5f64a049aa8fb0ae13", "output_index": 4, "content_index": 0, "delta": "\uc785\ub2c8\ub2e4.", "logprobs": [], "sequence_number": 12}
+
+event: response.output_text.done
+data: {"type": "response.output_text.done", "item_id": "msg_f1db4e5f64a049aa8fb0ae13", "output_index": 4, "content_index": 0, "text": "\n\n\uc624\ub298\uc740 2026\ub144 9\uc6d4 25\uc77c\uc785\ub2c8\ub2e4.", "logprobs": [], "sequence_number": 13}
+
+event: response.output_item.done
+data: {"type": "response.output_item.done", "output_index": 4, "item": {"id": "msg_f1db4e5f64a049aa8fb0ae13", "type": "message", "status": "completed", "role": "assistant", "content": [{"type": "output_text", "text": "\n\n\uc624\ub298\uc740 2026\ub144 9\uc6d4 25\uc77c\uc785\ub2c8\ub2e4."}]}, "sequence_number": 14}
+
+event: response.completed
+data: {"type": "response.completed", "response": {"id": "resp_e64644126e354f92b2be3ae7aae7", "object": "response", "status": "completed", "created_at": 1790298642, "model": "hermes-agent", "output": [{"type": "function_call", "name": "execute_code", "arguments": "{\"code\": \"from hermes_tools import terminal\\nprint(terminal(\\\"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\\\"))\"}", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5"}, {"type": "function_call_output", "call_id": "call_NqIPhlKqPM3vxabuRJ9kClM5", "output": [{"type": "input_text", "text": "{\"status\": \"error\", \"error\": \"BLOCKED: execute_code runs arbitrary local Python (including subprocess calls that bypass shell-string approval checks). This session runs on an unattended platform (api_server) with no user present to approve it. Use normal tools instead, or set approvals.unattended_mode: approve only if sessions on this surface are intentionally trusted.\", \"tool_calls_made\": 0, \"duration_seconds\": 0}"}]}, {"type": "function_call", "name": "terminal", "arguments": "{\"command\": \"date '+%Y\\ub144 %-m\\uc6d4 %-d\\uc77c'\"}", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg"}, {"type": "function_call_output", "call_id": "call_0Kh2sPEohXa33tszyW5X4pLg", "output": [{"type": "input_text", "text": "{\"output\": \"2026\ub144 9\uc6d4 25\uc77c\", \"exit_code\": 0, \"error\": null}"}]}, {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "\n\n\uc624\ub298\uc740 2026\ub144 9\uc6d4 25\uc77c\uc785\ub2c8\ub2e4."}]}], "usage": {"input_tokens": 36391, "output_tokens": 99, "total_tokens": 36490}}, "sequence_number": 15}
+

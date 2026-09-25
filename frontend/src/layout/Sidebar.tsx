@@ -1,10 +1,15 @@
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useNavigate, useParams } from "react-router";
+import { useBusyAgents } from "../agentStream";
+import { AgentAvatar } from "../agents";
 import {
   type Channel,
   type Task,
+  useAgentSettings,
+  useAgents,
   useChannels,
   useCreateChannel,
+  useOpenDM,
   usePendingApprovals,
   useTasks,
   useToday,
@@ -136,6 +141,7 @@ export function Sidebar({
               ))}
           </Section>
         ))}
+        <AgentSection />
       </div>
 
       <AddChannelDialog
@@ -264,5 +270,53 @@ function AddChannelDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/** Agents as bot users (PLAN Phase 5 "DM 섹션"): click opens a 1:1 conversation. */
+function AgentSection() {
+  const agents = useAgents();
+  const settings = useAgentSettings();
+  const openDM = useOpenDM();
+  const navigate = useNavigate();
+  const busy = useBusyAgents();
+  const { channelId } = useParams();
+  const channels = useChannels();
+  const current = channels.data?.channels.find((c) => c.id === channelId);
+
+  return (
+    <Section title="에이전트">
+      {agents.data?.map((a) => {
+        const active =
+          current?.kind === "dm" && current.default_agent_id === a.id;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            title={a.available ? undefined : (a.problem ?? undefined)}
+            aria-current={active ? "page" : undefined}
+            onClick={() =>
+              openDM.mutate(a.name, {
+                onSuccess: (dm) => navigate(`/c/${dm.id}`),
+              })
+            }
+            className={`${row} h-[34px] cursor-pointer text-left ${a.available ? "" : "opacity-55"}`}
+          >
+            <AgentAvatar id={a.name} size={22} />
+            <span className="grow truncate">{a.display_name}</span>
+            {busy.has(a.name) ? (
+              <span className="flex items-center gap-1.5 text-[11.5px] text-meta">
+                <span className="size-1.5 animate-pulse rounded-full bg-step-4" />
+                입력 중
+              </span>
+            ) : (
+              settings.data?.default_agent === a.name && (
+                <span className="text-[11.5px] text-meta">기본</span>
+              )
+            )}
+          </button>
+        );
+      })}
+    </Section>
   );
 }

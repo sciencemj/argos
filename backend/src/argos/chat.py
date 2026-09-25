@@ -1,4 +1,5 @@
-"""Chat input (PLAN Phase 3): sending a message is how things get recorded.
+"""Chat input (PLAN Phases 3 and 5): sending a message is how things get recorded, and
+how agents are called.
 
 Slash commands act immediately and deterministically. Anything else is kept verbatim as
 an inbox item first, so nothing is lost if classification fails, and is then classified
@@ -6,6 +7,7 @@ in the background.
 """
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select
@@ -15,6 +17,7 @@ from argos import commands, services
 from argos.classifier import Classifier, ClassifierError, ClassifyContext, anchor_dates
 from argos.config import Settings
 from argos.models import (
+    Agent,
     AuthorType,
     Channel,
     ChannelKind,
@@ -23,8 +26,16 @@ from argos.models import (
     Message,
     Record,
 )
+from argos.runner import mentioned_agents
 
-ASK_PENDING = "에이전트와의 대화는 아직 연결 전이에요. 질문은 이 스레드에 남겨 둘게요."
+NO_AGENT = "답할 에이전트를 찾지 못했어요. 설정에서 기본 에이전트를 확인해 주세요."
+
+
+@dataclass
+class Posted:
+    message: Message
+    classify_item_id: str | None = None  # plain text captured into the inbox
+    agents: list[Agent] = field(default_factory=list[Agent])  # who should answer
 
 
 async def post_message(
@@ -35,18 +46,44 @@ async def post_message(
     now: datetime,
     settings: Settings,
     thread_root_id: str | None = None,
-) -> tuple[Message, str | None]:
-    """Returns the stored message and, for plain text, the inbox item to classify."""
+) -> Posted:
+    """Stores the message and decides what happens next (see runner.py for routing):
+    agents to answer, or an inbox item to classify, or neither."""
     body = body.strip()
     if not body:
         raise services.InvalidError("빈 메시지는 보낼 수 없어요")
     channel = await services.get_channel(session, channel_id)
+    mentioned = await mentioned_agents(session, body)
+    dm_agent = (
+        await services.get_agent(session, channel.default_agent_id)
+        if channel.kind == ChannelKind.DM and channel.default_agent_id
+        else None
+    )
 
     if thread_root_id is not None:  # replies are conversation, not capture
+        root = await services.get_message(session, thread_root_id)
+        root = await services.get_message(session, root.thread_root_id or root.id)
         message = await services.create_message(
-            session, channel_id=channel.id, body=body, actor="user", thread_root_id=thread_root_id
+            session, channel_id=channel.id, body=body, actor="user", thread_root_id=root.id
         )
-        return message, None
+        if len(mentioned) == 1:  # an @mention re-sticks the thread to that agent
+            await services.update_message(
+                session, root.id, {"sticky_agent_id": mentioned[0].id}, "user"
+            )
+        if mentioned:
+            return Posted(message, agents=mentioned)
+        if root.sticky_agent_id:
+            return Posted(message, agents=[await services.get_agent(session, root.sticky_agent_id)])
+        return Posted(message, agents=[dm_agent] if dm_agent else [])
+
+    if mentioned or dm_agent:  # addressed to an agent: a conversation, not capture
+        targets = mentioned or ([dm_agent] if dm_agent else [])
+        message = await _say(session, channel, body, None)
+        if len(targets) == 1:
+            await services.update_message(
+                session, message.id, {"sticky_agent_id": targets[0].id}, "user"
+            )
+        return Posted(message, agents=targets)
 
     try:
         command = commands.parse(body, now, settings.zoneinfo)
@@ -62,13 +99,12 @@ async def post_message(
                 channel_id=channel.id,
                 actor="user",
             )
-            message = await _say(session, channel, body, item)
-            return message, item.id
+            return Posted(await _say(session, channel, body, item), classify_item_id=item.id)
         case commands.TaskCommand(title=title, due_at=due_at):
             task = await services.create_task(
                 session, channel_id=channel.id, title=title, due_at=due_at, actor="user"
             )
-            return await _say(session, channel, body, task), None
+            return Posted(await _say(session, channel, body, task))
         case commands.EventCommand() as event_cmd:
             event = await services.create_event(
                 session,
@@ -79,7 +115,7 @@ async def post_message(
                 start_date=event_cmd.all_day,
                 actor="user",
             )
-            return await _say(session, channel, body, event), None
+            return Posted(await _say(session, channel, body, event))
         case commands.NoteCommand(text=text):
             # Becomes a Markdown file once the vault is connected (Phase 8); kept until then.
             item = await services.create_inbox_item(
@@ -96,18 +132,24 @@ async def post_message(
                     "confidence": 1.0,
                 },
             )
-            return await _say(session, channel, body, item), None
+            return Posted(await _say(session, channel, body, item))
         case commands.AskCommand():
             message = await _say(session, channel, body, None)
-            await services.create_message(
-                session,
-                channel_id=channel.id,
-                body=ASK_PENDING,
-                author_type=AuthorType.SYSTEM,
-                thread_root_id=message.id,
-                actor="system",
+            agent = await services.default_agent(session, channel, settings.default_agent)
+            if agent is None:
+                await services.create_message(
+                    session,
+                    channel_id=channel.id,
+                    body=NO_AGENT,
+                    author_type=AuthorType.SYSTEM,
+                    thread_root_id=message.id,
+                    actor="system",
+                )
+                return Posted(message)
+            await services.update_message(
+                session, message.id, {"sticky_agent_id": agent.id}, "user"
             )
-            return message, None
+            return Posted(message, agents=[agent])
 
 
 async def _say(session: AsyncSession, channel: Channel, body: str, ref: Record | None) -> Message:
@@ -132,7 +174,9 @@ async def classify_item(
         channel = await session.get(Channel, item.channel_id) if item.channel_id else None
         personal = await services.get_personal_channel(session)
         names = await session.scalars(
-            select(Channel.name).where(Channel.kind != ChannelKind.SYSTEM).order_by(Channel.name)
+            select(Channel.name)
+            .where(Channel.kind.not_in([ChannelKind.SYSTEM, ChannelKind.DM]))
+            .order_by(Channel.name)
         )
         context = ClassifyContext(
             now=now,

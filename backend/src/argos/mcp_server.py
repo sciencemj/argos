@@ -74,7 +74,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
             return [
                 {"id": c.id, "name": c.name, "kind": c.kind, "area": areas.get(c.area_id or "")}
                 for c in await services.list_channels(s)
-                if c.kind != ChannelKind.SYSTEM or c.name == "inbox"
+                if c.kind != ChannelKind.DM and (c.kind != ChannelKind.SYSTEM or c.name == "inbox")
             ]
 
         return await run(work)
@@ -181,7 +181,9 @@ def build_mcp(app: FastAPI) -> MCPServer:
                 targets = [await _channel(s, channel)]
             else:
                 targets = [
-                    c for c in await services.list_channels(s) if c.kind != ChannelKind.SYSTEM
+                    c
+                    for c in await services.list_channels(s)
+                    if c.kind not in (ChannelKind.SYSTEM, ChannelKind.DM)
                 ]
             out: list[dict[str, Any]] = []
             for c in targets:

@@ -6,10 +6,14 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "react-router";
+import { useLive } from "./agentStream";
 import { AgentAvatar, agentInfo } from "./agents";
 import {
   type Channel,
+  cancelRun,
   type Message,
+  useAgentSettings,
+  useAgents,
   useChannels,
   useConvertMessage,
   useMessages,
@@ -32,6 +36,7 @@ import {
   PinIcon,
   SendIcon,
 } from "./icons";
+import { Markdown } from "./markdown";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
 const SLASH = ["/task", "/event", "/note", "/ask"];
@@ -128,10 +133,13 @@ export function MessageItem({
   message,
   channel,
   onThread,
+  inlineReplies = true,
 }: {
   message: Message;
   channel: Channel;
   onThread?: (id: string) => void;
+  /** The thread panel lists replies itself, so it turns the inline answer cards off. */
+  inlineReplies?: boolean;
 }) {
   const system = message.author_type === "system";
   const agent =
@@ -162,11 +170,26 @@ export function MessageItem({
             </span>
           )}
         </div>
-        <div
-          className={`whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
-        >
-          {message.body}
-        </div>
+        {message.run ? (
+          <AgentBody message={message} />
+        ) : (
+          <div
+            className={`whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
+          >
+            {message.body}
+          </div>
+        )}
+        {inlineReplies &&
+          message.agent_replies &&
+          message.agent_replies.length > 0 && (
+            <div
+              className={`grid gap-3 ${message.agent_replies.length > 1 ? "grid-cols-2" : "max-w-[640px] grid-cols-1"}`}
+            >
+              {message.agent_replies.map((r) => (
+                <AgentReplyCard key={r.id} message={r} />
+              ))}
+            </div>
+          )}
         {inbox_item && <SuggestionCard item={inbox_item} channel={channel} />}
         {task && <TaskRefCard task={task} />}
         {event && <EventRefCard event={event} />}
@@ -183,6 +206,108 @@ export function MessageItem({
       </div>
       {onThread && <QuickActions message={message} onThread={onThread} />}
     </article>
+  );
+}
+
+function runLabel(message: Message, liveStatus?: string): string {
+  const run = message.run;
+  if (!run) return "";
+  if (run.status === "running") {
+    return liveStatus && liveStatus !== "thinking" ? liveStatus : "입력 중…";
+  }
+  if (run.status === "cancelled") return "중단됨";
+  if (run.status === "error") return "오류";
+  const seconds = run.finished_at
+    ? Math.max(
+        1,
+        Math.round(
+          (Date.parse(run.finished_at) - Date.parse(run.started_at)) / 1000,
+        ),
+      )
+    : null;
+  return seconds ? `완료 · ${seconds}초` : "완료";
+}
+
+/** An agent's answer: live tokens while its run streams, the stored text after. */
+function AgentBody({
+  message,
+  compact,
+}: {
+  message: Message;
+  compact?: boolean;
+}) {
+  const live = useLive(message.id);
+  const run = message.run;
+  const running = run?.status === "running";
+  const text = running ? (live?.text ?? "") : message.body;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {!compact && (
+        <div className="flex items-center gap-2 text-[11.5px] text-meta">
+          <span>{runLabel(message, live?.status)}</span>
+          {running && run && (
+            <CancelButton
+              runId={run.id}
+              name={agentInfo(message.author_id).name}
+            />
+          )}
+        </div>
+      )}
+      {(text || running) && (
+        <div className="text-[13.5px] leading-[1.65] text-text-2">
+          <Markdown text={text} />
+          {running && (
+            <span className="ml-[3px] inline-block h-[15px] w-[2px] animate-pulse bg-ink align-[-2px]" />
+          )}
+        </div>
+      )}
+      {run?.status === "error" && run.error && (
+        <p role="alert" className="m-0 text-[12.5px] text-danger">
+          {run.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CancelButton({ runId, name }: { runId: string; name: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={`${name} 응답 중단`}
+      onClick={() => void cancelRun(runId)}
+      className="h-[26px] cursor-pointer rounded-full border border-line bg-card px-2.5 text-[11.5px] text-text-2 hover:text-ink"
+    >
+      중단
+    </button>
+  );
+}
+
+/** First-round answer under the message that called the agent (Main design cards). */
+function AgentReplyCard({ message }: { message: Message }) {
+  const agent = agentInfo(message.author_id);
+  const live = useLive(message.id);
+  const running = message.run?.status === "running";
+  return (
+    <div className={`${card} flex flex-col gap-2.5 px-[18px] py-4`}>
+      <div className="flex items-center gap-2">
+        <AgentAvatar id={message.author_id} size={24} />
+        <span
+          className="text-[13.5px] font-medium"
+          style={{ color: agent.text }}
+        >
+          {agent.name}
+        </span>
+        <span className="grow" />
+        <span className="text-[11.5px] text-meta">
+          {runLabel(message, live?.status)}
+        </span>
+        {running && message.run && (
+          <CancelButton runId={message.run.id} name={agent.name} />
+        )}
+      </div>
+      <AgentBody message={message} compact />
+    </div>
   );
 }
 
@@ -375,10 +500,34 @@ function EventFromMessage({
 
 /** Enter sends, Shift+Enter breaks the line; Enter while a Korean syllable is still
  * being composed only commits the syllable. */
+const MENTION_AT_END = /(^|\s)@([\w가-힣-]*)$/;
+
 function Composer({ channel }: { channel: Channel }) {
   const post = usePostMessage();
+  const agents = useAgents();
+  const settings = useAgentSettings();
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const dm = channel.kind === "dm";
+  const dmAgent = agents.data?.find((a) => a.id === channel.default_agent_id);
+  const channelDefault = agents.data?.find(
+    (a) => a.id === channel.default_agent_id,
+  );
+  const fallback = agents.data?.find(
+    (a) => a.name === settings.data?.default_agent,
+  );
+  const askTarget = channelDefault ?? fallback;
+
+  // "@cl" at the caret → suggest agents whose handle or display name starts with it.
+  const typed = MENTION_AT_END.exec(text)?.[2];
+  const suggestions =
+    typed === undefined
+      ? []
+      : (agents.data ?? []).filter((a) =>
+          [a.name, a.display_name].some((n) =>
+            n.toLowerCase().startsWith(typed.toLowerCase()),
+          ),
+        );
 
   const send = () => {
     const body = text.trim();
@@ -389,10 +538,18 @@ function Composer({ channel }: { channel: Channel }) {
     );
   };
 
+  const mention = (name: string) => {
+    setText((t) =>
+      t.replace(MENTION_AT_END, (_m, lead: string) => `${lead}@${name} `),
+    );
+    input.current?.focus();
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      send();
+      if (suggestions.length > 0 && typed) mention(suggestions[0].name);
+      else send();
     }
   };
 
@@ -402,7 +559,31 @@ function Composer({ channel }: { channel: Channel }) {
   };
 
   return (
-    <div className="px-8 pb-6">
+    <div className="relative px-8 pb-6">
+      {suggestions.length > 0 && (
+        <div
+          role="listbox"
+          aria-label="에이전트 부르기"
+          className="absolute bottom-full left-8 mb-2 flex min-w-[220px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift"
+        >
+          {suggestions.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="option"
+              aria-selected={false}
+              onClick={() => mention(a.name)}
+              className="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[13.5px] hover:bg-inset"
+            >
+              <AgentAvatar id={a.name} size={20} />
+              <span className="grow text-ink">{a.display_name}</span>
+              <span className="font-mono text-[11.5px] text-meta">
+                @{a.name}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className={`${card} flex flex-col gap-3 px-[18px] pt-4 pb-3`}>
         <label htmlFor="composer" className="sr-only">
           메시지 입력
@@ -414,24 +595,42 @@ function Composer({ channel }: { channel: Channel }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={`#${channel.name}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`}
+          placeholder={
+            dm
+              ? `${dmAgent?.display_name ?? "에이전트"}에게 메시지`
+              : `#${channel.name}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+          }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
         <div className="flex items-center gap-1.5">
-          {SLASH.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => insert(c)}
-              className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
-            >
-              {c}
-            </button>
-          ))}
+          {!dm &&
+            SLASH.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => insert(c)}
+                className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
+              >
+                {c}
+              </button>
+            ))}
           <span className="grow" />
-          {post.error && (
+          {post.error ? (
             <span role="alert" className="text-[12px] text-danger">
               {post.error.message}
+            </span>
+          ) : (
+            <span className="text-[12px] text-meta">
+              {dm ? (
+                <>
+                  받는 이 · <AgentName id={dmAgent?.name} />
+                </>
+              ) : (
+                <>
+                  @로 에이전트 호출 · /ask는 <AgentName id={askTarget?.name} />
+                  {channelDefault ? " (채널 기본)" : " (기본)"}
+                </>
+              )}
             </span>
           )}
           <button
@@ -446,6 +645,16 @@ function Composer({ channel }: { channel: Channel }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AgentName({ id }: { id: string | undefined }) {
+  if (!id) return <span>없음</span>;
+  const agent = agentInfo(id);
+  return (
+    <span className="font-medium" style={{ color: agent.text }}>
+      {agent.name}
+    </span>
   );
 }
 
@@ -477,7 +686,7 @@ export function ThreadReplies({
   return (
     <>
       <div className="flex min-h-0 grow flex-col gap-5 overflow-y-auto px-5 pb-4">
-        <MessageItem message={root} channel={channel} />
+        <MessageItem message={root} channel={channel} inlineReplies={false} />
         <div className="h-px bg-line-soft" />
         {replies.length === 0 && (
           <p className="m-0 text-[13px] text-meta">아직 답글이 없어요.</p>

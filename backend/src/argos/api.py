@@ -1,7 +1,10 @@
+import asyncio
+import shutil
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
+import httpx2
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -20,12 +23,15 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import chat, classifier, services
+from argos import agents, chat, classifier, services
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
 from argos.hub import hub
 from argos.models import (
+    Agent,
+    AgentBackend,
+    AgentRun,
     Approval,
     ApprovalStatus,
     AuthorType,
@@ -34,9 +40,11 @@ from argos.models import (
     InboxItem,
     InboxStatus,
     Message,
+    RunStatus,
     Task,
     TaskStatus,
 )
+from argos.runner import Runner
 
 USER = "user"
 
@@ -81,6 +89,7 @@ class ChannelOut(Out):
     area_id: str | None
     name: str
     kind: ChannelKind
+    default_agent_id: str | None
     vault_path: str | None
     sort_order: int
 
@@ -109,6 +118,7 @@ class ChannelUpdate(BaseModel):
     kind: ChannelKind | None = None
     vault_path: str | None = None
     sort_order: int | None = None
+    default_agent_id: str | None = None  # null = use the app-wide default agent
 
 
 class RoutineOut(BaseModel):
@@ -318,6 +328,34 @@ class MessageOut(Out):
     created_at: datetime
     reply_count: int = 0
     ref: RefOut = Field(default_factory=RefOut)
+    run: "RunOut | None" = None  # set on an agent's reply
+    # First-round agent answers to this message, shown inline under it in the feed.
+    agent_replies: list["MessageOut"] = Field(default_factory=list["MessageOut"])
+
+
+class RunOut(Out):
+    id: str
+    agent_id: str
+    status: RunStatus
+    error: str | None
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class AgentOut(Out):
+    id: str
+    name: str
+    display_name: str
+    avatar: str | None
+    backend: AgentBackend
+    model: str | None
+    is_builtin: bool
+    available: bool = True
+    problem: str | None = None  # why it cannot answer right now
+
+
+class AgentSettingsIn(BaseModel):
+    default_agent: str = Field(min_length=1, max_length=40)
 
 
 class MessagePage(BaseModel):
@@ -473,12 +511,42 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
         model, schema = models[ref_type]
         for obj in (await session.scalars(select(model).where(model.id.in_(ids)))).all():
             refs[(ref_type, obj.id)] = schema.model_validate(obj)
+    run_ids = [m.run_id for m in messages if m.run_id]
+    runs = {
+        r.id: RunOut.model_validate(r)
+        for r in (await session.scalars(select(AgentRun).where(AgentRun.id.in_(run_ids)))).all()
+    }
+    # Agent answers triggered by these messages (they live in the message's thread).
+    roots = [m.id for m in messages if m.thread_root_id is None]
+    triggered = (
+        await session.scalars(
+            select(AgentRun).where(
+                AgentRun.trigger_message_id.in_(roots), AgentRun.reply_message_id.is_not(None)
+            )
+        )
+    ).all()
+    replies_by_root: dict[str, list[Message]] = {}
+    if triggered:
+        reply_ids = [r.reply_message_id for r in triggered if r.reply_message_id]
+        reply_rows = (
+            await session.scalars(
+                select(Message).where(Message.id.in_(reply_ids)).order_by(Message.created_at)
+            )
+        ).all()
+        by_reply = {r.reply_message_id: r.trigger_message_id for r in triggered}
+        for reply in reply_rows:
+            if reply.thread_root_id is not None:  # DM answers are top-level already
+                replies_by_root.setdefault(by_reply[reply.id] or "", []).append(reply)
     out: list[MessageOut] = []
     for m in messages:
         item = MessageOut.model_validate(m)
         item.reply_count = counts.get(m.id, 0)
         if m.ref_type and m.ref_id and (ref := refs.get((m.ref_type, m.ref_id))):
             item.ref = RefOut.model_validate({m.ref_type: ref})
+        if m.run_id:
+            item.run = runs.get(m.run_id)
+        if m.id in replies_by_root:
+            item.agent_replies = await _messages_out(session, replies_by_root[m.id])
         out.append(item)
     return out
 
@@ -521,7 +589,7 @@ async def post_message(
     channel_id: str,
     body: MessageCreate,
 ) -> MessageOut:
-    message, pending = await chat.post_message(
+    posted = await chat.post_message(
         session,
         channel_id=channel_id,
         body=body.body,
@@ -529,8 +597,12 @@ async def post_message(
         now=datetime.now(UTC),
         settings=config,
     )
-    _classify_later(request, background, config, pending)
-    [out] = await _messages_out(session, [message])
+    _classify_later(request, background, config, posted.classify_item_id)
+    if posted.agents:
+        runner: Runner = request.app.state.runner
+        runner.settings = config
+        await runner.respond(session, posted.message, posted.agents)
+    [out] = await _messages_out(session, [posted.message])
     return out
 
 
@@ -617,6 +689,73 @@ async def approve(session: Session, approval_id: str) -> ApprovalOut:
 async def reject(session: Session, approval_id: str) -> ApprovalOut:
     approval = await services.resolve_approval(session, approval_id, approve=False, actor=USER)
     return ApprovalOut.model_validate(approval)
+
+
+async def _agent_status(agent: Agent, config: Settings) -> AgentOut:
+    out = AgentOut.model_validate(agent)
+    try:
+        agents.build_adapter(agent, config)
+        if agent.backend == AgentBackend.HERMES:
+            async with httpx2.AsyncClient(timeout=1.5) as http:
+                key = config.hermes_api_key.get_secret_value() if config.hermes_api_key else ""
+                response = await http.get(
+                    f"{config.hermes_base_url}/models", headers={"Authorization": f"Bearer {key}"}
+                )
+                if response.status_code >= 400:
+                    raise agents.AgentUnavailable(f"Hermes 응답 {response.status_code}")
+        elif agent.backend in (AgentBackend.CLAUDE_CODE, AgentBackend.CODEX):
+            binary = (
+                config.claude_bin if agent.backend == AgentBackend.CLAUDE_CODE else config.codex_bin
+            )
+            if shutil.which(binary) is None:
+                raise agents.AgentUnavailable(f"{binary} 명령을 찾을 수 없어요")
+    except agents.AgentUnavailable as exc:
+        out.available, out.problem = False, str(exc)
+    except httpx2.HTTPError:
+        out.available, out.problem = (
+            False,
+            "Hermes API 서버에 연결할 수 없어요 (docs/hermes-setup.md)",
+        )
+    return out
+
+
+@router.get("/agents")
+async def list_agents(session: Session, config: Config) -> list[AgentOut]:
+    rows = await services.list_agents(session)
+    return list(await asyncio.gather(*(_agent_status(a, config) for a in rows)))
+
+
+@router.post("/agents/{name}/dm")
+async def open_dm(session: Session, name: str) -> ChannelOut:
+    agent = await services.find_agent(session, name)
+    if agent is None:
+        raise services.NotFoundError("agent", name)
+    return ChannelOut.model_validate(await services.ensure_dm_channel(session, agent))
+
+
+@router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
+async def cancel_run(request: Request, run_id: str) -> dict[str, bool]:
+    return {"cancelled": request.app.state.runner.cancel(run_id)}
+
+
+@router.get("/settings/agents")
+async def get_agent_settings(config: Config) -> AgentSettingsIn:
+    return AgentSettingsIn(default_agent=config.default_agent)
+
+
+@router.put("/settings/agents")
+async def put_agent_settings(
+    request: Request, session: Session, body: AgentSettingsIn
+) -> AgentSettingsIn:
+    agent = await services.find_agent(session, body.default_agent)
+    if agent is None:
+        raise services.InvalidError(f"없는 에이전트예요: {body.default_agent}")
+    await services.set_setting(session, "default_agent", agent.name, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    return AgentSettingsIn(default_agent=agent.name)
 
 
 @router.get("/routines")
@@ -851,8 +990,14 @@ async def websocket(ws: WebSocket) -> None:
     await hub.connect(ws)
     try:
         while True:
-            await ws.receive_text()  # client → server events arrive from Phase 5 (run.cancel)
-    except WebSocketDisconnect:
+            raw: Any = await ws.receive_json()
+            event = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+            if event.get("type") == "run.cancel":
+                data = cast(dict[str, Any], event.get("data") or {})
+                run_id = data.get("run_id")
+                if isinstance(run_id, str):
+                    ws.app.state.runner.cancel(run_id)
+    except (WebSocketDisconnect, ValueError):
         hub.disconnect(ws)
 
 

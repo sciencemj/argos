@@ -184,8 +184,9 @@ def test_slash_commands(chat: TestClient, fake: FakeClassifier) -> None:
     assert fake.calls == []  # commands never reach the classifier
 
     ask = send(chat, course, "/ask forwarding이 뭐야").json()
+    assert ask["ref_type"] is None  # a question goes to the default agent, not the inbox
     thread = chat.get(f"/api/v1/messages/{ask['id']}/thread").json()
-    assert [r["author_type"] for r in thread["replies"]] == ["system"]
+    assert [r["author_type"] for r in thread["replies"]] == ["agent"]
 
 
 def test_bad_command_is_rejected_and_not_stored(chat: TestClient) -> None:

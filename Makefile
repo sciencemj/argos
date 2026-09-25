@@ -10,7 +10,7 @@ migrate:
 # Runs backend (:8000) and frontend (:5173) together; Ctrl-C stops both.
 dev: migrate
 	@trap 'kill $$(jobs -p) 2>/dev/null' EXIT INT TERM; \
-	(cd backend && exec uv run uvicorn argos.main:app --reload --host 127.0.0.1 --port 8000) & \
+	(cd backend && exec uv run uvicorn argos.main:app --reload --reload-dir src --host 127.0.0.1 --port 8000) & \
 	(cd frontend && exec bun run dev) & \
 	wait
 
