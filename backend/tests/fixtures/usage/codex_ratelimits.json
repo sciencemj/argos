@@ -1,0 +1,15 @@
+{
+  "ordinaryUsageAllowed": true,
+  "rateLimits": {
+    "limitId": null,
+    "limitName": null,
+    "planType": "plus",
+    "primary": {"usedPercent": 44, "windowDurationMins": 10080, "resetsAt": 4103049600},
+    "secondary": {"usedPercent": 3, "windowDurationMins": 300, "resetsAt": 4102444800},
+    "credits": null
+  },
+  "rateLimitsByLimitId": null,
+  "rateLimitResetCredits": null,
+  "accountId": null,
+  "rateLimitUpsell": null
+}

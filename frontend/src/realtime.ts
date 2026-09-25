@@ -36,10 +36,15 @@ export function useRealtime(): LinkState {
       };
       ws.onmessage = (msg) => {
         const event = JSON.parse(String(msg.data)) as ServerEvent;
+        if (event.type === "usage.updated") {
+          void qc.invalidateQueries({ queryKey: ["usage"] });
+          return;
+        }
         if (event.type.startsWith("agent.")) {
           onAgentEvent(event.type, event.data);
           if (event.type === "agent.done" || event.type === "agent.error") {
             invalidateFor(qc, "agent_run");
+            void qc.invalidateQueries({ queryKey: ["usage"] }); // job counts
           }
           return;
         }

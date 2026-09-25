@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # their config and MCP servers stay out and Argos threads stay out of their history.
     codex_home: Path = Path("data/codex-home")
     codex_auth: Path = Path.home() / ".codex" / "auth.json"
+    # Plan usage (PLAN Phase 9): read every few minutes (0 turns the timer off). Claude's
+    # comes with the login Claude Code saved (Keychain on a Mac, else claude_dir).
+    claude_dir: Path = Path.home() / ".claude"
+    usage_poll_minutes: int = 5
+
     # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.
     agent_workspace: Path = Path("data/agent-workspace")
     agent_timeout: float = 300.0  # seconds before a chat run is stopped

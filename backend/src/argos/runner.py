@@ -34,7 +34,22 @@ from argos.agents import (
 )
 from argos.config import Settings
 from argos.hub import hub
-from argos.models import Agent, Channel, ChannelKind, Event, Message, RunStatus, Task, TaskStatus
+from argos.models import (
+    Agent,
+    AgentBackend,
+    AuthorType,
+    Channel,
+    ChannelKind,
+    Event,
+    Message,
+    RunStatus,
+    Task,
+    TaskStatus,
+)
+from argos.usage import UsageMonitor, busy_note
+
+# Agents whose plan usage Argos reads (PLAN Phase 9).
+USAGE_PROVIDER = {AgentBackend.CLAUDE_CODE: "claude", AgentBackend.CODEX: "codex"}
 
 log = logging.getLogger(__name__)
 
@@ -191,6 +206,34 @@ class Runner:
         self.adapter_factory = adapter_factory  # tests swap in a fake (PLAN §8.6)
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._job_slots = asyncio.Semaphore(max(1, settings.job_concurrency))
+        self.usage: UsageMonitor | None = None  # set by the app (PLAN Phase 9)
+
+    async def _warn_if_busy(
+        self, session: AsyncSession, agent: Agent, channel_id: str, thread_root_id: str | None
+    ) -> None:
+        """Routing hint (PLAN Phase 9): when the agent's 5-hour window is ≥ 90% used,
+        say so in the thread and name the others. The run still starts."""
+        provider = USAGE_PROVIDER.get(agent.backend)
+        if self.usage is None or provider is None:
+            return
+        others = [
+            a.name
+            for a in await services.list_agents(session)
+            if a.id != agent.id
+            and (a.backend in USAGE_PROVIDER or a.backend == AgentBackend.HERMES)
+        ]
+        note = busy_note(
+            self.usage.current[provider], agent.display_name, others, datetime.now(UTC)
+        )
+        if note is not None:
+            await services.create_message(
+                session,
+                channel_id=channel_id,
+                body=note,
+                author_type=AuthorType.SYSTEM,
+                thread_root_id=thread_root_id,
+                actor="system",
+            )
 
     def running(self) -> list[str]:
         return list(self._tasks)
@@ -205,6 +248,7 @@ class Runner:
         reply_root = None if in_dm else (trigger.thread_root_id or trigger.id)
         run_ids: list[str] = []
         for agent in agents:
+            await self._warn_if_busy(session, agent, channel.id, reply_root)
             run, reply = await services.start_run(
                 session,
                 agent=agent,
@@ -237,6 +281,7 @@ class Runner:
         allowlist), answers in the trigger's thread, and moves `task` along the board
         (in_progress → review)."""
         channel = await services.get_channel(session, trigger.channel_id)
+        await self._warn_if_busy(session, agent, channel.id, trigger.thread_root_id or trigger.id)
         run, reply = await services.start_run(
             session,
             agent=agent,

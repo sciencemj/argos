@@ -4,7 +4,7 @@ import secrets
 import shutil
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
@@ -27,7 +27,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import agents, caldav_sync, chat, classifier, ics, services, vault
+from argos import agents, caldav_sync, chat, classifier, ics, services, usage, vault
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
@@ -1319,6 +1319,63 @@ async def vault_file(config: Config, path: str) -> FileResponse:
     if not target.is_file():
         raise services.NotFoundError("file", path)
     return FileResponse(target, content_disposition_type="inline", filename=target.name)
+
+
+class UsageWindowOut(BaseModel):
+    name: str
+    used_percent: float
+    resets_at: datetime | None
+
+
+class ProviderUsageOut(BaseModel):
+    provider: str
+    state: Literal["ok", "unavailable", "error"]
+    windows: list[UsageWindowOut]
+    observed_at: datetime | None
+    message: str | None
+    plan: str | None
+
+
+class UsageOut(BaseModel):
+    providers: list[ProviderUsageOut]
+    jobs_running: int
+    jobs_today: int
+
+
+def _usage_monitor(request: Request) -> usage.UsageMonitor:
+    return request.app.state.usage
+
+
+async def _usage_out(request: Request, session: AsyncSession, config: Settings) -> UsageOut:
+    monitor = _usage_monitor(request)
+    day_start = datetime.combine(datetime.now(config.zoneinfo).date(), time(), config.zoneinfo)
+    counts = (
+        await session.execute(
+            select(
+                func.count().filter(AgentRun.status.in_([RunStatus.RUNNING, RunStatus.QUEUED])),
+                func.count().filter(AgentRun.started_at >= day_start.astimezone(UTC)),
+            ).where(AgentRun.kind == "job")
+        )
+    ).one()
+    return UsageOut(
+        providers=[
+            ProviderUsageOut.model_validate(usage.usage_json(p)) for p in monitor.current.values()
+        ],
+        jobs_running=counts[0],
+        jobs_today=counts[1],
+    )
+
+
+@router.get("/usage")
+async def get_usage(request: Request, session: Session, config: Config) -> UsageOut:
+    return await _usage_out(request, session, config)
+
+
+@router.post("/usage/refresh")
+async def refresh_usage(request: Request, session: Session, config: Config) -> UsageOut:
+    monitor = _usage_monitor(request)
+    await asyncio.gather(monitor.refresh("claude"), monitor.refresh("codex"))
+    return await _usage_out(request, session, config)
 
 
 @router.get("/settings/jobs")

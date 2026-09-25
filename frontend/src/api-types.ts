@@ -599,6 +599,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Usage */
+        get: operations["get_usage_api_v1_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Usage */
+        post: operations["refresh_usage_api_v1_usage_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -1566,6 +1600,24 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** ProviderUsageOut */
+        ProviderUsageOut: {
+            /** Provider */
+            provider: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "unavailable" | "error";
+            /** Windows */
+            windows: components["schemas"]["UsageWindowOut"][];
+            /** Observed At */
+            observed_at: string | null;
+            /** Message */
+            message: string | null;
+            /** Plan */
+            plan: string | null;
+        };
         /**
          * RefOut
          * @description The object a message renders as a card (PLAN P4); at most one is set.
@@ -1760,6 +1812,24 @@ export interface components {
             due_tasks: components["schemas"]["TaskOut"][];
             /** Inbox Count */
             inbox_count: number;
+        };
+        /** UsageOut */
+        UsageOut: {
+            /** Providers */
+            providers: components["schemas"]["ProviderUsageOut"][];
+            /** Jobs Running */
+            jobs_running: number;
+            /** Jobs Today */
+            jobs_today: number;
+        };
+        /** UsageWindowOut */
+        UsageWindowOut: {
+            /** Name */
+            name: string;
+            /** Used Percent */
+            used_percent: number;
+            /** Resets At */
+            resets_at: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2992,6 +3062,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_usage_api_v1_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageOut"];
+                };
+            };
+        };
+    };
+    refresh_usage_api_v1_usage_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageOut"];
                 };
             };
         };

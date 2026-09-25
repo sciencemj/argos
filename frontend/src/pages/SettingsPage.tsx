@@ -14,6 +14,7 @@ import {
   useICloud,
   useJobSettings,
   useOllamaModels,
+  useRefreshUsage,
   useResolveConflict,
   useRotateCalendarFeed,
   useSaveClassifier,
@@ -22,6 +23,7 @@ import {
   useSaveVault,
   useSyncCalendars,
   useSyncVault,
+  useUsage,
   useVaultSettings,
 } from "../api";
 import { fmt } from "../dates";
@@ -37,6 +39,7 @@ export function SettingsPage() {
       </h1>
       <AgentSection />
       <ClassifierSection />
+      <UsageSection />
       <VaultSection />
       <ICloudSection />
       <CalendarFeedSection />
@@ -896,6 +899,65 @@ function VaultSection() {
           <ErrorText error={sync.error} />
         </>
       )}
+    </section>
+  );
+}
+
+/** Plan usage in the status bar (PLAN Phase 9): connect Claude Code, see Codex. */
+function UsageSection() {
+  const usage = useUsage();
+  const refresh = useRefreshUsage();
+  const data = usage.data;
+  const row = (name: string, title: string, how: string) => {
+    const p = data?.providers.find((x) => x.provider === name);
+    const values = p?.windows.length
+      ? p.windows
+          .map((w) => `${w.name} ${Math.round(w.used_percent)}%`)
+          .join(" · ")
+      : (p?.message ?? "");
+    return (
+      <div className="flex flex-col gap-1 rounded-2xl border border-line-soft px-4 py-3">
+        <div className="flex items-baseline gap-2">
+          <span className="grow text-[13.5px] text-ink">{title}</span>
+          <span
+            className={`text-right text-[12px] ${p?.state === "error" ? "text-danger" : "text-text-3"}`}
+          >
+            {values}
+          </span>
+        </div>
+        <span className="text-[12px] leading-relaxed text-meta">{how}</span>
+      </div>
+    );
+  };
+  return (
+    <section
+      id="usage"
+      aria-label="에이전트 사용량"
+      className={`${card} flex max-w-[720px] flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        에이전트 사용량
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        아래 상태줄에 Claude·Codex 요금제의 5시간·주간 사용량을 보여줘요. 몇
+        분마다 새로 읽고, 90%를 넘은 에이전트를 부르면 스레드에 알려줘요.
+      </p>
+      {row(
+        "claude",
+        "Claude",
+        "Claude Code에 로그인한 계정으로 Claude의 사용량 정보를 읽어요(Claude Code의 /usage와 같은 정보). 처음 한 번 macOS가 키체인 접근을 물어볼 수 있어요. 로그인 정보는 저장하지 않아요.",
+      )}
+      {row("codex", "Codex", "로그인한 Codex CLI에게 사용량을 물어봐요.")}
+      <div>
+        <button
+          type="button"
+          className={btn.ghost}
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate()}
+        >
+          {refresh.isPending ? "읽는 중…" : "지금 새로 읽기"}
+        </button>
+      </div>
     </section>
   );
 }

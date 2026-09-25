@@ -1,0 +1,6 @@
+{
+  "five_hour": {"utilization": 81.0, "resets_at": "2100-01-01T00:00:00.188246+00:00"},
+  "seven_day": {"utilization": 78.0, "resets_at": "2100-01-07T00:00:00+00:00"},
+  "seven_day_oauth_apps": null,
+  "seven_day_opus": null
+}

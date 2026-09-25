@@ -31,6 +31,8 @@ def settings(tmp_path: Path) -> Settings:
         db_path=tmp_path / "test.db",
         seed_path=SEED_EXAMPLE,
         caldav_poll_minutes=0,
+        usage_poll_minutes=0,  # no Codex polling; Claude usage read from a temp folder
+        claude_dir=tmp_path / "claude",
     )
     asyncio.run(_create_schema(config.db_url))
     return config

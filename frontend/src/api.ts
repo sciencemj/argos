@@ -786,3 +786,26 @@ export const useMaterials = (channelId: string) =>
 
 export const vaultFileUrl = (path: string) =>
   `/api/v1/vault/file?path=${encodeURIComponent(path)}`;
+
+// --- plan usage (PLAN Phase 9) ------------------------------------------------------
+
+export type Usage = Schemas["UsageOut"];
+export type ProviderUsage = Schemas["ProviderUsageOut"];
+
+export const useUsage = () =>
+  useQuery({
+    queryKey: ["usage"],
+    queryFn: () => call(client.GET("/api/v1/usage")),
+    refetchInterval: 60_000, // "⏱ 2h13m" counts down; the values come by WebSocket
+  });
+
+function useUsageWrite(fn: () => Promise<Usage>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (data) => qc.setQueryData(["usage"], data),
+  });
+}
+
+export const useRefreshUsage = () =>
+  useUsageWrite(() => call(client.POST("/api/v1/usage/refresh")));
