@@ -50,7 +50,7 @@ def prepare_environment() -> Path:
     data = Path(os.environ.setdefault("ARGOS_DATA_DIR", str(DEFAULT_DATA))).expanduser()
     data.mkdir(parents=True, exist_ok=True)
     os.chdir(data)  # an optional .env next to the data is read from here
-    os.environ.setdefault("ARGOS_SEED_PATH", str(BUNDLE / "seed.example.toml"))
+    os.environ.setdefault("ARGOS_SEED_PATH", str(BUNDLE / "seed.desktop.toml"))
     web = BUNDLE / "web" if (BUNDLE / "web").is_dir() else BUNDLE.parent / "frontend" / "dist"
     if (web / "index.html").is_file():
         os.environ.setdefault("ARGOS_STATIC_DIR", str(web))

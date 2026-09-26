@@ -132,3 +132,29 @@ def test_the_app_copies_the_hermes_skill(
     target = onboarding.hermes_skills_dir(config)
     assert target == config.data_dir.resolve() / "hermes-skills"
     assert (target / "argos" / "SKILL.md").exists()
+
+
+def test_refresh_updates_only_what_argos_installed(config: Settings, tools: Path) -> None:
+    onboarding.connect(config, "claude")
+    skill = config.claude_dir / "skills" / "argos" / "SKILL.md"
+    skill.write_text("old version")
+    (config.codex_auth.parent / "skills" / "argos").mkdir(parents=True)  # the user's own
+    (config.codex_auth.parent / "skills" / "argos" / "SKILL.md").write_text("theirs")
+    moved = config.model_copy(update={"port": 8123})  # the MCP address changed
+
+    changed = onboarding.refresh(moved)
+    assert "claude skill" in changed and "name: argos" in skill.read_text()
+    assert "claude mcp" in changed
+    assert onboarding.tool_status(moved, "claude").connected
+    # Codex was never connected: its skill folder and MCP stay as they are.
+    assert (config.codex_auth.parent / "skills" / "argos" / "SKILL.md").read_text() == "theirs"
+    assert not any(c.startswith("codex") or c.startswith("hermes") for c in changed)
+    assert onboarding.refresh(moved) == []  # nothing left to do
+
+
+def test_desktop_seed_has_areas_but_no_channels() -> None:
+    from argos import services
+
+    seed = services.load_seed(Path(__file__).parents[1] / "seed.desktop.toml")
+    assert [a["name"] for a in seed["area"]] == ["학업", "프로젝트"]
+    assert all(not a.get("channel") for a in seed["area"])

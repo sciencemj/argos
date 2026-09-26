@@ -468,3 +468,16 @@ async def test_codex_app_server_resumes_and_recovers(fake_codex: Any) -> None:
     ]
     assert ids.values["argos-thread-2"] == "thread-2"
     assert "첫 답" in seen()["requests"][-1]["params"]["input"][0]["text"]  # whole thread again
+
+
+def test_builtin_agent_models_are_set_in_settings(client: TestClient) -> None:
+    claude = client.put("/api/v1/agents/claude/model", json={"model": "claude-sonnet-5"})
+    assert claude.status_code == 200 and claude.json()["model"] == "claude-sonnet-5"
+    assert (
+        client.put("/api/v1/agents/codex/model", json={"model": "gpt-5.5"}).json()["model"]
+        == "gpt-5.5"
+    )
+    back = client.put("/api/v1/agents/claude/model", json={"model": ""}).json()
+    assert back["model"] is None  # the CLI's own default again
+    assert client.put("/api/v1/agents/hermes/model", json={"model": "x"}).status_code == 422
+    assert client.put("/api/v1/agents/nobody/model", json={"model": "x"}).status_code == 404

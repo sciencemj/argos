@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "../agents";
 import {
+  type Agent,
   type Conflict,
+  useAgentModels,
   useAgentSettings,
   useAgents,
   useCalendarChannel,
@@ -21,6 +23,7 @@ import {
   useSaveDefaultAgent,
   useSaveJobRoots,
   useSaveVault,
+  useSetAgentModel,
   useSyncCalendars,
   useSyncVault,
   useUsage,
@@ -130,6 +133,7 @@ export function SettingsPage() {
             "agents",
             <>
               <AgentSection />
+              <ModelSection />
               <ToolsSection />
               <CustomAgentsSection />
               <UsageSection />
@@ -345,6 +349,77 @@ const BACKEND_TEXT: Record<string, string> = {
 };
 
 /** App-wide default agent: answers /ask where the channel sets none (user decision). */
+function ModelRow({ agent }: { agent: Agent }) {
+  const models = useAgentModels(agent.backend);
+  const save = useSetAgentModel();
+  const current = agent.model ?? "";
+  const known = models.data?.models ?? [];
+  const fallback =
+    agent.backend === "ollama" ? "인박스 분류 모델과 같게" : "도구 기본값";
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-3">
+        <AgentAvatar id={agent.name} size={24} />
+        <span className="w-28 shrink-0 text-[13.5px] text-ink">
+          {agent.display_name}
+        </span>
+        <select
+          aria-label={`${agent.display_name} 모델`}
+          className={`${field} grow`}
+          value={current}
+          disabled={save.isPending}
+          onChange={(e) =>
+            save.mutate({ name: agent.name, model: e.target.value || null })
+          }
+        >
+          <option value="">{fallback}</option>
+          {known.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+              {m.description ? ` · ${m.description}` : ""}
+            </option>
+          ))}
+          {current && !known.some((m) => m.id === current) && (
+            <option value={current}>{current}</option>
+          )}
+        </select>
+      </div>
+      {models.data?.error && (
+        <span className="pl-9 text-[12px] text-meta">{models.data.error}</span>
+      )}
+      <ErrorText error={save.error} />
+    </div>
+  );
+}
+
+/** Models for the built-in agents (Hermes picks its own in its gateway). */
+export function ModelSection() {
+  const agents = useAgents();
+  const builtin = (agents.data ?? []).filter(
+    (a) => a.is_builtin && a.backend !== "hermes",
+  );
+  return (
+    <section
+      aria-label="에이전트 모델"
+      className={`${card} flex w-full flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        에이전트 모델
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        기본 에이전트가 답할 때 쓰는 모델이에요. 목록은 각 도구가 알려 주는
+        것이고, 코딩 잡에도 같은 모델을 써요. Hermes 모델은 Hermes 게이트웨이
+        설정에서 정해요.
+      </p>
+      <div className="flex flex-col gap-3">
+        {builtin.map((a) => (
+          <ModelRow key={a.id} agent={a} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AgentSection() {
   const agents = useAgents();
   const current = useAgentSettings();

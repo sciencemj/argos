@@ -1060,6 +1060,22 @@ async def update_agent(session: Session, config: Config, name: str, body: AgentI
     return await _save_agent(session, config, body, agent.id)
 
 
+class AgentModelIn(BaseModel):
+    model: str | None = None  # None: the tool's default
+
+
+@router.put("/agents/{name}/model")
+async def set_agent_model(
+    session: Session, config: Config, name: str, body: AgentModelIn
+) -> AgentOut:
+    """Settings → 기본 에이전트: which model Claude Code, Codex or the local model use."""
+    agent = await session.scalar(select(Agent).where(Agent.name == name))
+    if agent is None:
+        raise services.NotFoundError("agent", name)
+    agent = await services.set_agent_model(session, agent.id, body.model, USER)
+    return await _agent_out(session, agent, config)
+
+
 @router.delete("/agents/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(session: Session, name: str) -> None:
     await services.delete_agent(session, (await _custom_agent(session, name)).id, USER)

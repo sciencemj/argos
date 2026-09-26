@@ -19,6 +19,9 @@ Keychain, Ollama, 에이전트 로그인, 옵시디언 볼트를 그대로 써�
 
 ## 동작
 
+- **창**: 제목 표시줄 없이 창 버튼이 레일 위에 놓이고, 창 맨 위(20px)를 끌어 옮긴다(더블클릭 확대).
+- **첫 실행**: 영역(학업·프로젝트)만 있고 과목·프로젝트는 비어 있다. 사이드바 + 버튼이나 에이전트에게
+  "자료구조 과목 만들어 줘"(MCP `create_channel`)로 만든다.
 - **메뉴 막대 상주**: 창을 닫으면 숨기만 하고 서버는 계속 돈다(캘린더·볼트 동기화, 잡, 알림). 창이 없으면 Dock 아이콘도 숨는다. 메뉴 막대 아이콘 → "Argos 열기", "Argos 종료".
 - **빠른 입력**: 어디서든 `⌘⇧Space` → 한 줄 적고 Enter → 인박스로 들어가 분류된다. Esc로 닫기.
 - **알림**: Argos 알림(마감, 오래 둔 인박스)을 macOS 알림으로 보여 준다. 창이 앞에 있으면 생략.
@@ -41,7 +44,8 @@ Keychain, Ollama, 에이전트 로그인, 옵시디언 볼트를 그대로 써�
 | Hermes | `hermes config set mcp_servers.argos.url <주소>` 후 게이트웨이 재시작 | `skills.external_dirs`에 Argos 스킬 폴더 추가 |
 
 스킬(`integrations/skills/argos`, Hermes용은 `integrations/hermes/skills/argos`)은 언제 어떤 Argos 도구를
-쓰는지 알려 준다. Argos가 설치한 스킬 폴더에는 `.installed-by-argos` 표시가 있고, 같은 이름의 다른
+쓰는지 알려 준다. 앱이 업데이트되면 다음 시작 때 Argos가 설치한 스킬 복사본을 새 버전으로 바꾸고, 도구에
+등록된 Argos MCP 주소가 달라졌으면 다시 등록한다(사용자가 지운 것은 다시 넣지 않는다). Argos가 설치한 스킬 폴더에는 `.installed-by-argos` 표시가 있고, 같은 이름의 다른
 스킬이 있으면 덮어쓰지 않는다. 설정 → 에이전트 → 에이전트 도구에서 도구별로 **MCP 제거 / 스킬 제거 /
 모두 제거**를 할 수 있다(Argos가 설치한 것만 지운다).
 

@@ -18,7 +18,7 @@ hidden = [
 ]
 datas = [
     (str(BACKEND / "alembic"), "alembic"),
-    (str(BACKEND / "seed.example.toml"), "."),
+    (str(BACKEND / "seed.desktop.toml"), "."),
     (str(ROOT / "frontend" / "dist"), "web"),
     (str(ROOT / "integrations" / "hermes" / "skills"), "integrations/hermes/skills"),
     (str(ROOT / "integrations" / "skills"), "integrations/skills"),

@@ -70,6 +70,8 @@ export function Shell() {
         gridTemplateRows: "minmax(0,1fr) 32px",
       }}
     >
+      {/* Desktop app: the window has no title bar, so its top edge moves it. */}
+      <div data-tauri-drag-region className="window-drag" />
       <Rail areaId={areaId} onPickArea={setPickedArea} />
       <Sidebar areaId={areaId} onOpenSwitcher={() => setSwitcherOpen(true)} />
       <main ref={main} className="flex min-h-0 min-w-0 flex-col bg-page">

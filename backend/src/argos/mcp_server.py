@@ -271,6 +271,41 @@ def build_mcp(app: FastAPI) -> MCPServer:
     # --- writes ----------------------------------------------------------------------
 
     @tool
+    async def create_channel(
+        ctx: Context, name: str, kind: str = "course", area: str | None = None
+    ) -> dict[str, Any]:
+        """Create a channel for a new course (kind "course") or project (kind "project").
+        area: an area name from list_channels; default: the area that already holds that
+        kind of channel, else the first area."""
+        actor = _agent(ctx)
+        if kind not in ("course", "project"):
+            raise ValueError('kind must be "course" or "project"')
+        channel_kind = ChannelKind(kind)
+
+        async def work(s: AsyncSession) -> dict[str, Any]:
+            areas = await services.list_areas(s)
+            target = None
+            if area:
+                target = next((a for a in areas if a.name == area.strip().lstrip("#")), None)
+                if target is None:
+                    raise ValueError(f"no area named {area!r}: {[a.name for a in areas]}")
+            else:
+                used = {
+                    c.area_id for c in await services.list_channels(s) if c.kind == channel_kind
+                }
+                target = next((a for a in areas if a.id in used), areas[0] if areas else None)
+            if target is None:
+                target = await services.create_area(
+                    s, name="학업" if kind == "course" else "프로젝트", icon=None, actor=actor
+                )
+            channel = await services.create_channel(
+                s, name=name.strip().lstrip("#"), area_id=target.id, kind=channel_kind, actor=actor
+            )
+            return {"id": channel.id, "name": channel.name, "kind": kind, "area": target.name}
+
+        return await run(work)
+
+    @tool
     async def add_task(
         ctx: Context,
         title: str,

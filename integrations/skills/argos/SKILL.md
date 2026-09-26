@@ -36,12 +36,15 @@ sees them in the app and on their calendar.
 | Change task / move on the kanban | `update_task`, `move_task(task_id, status)` |
 | Change event | `update_event` |
 | Unsorted note | `capture_note(text, channel?)` |
+| New course or project channel | `create_channel(name, kind, area?)` (kind: `course` or `project`) |
 | Delete (needs approval) | `delete_task`, `delete_event` |
 
 ## Rules
 
 1. **Channel**: call `list_channels` if unsure. Course or project matters go to that
-   channel; everyday things (errands, appointments, exercise) go to `일상`.
+   channel; everyday things (errands, appointments, exercise) go to `일상`. If the user
+   talks about a course or project that has no channel yet, offer to create it with
+   `create_channel` (ask first unless they asked for it), then record there.
 2. **Time**: the user's local time zone. Dates as `YYYY-MM-DD` (a task due that day gets 23:59; an event
    on a date only becomes all-day) or ISO datetimes like `2026-09-29T15:00`. Resolve
    relative dates ("다음주 화요일") against today's date before calling the tool.

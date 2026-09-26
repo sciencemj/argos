@@ -37,6 +37,7 @@ def test_tool_list(server: str) -> None:
         "list_channels", "get_today", "get_schedule", "list_tasks", "list_inbox",
         "get_course_progress", "add_task", "update_task", "move_task", "create_event",
         "update_event", "capture_note", "delete_task", "delete_event", "search_notes",
+        "create_channel",
     }  # fmt: skip
 
 
@@ -162,3 +163,17 @@ def test_rejects_foreign_host_header(server: str) -> None:
         content=b"{}",
     )
     assert response.status_code in (400, 403, 421)
+
+
+def test_create_channel(server: str) -> None:
+    course = call(server, "create_channel", {"name": "#자료구조"})
+    assert course["kind"] == "course" and course["area"] == "학업"  # where the courses are
+    project = call(server, "create_channel", {"name": "새 앱", "kind": "project"})
+    assert project["area"] == "프로젝트"
+    named = call(server, "create_channel", {"name": "논문", "kind": "project", "area": "학업"})
+    assert named["area"] == "학업"
+    names = {c["name"] for c in call(server, "list_channels")}
+    assert {"자료구조", "새 앱", "논문"} <= names
+    assert "error" in call(server, "create_channel", {"name": "자료구조"})  # taken
+    assert "error" in call(server, "create_channel", {"name": "x", "kind": "inbox"})
+    assert "error" in call(server, "create_channel", {"name": "y", "area": "없는영역"})

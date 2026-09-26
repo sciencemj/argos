@@ -3,6 +3,7 @@ to Argos — the MCP server (through each tool's own CLI) and the `argos` skill 
 how to use it. Nothing here runs on its own: connecting and removing are buttons the
 user presses, since they change the tool's own settings."""
 
+import re
 import shutil
 import subprocess
 import sys
@@ -205,11 +206,7 @@ def _restart_hermes(binary: str) -> None:
         pass
 
 
-def connect(settings: Settings, name: str) -> ToolStatus:
-    """Registers Argos' MCP server (replacing an older Argos entry that points elsewhere)
-    and installs the argos skill. Hermes then restarts its gateway to load both."""
-    binary = _usable(settings, name)
-    url = mcp_url(settings, name)
+def _register_mcp(binary: str, name: str, url: str) -> None:
     if name == "claude":
         _run([binary, "mcp", "remove", SKILL, "-s", "user"])  # absent is fine
         _step([binary, "mcp", "add", "--transport", "http", "--scope", "user", SKILL, url])
@@ -219,6 +216,8 @@ def connect(settings: Settings, name: str) -> ToolStatus:
     else:
         _step([binary, "config", "set", "mcp_servers.argos.url", url])
 
+
+def _install_skill(settings: Settings, binary: str, name: str) -> None:
     if name == "hermes":
         folder = hermes_skills_dir(settings)
         if getattr(sys, "frozen", False):
@@ -226,16 +225,78 @@ def connect(settings: Settings, name: str) -> ToolStatus:
         dirs = _hermes_skill_dirs(binary)
         if str(folder) not in dirs:
             _set_hermes_skill_dirs(binary, [*dirs, str(folder)])
+        return
+    target = _skill_home(name, settings) / SKILL
+    if target.exists() and not (target / MARKER).exists():
+        raise ConnectError(f"MCP는 연결했지만 {target}에 다른 argos 스킬이 있어 덮어쓰지 않았어요")
+    shutil.copytree(_bundled(f"integrations/skills/{SKILL}"), target, dirs_exist_ok=True)
+    (target / MARKER).write_text("Installed by the Argos app; removed from its settings.\n")
+
+
+def connect(settings: Settings, name: str) -> ToolStatus:
+    """Registers Argos' MCP server (replacing an older Argos entry that points elsewhere)
+    and installs the argos skill. Hermes then restarts its gateway to load both."""
+    binary = _usable(settings, name)
+    _register_mcp(binary, name, mcp_url(settings, name))
+    _install_skill(settings, binary, name)
+    if name == "hermes":
         _restart_hermes(binary)
-    else:
-        target = _skill_home(name, settings) / SKILL
-        if target.exists() and not (target / MARKER).exists():
-            raise ConnectError(
-                f"MCP는 연결했지만 {target}에 다른 argos 스킬이 있어 덮어쓰지 않았어요"
-            )
-        shutil.copytree(_bundled(f"integrations/skills/{SKILL}"), target, dirs_exist_ok=True)
-        (target / MARKER).write_text("Installed by the Argos app; removed from its settings.\n")
     return tool_status(settings, name)
+
+
+_ARGOS_URL = re.compile(r"https?://[^\s\"']+/mcp\?agent=[\w-]+")
+
+
+def _registered_url(name: str, binary: str) -> str | None:
+    """The Argos MCP address the tool has now, if it has one."""
+    command = {
+        "claude": [binary, "mcp", "get", SKILL],
+        "codex": [binary, "mcp", "get", SKILL, "--json"],
+        "hermes": [binary, "config", "get", "mcp_servers.argos.url"],
+    }[name]
+    try:
+        done = _run(command)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    found = _ARGOS_URL.search(done.stdout) if done.returncode == 0 else None
+    return found.group(0) if found else None
+
+
+def refresh(settings: Settings) -> list[str]:
+    """After an update (at every app start): brings what Argos installed up to date — its
+    skill copies when the bundled skill changed, and an Argos MCP entry that points at an
+    old address. Nothing is added that the user did not connect or has removed."""
+    changed: list[str] = []
+    for name in ("claude", "codex", "hermes"):
+        binary = shutil.which(_binary(name, settings))
+        if binary is None:
+            continue
+        try:
+            if name == "hermes":
+                folder = hermes_skills_dir(settings)
+                if getattr(sys, "frozen", False) and folder.is_dir():
+                    shutil.copytree(
+                        _bundled("integrations/hermes/skills"), folder, dirs_exist_ok=True
+                    )
+            else:
+                target = _skill_home(name, settings) / SKILL
+                source = _bundled(f"integrations/skills/{SKILL}") / "SKILL.md"
+                installed = target / "SKILL.md"
+                if (target / MARKER).exists() and (
+                    not installed.exists() or installed.read_bytes() != source.read_bytes()
+                ):
+                    shutil.copytree(source.parent, target, dirs_exist_ok=True)
+                    changed.append(f"{name} skill")
+            url = mcp_url(settings, name)
+            current = _registered_url(name, binary)
+            if current is not None and current != url:
+                _register_mcp(binary, name, url)
+                changed.append(f"{name} mcp")
+                if name == "hermes":
+                    _restart_hermes(binary)
+        except (OSError, ConnectError, subprocess.TimeoutExpired):
+            continue  # try again at the next start
+    return changed
 
 
 def disconnect(settings: Settings, name: str, mcp: bool, skill: bool) -> ToolStatus:

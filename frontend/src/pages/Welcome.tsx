@@ -227,6 +227,7 @@ export function WelcomePage() {
 
   return (
     <div className="h-full overflow-y-auto bg-page">
+      <div data-tauri-drag-region className="window-drag" />
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-6 pt-12 pb-16">
         <header className="flex items-center gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-step-5 text-on-dark">

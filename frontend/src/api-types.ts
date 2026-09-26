@@ -326,6 +326,26 @@ export interface paths {
         patch: operations["update_agent_api_v1_agents__name__patch"];
         trace?: never;
     };
+    "/api/v1/agents/{name}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Agent Model
+         * @description Settings → 기본 에이전트: which model Claude Code, Codex or the local model use.
+         */
+        put: operations["set_agent_model_api_v1_agents__name__model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents/{name}/export": {
         parameters: {
             query?: never;
@@ -1485,6 +1505,11 @@ export interface components {
             tools?: string[] | null;
             /** Channel Ids */
             channel_ids?: string[] | null;
+        };
+        /** AgentModelIn */
+        AgentModelIn: {
+            /** Model */
+            model?: string | null;
         };
         /** AgentOut */
         AgentOut: {
@@ -3373,6 +3398,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_agent_model_api_v1_agents__name__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentModelIn"];
             };
         };
         responses: {

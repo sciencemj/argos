@@ -1196,6 +1196,20 @@ async def update_agent(
     return await _update(session, agent, changes, actor)
 
 
+async def set_agent_model(
+    session: AsyncSession, agent_id: str, model: str | None, actor: str
+) -> Agent:
+    """The model any agent answers with, built-in ones included (Hermes picks its own in
+    its gateway). None: the tool's own default."""
+    agent = await get_agent(session, agent_id)
+    if agent.backend == AgentBackend.HERMES:
+        raise InvalidError("Hermes 모델은 게이트웨이 설정에서 정해요")
+    model = (model or "").strip() or None
+    if model is not None and len(model) > 120:
+        raise InvalidError("모델 이름이 너무 길어요")
+    return await _update(session, agent, {"model": model}, actor)
+
+
 async def delete_agent(session: AsyncSession, agent_id: str, actor: str) -> None:
     """Channels that had it as their default fall back to the app default; its 1:1
     conversation goes with it."""

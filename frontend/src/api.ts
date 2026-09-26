@@ -1035,3 +1035,18 @@ export function useFinishSetup() {
     onSuccess: (data) => qc.setQueryData(["setup"], data),
   });
 }
+
+/** Which model a built-in (or custom) agent answers with; null = the tool's default. */
+export function useSetAgentModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, model }: { name: string; model: string | null }) =>
+      call(
+        client.PUT("/api/v1/agents/{name}/model", {
+          params: { path: { name } },
+          body: { model },
+        }),
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["agents"] }),
+  });
+}

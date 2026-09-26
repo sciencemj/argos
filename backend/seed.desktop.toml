@@ -1,0 +1,11 @@
+# First run of the desktop app: the areas only. Courses and projects start empty; add
+# them in the app (+ next to 과목 / 프로젝트) or ask an agent (the create_channel tool).
+# #today, #inbox and #일상 always exist.
+
+[[area]]
+name = "학업"
+icon = "학"
+
+[[area]]
+name = "프로젝트"
+icon = "프"

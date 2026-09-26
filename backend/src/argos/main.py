@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from argos import caldav_sync, notify, ops, services, usage, vault
+from argos import caldav_sync, notify, onboarding, ops, services, usage, vault
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
@@ -59,6 +59,12 @@ def create_app(config: Settings = settings) -> FastAPI:
                 app.state.vault_sync.nudge()
             if _type == "agent.done":  # a run used up some of the plan: look again soon
                 app.state.usage.refresh_soon()
+
+        if config.desktop_app is not None:
+            # After an update: refresh the skill copies and MCP addresses Argos installed.
+            app.state.tool_refresh = asyncio.create_task(
+                asyncio.to_thread(onboarding.refresh, app.state.settings)
+            )
 
         stop_listening = hub.listen(on_change)
         async with mcp.session_manager.run():

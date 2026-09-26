@@ -325,7 +325,18 @@ body {
   }
 }
 
-/* Desktop app (no title bar): room for the window buttons above the rail. */
+/* Desktop app (no title bar): the window buttons sit centered at the top of the rail,
+   and a thin strip along the top edge moves the window (double click zooms). */
 html[data-desktop] nav[aria-label="영역"] {
-  padding-top: 48px;
+  padding-top: 46px;
+}
+.window-drag {
+  display: none;
+}
+html[data-desktop] .window-drag {
+  display: block;
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 20px;
+  z-index: 40;
 }

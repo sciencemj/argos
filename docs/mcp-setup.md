@@ -35,7 +35,7 @@ hermes mcp add argos --url "http://127.0.0.1:8000/mcp?agent=hermes"
 | 구분 | 도구 |
 |---|---|
 | 읽기 | `list_channels`, `get_today`, `get_schedule`, `list_tasks`, `list_inbox`, `get_course_progress`, `search_notes` |
-| 쓰기 | `add_task`, `update_task`, `move_task`, `create_event`, `update_event`, `capture_note` |
+| 쓰기 | `add_task`, `update_task`, `move_task`, `create_event`, `update_event`, `capture_note`, `create_channel`(새 과목·프로젝트) |
 | 승인 필요 | `delete_task`, `delete_event` |
 
 날짜는 `YYYY-MM-DD`(할 일 마감이면 23:59, 일정이면 종일) 또는 ISO 시각. 오프셋이 없으면
