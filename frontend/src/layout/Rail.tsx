@@ -6,9 +6,9 @@ import {
   useState,
 } from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
-import { useChannels, useCreateArea } from "../api";
+import { type Area, useChannels, useCreateArea, useDeleteArea } from "../api";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
-import { btn, Dialog, ErrorText, field, label } from "../ui";
+import { btn, ContextMenu, Dialog, ErrorText, field, label } from "../ui";
 
 // The active look (card, border, shadow) is one pill that slides between buttons.
 const railButton =
@@ -25,7 +25,12 @@ export function Rail({
 }) {
   const navigate = useNavigate();
   const { data } = useChannels();
+  const remove = useDeleteArea();
   const [adding, setAdding] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; area: Area } | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState<Area | null>(null);
   const onSettings = useMatch("/settings") !== null;
   const location = useLocation();
   // The last page outside settings, however settings were opened (rail, status bar, links).
@@ -95,11 +100,15 @@ export function Rail({
           key={area.id}
           type="button"
           aria-label={area.name}
-          title={area.name}
+          title={`${area.name} · 우클릭하여 삭제`}
           data-active={activeKey === area.id || undefined}
           aria-current={activeKey === area.id ? "page" : undefined}
           className={`${railButton} ${activeKey === area.id ? active : idle}`}
           onClick={() => openArea(area.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setMenu({ x: event.clientX, y: event.clientY, area });
+          }}
         >
           {area.icon || area.name.slice(0, 1)}
         </button>
@@ -132,6 +141,60 @@ export function Rail({
         <SettingsIcon size={18} />
       </NavLink>
       <AddAreaDialog open={adding} onClose={() => setAdding(false)} />
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label="영역 삭제…"
+          onClose={() => setMenu(null)}
+          onAction={() => {
+            remove.reset();
+            setDeleting(menu.area);
+          }}
+        />
+      )}
+      {deleting && (
+        <Dialog
+          open
+          onClose={() => setDeleting(null)}
+          title={`${deleting.name} 영역 삭제`}
+        >
+          <div className="flex flex-col gap-4 text-[13px] leading-relaxed text-text-2">
+            <p className="m-0">
+              영역을 삭제할까요? 채널과 그 안의 내용은 삭제되지 않고 전체에
+              남아요.
+            </p>
+            <ErrorText error={remove.error} />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className={btn.ghost}
+                onClick={() => setDeleting(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className={btn.danger}
+                disabled={remove.isPending}
+                onClick={() =>
+                  remove.mutate(deleting.id, {
+                    onSuccess: () => {
+                      if (areaId === deleting.id) {
+                        onPickArea(null);
+                        navigate("/");
+                      }
+                      setDeleting(null);
+                    },
+                  })
+                }
+              >
+                영역 삭제
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </nav>
   );
 }

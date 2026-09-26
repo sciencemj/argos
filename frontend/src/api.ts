@@ -345,6 +345,15 @@ export const useCreateArea = () =>
     call(client.POST("/api/v1/areas", { body })),
   );
 
+export const useDeleteArea = () =>
+  useWrite("area", (id: string) =>
+    call(
+      client.DELETE("/api/v1/areas/{area_id}", {
+        params: { path: { area_id: id } },
+      }),
+    ),
+  );
+
 export const useCreateChannel = () =>
   useWrite("channel", (body: Schemas["ChannelCreate"]) =>
     call(client.POST("/api/v1/channels", { body })),

@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  type MouseEvent,
   type ReactNode,
   useMemo,
   useRef,
@@ -21,6 +22,7 @@ import {
   useTasks,
   useToday,
 } from "../api";
+import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { dday, fmt } from "../dates";
 import {
   BellIcon,
@@ -34,6 +36,7 @@ import {
 import { PawTrail } from "../paws";
 import {
   btn,
+  ContextMenu,
   DdayBadge,
   Dialog,
   ErrorText,
@@ -72,10 +75,17 @@ export function Sidebar({
   areaId: string | null;
   onOpenSwitcher: () => void;
 }) {
+  const navigate = useNavigate();
   const { data } = useChannels();
   const tasks = useTasks();
   const today = useToday();
   const [adding, setAdding] = useState<Kind | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    channel: Channel;
+  } | null>(null);
+  const [deleting, setDeleting] = useState<Channel | null>(null);
   const due = useMemo(() => nearestDue(tasks.data), [tasks.data]);
 
   const area = data?.areas.find((a) => a.id === areaId);
@@ -189,7 +199,19 @@ export function Sidebar({
               {inScope
                 .filter((c) => c.kind === kind)
                 .map((c) => (
-                  <ChannelRow key={c.id} channel={c} days={due.get(c.id)} />
+                  <ChannelRow
+                    key={c.id}
+                    channel={c}
+                    days={due.get(c.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        channel: c,
+                      });
+                    }}
+                  />
                 ))}
             </Section>
           ))}
@@ -202,6 +224,26 @@ export function Sidebar({
         defaultAreaId={areaId ?? data?.areas[0]?.id ?? ""}
         onClose={() => setAdding(null)}
       />
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label="채널 삭제…"
+          onClose={() => setMenu(null)}
+          onAction={() => setDeleting(menu.channel)}
+        />
+      )}
+      {deleting && (
+        <ChannelDeleteDialog
+          key={deleting.id}
+          channel={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            navigate("/");
+          }}
+        />
+      )}
     </aside>
   );
 }
@@ -229,12 +271,19 @@ function Section({
 function ChannelRow({
   channel,
   days,
+  onContextMenu,
 }: {
   channel: Channel;
   days: number | undefined;
+  onContextMenu: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
-    <NavLink to={`/c/${channel.id}`} className={row}>
+    <NavLink
+      to={`/c/${channel.id}`}
+      className={row}
+      title="우클릭하여 삭제 메뉴"
+      onContextMenu={onContextMenu}
+    >
       <span className="font-mono text-hash">#</span>
       <span className="grow truncate">{channel.name}</span>
       {days !== undefined && <DdayBadge days={days} />}

@@ -11,15 +11,14 @@ import {
 } from "react-router";
 import { AgentAvatar } from "../agents";
 import {
-  ApiError,
   type Channel,
   useAgents,
   useChannels,
-  useDeleteChannel,
   useUpdateChannel,
   useVaultFolders,
   useVaultSettings,
 } from "../api";
+import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { FEED_COLUMN, Feed } from "../feed";
 import { SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
@@ -135,8 +134,10 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
 export function ChannelPage() {
   const { channelId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const { data, isLoading } = useChannels();
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState<Channel | null>(null);
   const channel = data?.channels.find((c) => c.id === channelId);
   const inbox = data?.channels.find(
     (c) => c.kind === "system" && c.name === "inbox",
@@ -215,6 +216,21 @@ export function ChannelPage() {
           space={space}
           open={editing}
           onClose={() => setEditing(false)}
+          onDelete={() => {
+            setEditing(false);
+            setDeleting(settingsChannel);
+          }}
+        />
+      )}
+      {deleting && (
+        <ChannelDeleteDialog
+          key={deleting.id}
+          channel={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            navigate("/");
+          }}
         />
       )}
     </>
@@ -255,19 +271,23 @@ function ChannelSettings({
   space,
   open,
   onClose,
+  onDelete,
 }: {
   channel: Channel;
   space: boolean;
   open: boolean;
   onClose: () => void;
+  onDelete: () => void;
 }) {
-  const navigate = useNavigate();
   const update = useUpdateChannel();
-  const remove = useDeleteChannel();
   const [name, setName] = useState(channel.name);
+  const [areaId, setAreaId] = useState(channel.area_id ?? "");
   const [vaultPath, setVaultPath] = useState(channel.vault_path ?? "");
   const [agentId, setAgentId] = useState(channel.default_agent_id ?? "");
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [folderQuery, setFolderQuery] = useState("");
   const agents = useAgents();
+  const areas = useChannels().data?.areas ?? [];
   const vault = useVaultSettings();
   const folders = useVaultFolders(open && Boolean(vault.data?.path));
 
@@ -276,7 +296,7 @@ function ChannelSettings({
     update.mutate(
       {
         id: channel.id,
-        ...(space ? {} : { name: name.trim() }),
+        ...(space ? {} : { name: name.trim(), area_id: areaId || null }),
         vault_path: vaultPath.trim() || null,
         default_agent_id: agentId || null,
       },
@@ -284,23 +304,9 @@ function ChannelSettings({
     );
   };
 
-  const destroy = (force: boolean) =>
-    remove.mutate(
-      { id: channel.id, force },
-      {
-        onSuccess: () => {
-          onClose();
-          navigate("/");
-        },
-        onError: (err) => {
-          // A channel that still holds tasks/events needs an explicit second confirmation.
-          if (err instanceof ApiError && err.code === "conflict" && !force) {
-            if (confirm(`${err.message}\n\n할 일과 일정까지 모두 지울까요?`))
-              destroy(true);
-          }
-        },
-      },
-    );
+  const matchingFolders = folders.data?.filter((folder) =>
+    folder.toLocaleLowerCase().includes(folderQuery.toLocaleLowerCase()),
+  );
 
   return (
     <Dialog
@@ -320,6 +326,23 @@ function ChannelSettings({
             />
           </label>
         )}
+        {!space && (
+          <label className="flex flex-col gap-1">
+            <span className={label}>영역</span>
+            <select
+              className={field}
+              value={areaId}
+              onChange={(event) => setAreaId(event.target.value)}
+            >
+              <option value="">전체 (영역 없음)</option>
+              {areas.map((area) => (
+                <option key={area.id} value={area.id}>
+                  {area.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className={label}>기본 에이전트 (/ask를 받음)</span>
           <select
@@ -335,41 +358,83 @@ function ChannelSettings({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className={label}>옵시디언 폴더 (선택)</span>
-          <input
-            className={`${field} font-mono text-[13px]`}
-            value={vaultPath}
-            onChange={(e) => setVaultPath(e.target.value)}
-            list="vault-folders"
-            placeholder={
-              folders.data
-                ? "볼트 안의 폴더 고르기"
-                : "앱 설정에서 볼트를 먼저 지정하세요"
-            }
-            disabled={!folders.data && !vaultPath}
-          />
-          <datalist id="vault-folders">
-            {folders.data?.map((f) => (
-              <option key={f} value={f} />
-            ))}
-          </datalist>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`vault-folder-${channel.id}`} className={label}>
+            옵시디언 폴더 (선택)
+          </label>
+          <fieldset
+            className="relative m-0 min-w-0 border-0 p-0"
+            aria-label="옵시디언 폴더 선택"
+            onBlur={(event) => {
+              if (
+                !event.currentTarget.contains(
+                  event.relatedTarget as Node | null,
+                )
+              )
+                setFolderOpen(false);
+            }}
+          >
+            <input
+              id={`vault-folder-${channel.id}`}
+              className={`${field} font-mono text-[13px]`}
+              value={vaultPath}
+              onFocus={() => {
+                setFolderQuery("");
+                setFolderOpen(true);
+              }}
+              onChange={(event) => {
+                setVaultPath(event.target.value);
+                setFolderQuery(event.target.value);
+                setFolderOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && folderOpen) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setFolderOpen(false);
+                }
+                if (event.key === "ArrowDown" && folderOpen) {
+                  event.preventDefault();
+                  event.currentTarget.parentElement
+                    ?.querySelector<HTMLButtonElement>("[data-folder-option]")
+                    ?.focus();
+                }
+              }}
+              placeholder={
+                folders.data
+                  ? "볼트 안의 폴더 고르기"
+                  : "앱 설정에서 볼트를 먼저 지정하세요"
+              }
+              disabled={!folders.data && !vaultPath}
+            />
+            {folderOpen && matchingFolders && matchingFolders.length > 0 && (
+              <div className="absolute right-0 bottom-full left-0 z-20 mb-1 max-h-44 overflow-y-auto rounded-xl border border-line bg-card p-1 shadow-lift">
+                {matchingFolders.map((folder) => (
+                  <button
+                    key={folder}
+                    data-folder-option
+                    type="button"
+                    className="block w-full cursor-pointer rounded-lg px-2 py-1.5 text-left font-mono text-[12px] text-text hover:bg-inset focus:bg-inset"
+                    onClick={() => {
+                      setVaultPath(folder);
+                      setFolderOpen(false);
+                    }}
+                  >
+                    {folder}
+                  </button>
+                ))}
+              </div>
+            )}
+          </fieldset>
           <span className="text-[11.5px] text-meta">
             이 폴더의 노트·자료가 채널에 보이고, 노트의 체크박스 할 일이
             칸반으로 와요.
           </span>
-        </label>
+        </div>
         <ErrorText error={update.error} />
         <div className="flex items-center gap-2">
           {channel.kind !== "personal" && (
-            <button
-              type="button"
-              className={btn.danger}
-              disabled={remove.isPending}
-              onClick={() =>
-                confirm(`#${channel.name} 채널을 삭제할까요?`) && destroy(false)
-              }
-            >
+            <button type="button" className={btn.danger} onClick={onDelete}>
               채널 삭제
             </button>
           )}

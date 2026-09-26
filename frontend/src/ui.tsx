@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ddayLabel, ddayTone } from "./dates";
 
 // Shared class strings (Tokens: pill buttons, 24px cards, CTA orange only on actions).
@@ -84,6 +85,64 @@ export function ErrorText({ error }: { error: unknown }) {
     <p role="alert" className="m-0 text-[12.5px] text-danger">
       {error instanceof Error ? error.message : String(error)}
     </p>
+  );
+}
+
+export function ContextMenu({
+  x,
+  y,
+  label,
+  onClose,
+  onAction,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  onClose: () => void;
+  onAction: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector("button")?.focus();
+    const outside = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="삭제 메뉴"
+      className="fixed z-50 min-w-40 rounded-xl border border-line bg-card p-1 shadow-lift"
+      style={{
+        left: Math.max(8, Math.min(x, window.innerWidth - 168)),
+        top: Math.max(8, Math.min(y, window.innerHeight - 52)),
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="w-full cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] text-danger hover:bg-danger-bg"
+        onClick={() => {
+          onAction();
+          onClose();
+        }}
+      >
+        {label}
+      </button>
+    </div>,
+    document.body,
   );
 }
 

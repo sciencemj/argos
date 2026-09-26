@@ -254,9 +254,7 @@ async def update_area(
 
 async def delete_area(session: AsyncSession, area_id: str, actor: str) -> None:
     area = await _get(session, Area, area_id)
-    count = await session.scalar(select(func.count()).where(Channel.area_id == area.id))
-    if count:
-        raise ConflictError(f"area still has {count} channel(s); move or delete them first")
+    # The area is only a grouping. Its channels remain available without an area.
     await _delete(session, area, actor)
 
 
@@ -1642,8 +1640,13 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
         ).all():
             await update_event(session, event.id, {"channel_id": personal.id}, "system")
 
-    has_user_data = await session.scalar(select(Area.id).limit(1)) is not None
-    if has_user_data:
+    has_areas = await session.scalar(select(Area.id).limit(1)) is not None
+    removed_areas = await session.scalar(
+        select(ActivityLog.id)
+        .where(ActivityLog.object_type == "area", ActivityLog.action == "deleted")
+        .limit(1)
+    )
+    if has_areas or removed_areas is not None:
         return
     for area_order, area_cfg in enumerate(config.get("area", [])):
         area = await _create(

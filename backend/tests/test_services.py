@@ -124,14 +124,17 @@ async def test_deleting_non_empty_channel_needs_force_and_logs_children(
     assert (await activity(session, task.id))[-1].action == "deleted"
 
 
-async def test_area_with_channels_cannot_be_deleted(session: AsyncSession) -> None:
+async def test_deleting_area_preserves_channels_and_does_not_reseed(session: AsyncSession) -> None:
     channel = await make_channel(session)
     assert channel.area_id is not None
-    with pytest.raises(services.ConflictError):
-        await services.delete_area(session, channel.area_id, "user")
-    await services.delete_channel(session, channel.id, "user")
     await services.delete_area(session, channel.area_id, "user")
     assert await services.list_areas(session) == []
+    await session.refresh(channel)
+    assert channel.area_id is None
+
+    await services.seed_defaults(session, {"area": [{"name": "학업"}]})
+    assert await services.list_areas(session) == []
+    assert await session.get(Channel, channel.id) is not None
 
 
 # --- tasks --------------------------------------------------------------------
