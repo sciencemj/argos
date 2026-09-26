@@ -1,6 +1,6 @@
 [package]
 name = "argos-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "Argos desktop app: runs the Argos server and shows it in a window"
 authors = ["sciencemj"]
 edition = "2021"
