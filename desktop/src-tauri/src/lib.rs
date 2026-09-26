@@ -24,6 +24,10 @@ const PORT: u16 = 8000;
 const QUICK_SHORTCUT: &str = "CommandOrControl+Shift+Space";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// Whether Argos' main window had focus when quick capture opened: closing it then goes
+/// back there, otherwise to whatever app the user was in.
+struct QuickFrom(Mutex<bool>);
+
 /// The running server, so it can be stopped when the app quits.
 struct Server(Mutex<Option<CommandChild>>);
 
@@ -210,11 +214,33 @@ fn toggle_quick(app: &AppHandle) {
         return;
     };
     if quick.is_visible().unwrap_or(false) {
-        let _ = quick.hide();
+        close_quick(app);
     } else {
+        let main_focused = app
+            .get_webview_window("main")
+            .and_then(|w| w.is_focused().ok())
+            .unwrap_or(false);
+        *app.state::<QuickFrom>().0.lock().unwrap() = main_focused;
         let _ = quick.center();
         let _ = quick.show();
         let _ = quick.set_focus();
+    }
+}
+
+/// Hides quick capture and gives focus back: to Argos if it was in front, else to the
+/// previous app (hiding Argos hands the focus back, as Spotlight does).
+fn close_quick(app: &AppHandle) {
+    let Some(quick) = app.get_webview_window("quick") else {
+        return;
+    };
+    let _ = quick.hide();
+    if *app.state::<QuickFrom>().0.lock().unwrap() {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.set_focus();
+        }
+    } else {
+        #[cfg(target_os = "macos")]
+        let _ = app.hide();
     }
 }
 
@@ -224,6 +250,8 @@ fn quick_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .inner_size(560.0, 132.0)
         .resizable(false)
         .decorations(false)
+        .transparent(true) // the page draws a rounded card; the corners stay see-through
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .visible(false)
@@ -240,9 +268,7 @@ fn notify(app: AppHandle, title: String, body: String) {
 
 #[tauri::command]
 fn hide_quick(app: AppHandle) {
-    if let Some(quick) = app.get_webview_window("quick") {
-        let _ = quick.hide();
-    }
+    close_quick(&app);
 }
 
 #[tauri::command]
@@ -252,6 +278,9 @@ fn open_main(app: AppHandle, path: String) {
     } else {
         format!("/{path}")
     };
+    if let Some(quick) = app.get_webview_window("quick") {
+        let _ = quick.hide(); // opened from quick capture: that window goes away
+    }
     show_main(&app, Some(&path));
 }
 
@@ -273,6 +302,7 @@ pub fn run() {
                 .build(),
         )
         .manage(Server(Mutex::new(None)))
+        .manage(QuickFrom(Mutex::new(false)))
         .invoke_handler(tauri::generate_handler![
             notify,
             hide_quick,

@@ -324,3 +324,8 @@ body {
     transition: none;
   }
 }
+
+/* Desktop app (no title bar): room for the window buttons above the rail. */
+html[data-desktop] nav[aria-label="영역"] {
+  padding-top: 48px;
+}

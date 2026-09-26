@@ -63,6 +63,7 @@ export function Rail({
     <nav
       ref={nav}
       aria-label="영역"
+      data-tauri-drag-region // the desktop app's window moves by its empty parts
       className="relative flex flex-col items-center gap-2.5 border-r border-line-soft bg-rail py-3.5"
     >
       {pill && (

@@ -15,6 +15,12 @@ export function QuickCapture() {
     (c) => c.kind === "system" && c.name === "inbox",
   );
 
+  // The window is see-through; the rounded card below is all that shows.
+  useEffect(() => {
+    for (const el of [document.documentElement, document.body])
+      el.style.background = "transparent";
+  }, []);
+
   // The window is reused: every time it is shown, start clean with the cursor in place.
   useEffect(() => {
     const onFocus = () => {
@@ -48,7 +54,10 @@ export function QuickCapture() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-card p-4">
+    <div
+      data-tauri-drag-region
+      className="flex h-full flex-col gap-2 overflow-hidden rounded-2xl border border-line bg-card p-4"
+    >
       <textarea
         ref={input}
         aria-label="빠른 입력"
@@ -76,8 +85,9 @@ export function QuickCapture() {
             type="button"
             className="cursor-pointer text-text-3 hover:text-ink"
             onClick={() => {
-              void openMainWindow(`/c/${inbox.id}`);
-              close();
+              setText("");
+              post.reset();
+              void openMainWindow(`/c/${inbox.id}`); // the app hides this window
             }}
           >
             인박스 열기
