@@ -6,6 +6,7 @@ import {
   useNotifySettings,
   useNotifyTargets,
   useOps,
+  usePrepareUninstall,
   useSaveNotify,
   useTestNotify,
   useUninstallService,
@@ -16,9 +17,10 @@ import {
   inDesktopApp,
   restartToUpdate,
   type UpdateState,
+  uninstallApp,
   updateStatus,
 } from "../desktop";
-import { btn, card, ErrorText, field, label } from "../ui";
+import { btn, card, Dialog, ErrorText, field, label } from "../ui";
 
 const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -393,6 +395,100 @@ export function AppUpdateSection() {
           </button>
         )}
       </div>
+    </section>
+  );
+}
+
+/** "Argos 완전 삭제" (desktop app): everything Argos put on this Mac, in one place. */
+export function UninstallSection() {
+  const [open, setOpen] = useState(false);
+  const [deleteData, setDeleteData] = useState(true);
+  const [failed, setFailed] = useState<string | null>(null);
+  const prepare = usePrepareUninstall();
+  if (!inDesktopApp()) return null;
+
+  const run = () =>
+    prepare.mutate(undefined, {
+      onSuccess: () =>
+        void uninstallApp(deleteData)?.then(
+          (error) => error && setFailed(error),
+        ),
+    });
+
+  return (
+    <section
+      aria-label="Argos 삭제"
+      className={`${card} flex w-full flex-col gap-3 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        Argos 삭제
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        앱만 휴지통에 버리면 에이전트에 등록한 MCP·스킬, 로그인 시 자동 실행,
+        키체인 암호가 남아요. 여기서 지우면 그것까지 한 번에 정리해요.
+      </p>
+      <div>
+        <button
+          type="button"
+          className={btn.danger}
+          onClick={() => setOpen(true)}
+        >
+          Argos 완전 삭제…
+        </button>
+      </div>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Argos 완전 삭제"
+      >
+        <div className="flex flex-col gap-4 text-[13.5px] leading-relaxed text-text">
+          <ul className="m-0 flex flex-col gap-1 pl-5 text-text-3">
+            <li>Claude Code·Codex·Hermes에서 Argos MCP와 argos 스킬 제거</li>
+            <li>로그인 시 자동 실행 해제, 키체인의 iCloud 앱 암호 삭제</li>
+            <li>앱과 캐시를 휴지통으로 옮기고 종료</li>
+          </ul>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={deleteData}
+              onChange={(e) => setDeleteData(e.target.checked)}
+              className="mt-1 accent-[var(--ink)]"
+            />
+            <span>
+              내 데이터도 휴지통으로 (일정·할 일·메모·대화·백업)
+              <span className="block text-[12px] text-meta">
+                끄면 다시 설치했을 때 그대로 이어 쓸 수 있어요.
+              </span>
+            </span>
+          </label>
+          <p className="m-0 text-[12px] text-meta">
+            휴지통을 비우기 전까지는 되돌릴 수 있어요.
+          </p>
+          <ErrorText error={prepare.error} />
+          {failed && (
+            <p className="m-0 text-[12px] whitespace-pre-wrap text-danger">
+              일부를 옮기지 못했어요: {failed}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className={btn.ghost}
+              onClick={() => setOpen(false)}
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              className={btn.danger}
+              disabled={prepare.isPending}
+              onClick={run}
+            >
+              {prepare.isPending ? "정리하는 중…" : "삭제"}
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   );
 }

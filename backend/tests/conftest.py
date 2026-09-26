@@ -26,6 +26,26 @@ async def _create_schema(url: str) -> None:
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def no_real_launchd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may touch the developer's ~/Library/LaunchAgents or launchctl (an
+    uninstall test once removed the real dev service). Tests that check them patch
+    these again with their own fakes."""
+    from argos import ops
+
+    class Missing:
+        returncode, stdout, stderr = 113, "", "not loaded"
+
+    def launchctl(*_args: str) -> Missing:
+        return Missing()
+
+    def plist_path(label: str = ops.LABEL) -> Path:
+        return tmp_path / "LaunchAgents" / f"{label}.plist"
+
+    monkeypatch.setattr(ops, "_launchctl", launchctl)
+    monkeypatch.setattr(ops, "plist_path", plist_path)
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     # _env_file=None: tests must not pick up the developer's backend/.env (keys, models).

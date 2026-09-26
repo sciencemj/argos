@@ -158,3 +158,19 @@ def test_desktop_seed_has_areas_but_no_channels() -> None:
     seed = services.load_seed(Path(__file__).parents[1] / "seed.desktop.toml")
     assert [a["name"] for a in seed["area"]] == ["학업", "프로젝트"]
     assert all(not a.get("channel") for a in seed["area"])
+
+
+def test_uninstall_takes_argos_out_of_every_tool(config: Settings, tools: Path) -> None:
+    with TestClient(create_app(config)) as client:
+        for name in ("claude", "codex", "hermes"):
+            client.post(f"/api/v1/setup/tools/{name}/connect")
+        removed = client.post("/api/v1/setup/uninstall").json()["removed"]
+        assert removed == [
+            "Claude Code: MCP + 스킬 제거",
+            "Codex: MCP + 스킬 제거",
+            "Hermes Agent: MCP + 스킬 제거",
+        ]
+        tools_now = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}
+        assert not any(t["connected"] or t["skill"] for t in tools_now.values())
+        assert not (config.claude_dir / "skills" / "argos").exists()
+        assert client.post("/api/v1/setup/uninstall").json()["removed"] == []  # nothing left

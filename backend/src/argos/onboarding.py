@@ -323,3 +323,27 @@ def disconnect(settings: Settings, name: str, mcp: bool, skill: bool) -> ToolSta
     if name == "hermes":
         _restart_hermes(binary)
     return tool_status(settings, name)
+
+
+def remove_everywhere(settings: Settings) -> list[str]:
+    """Uninstall: takes Argos out of every agent tool — its MCP entry (also one left at an
+    old address) and the skill Argos installed. Returns what was removed or failed."""
+    report: list[str] = []
+    for name in ("claude", "codex", "hermes"):
+        binary = shutil.which(_binary(name, settings))
+        if binary is None:
+            continue
+        status = tool_status(settings, name)
+        mcp = status.connected or _registered_url(name, binary) is not None
+        if not (mcp or status.skill):
+            continue
+        try:
+            disconnect(settings, name, mcp=mcp, skill=status.skill)
+            report.append(
+                f"{TOOLS[name][0]}: "
+                + " + ".join(part for part, on in (("MCP", mcp), ("스킬", status.skill)) if on)
+                + " 제거"
+            )
+        except (OSError, ConnectError, subprocess.TimeoutExpired) as exc:
+            report.append(f"{TOOLS[name][0]}: 제거 실패 ({exc})")
+    return report

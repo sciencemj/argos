@@ -23,6 +23,13 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Quick capture gives focus back to the app the user was in; uninstall moves files to
+# the Trash (recoverable) instead of deleting them.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", features = ["NSFileManager", "NSURL", "NSString", "NSError"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

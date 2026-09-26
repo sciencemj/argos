@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     "update_status",
     "check_update",
     "restart_to_update",
+    "uninstall",
 ];
 
 fn main() {

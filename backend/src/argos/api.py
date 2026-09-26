@@ -2207,6 +2207,28 @@ async def disconnect_tool(name: str, config: Config, body: DisconnectIn) -> Setu
     return SetupToolOut(**asdict(status))
 
 
+class UninstallOut(BaseModel):
+    removed: list[str]  # what was taken out, in words for the confirmation screen
+
+
+@router.post("/setup/uninstall")
+async def prepare_uninstall(request: Request, session: Session, config: Config) -> UninstallOut:
+    """ "Argos 완전 삭제", first half: removes what Argos put outside its own folders —
+    agent MCP entries and skills, starting at login, the iCloud password in the
+    Keychain. The desktop app then moves itself (and the data, if asked) to the Trash."""
+    removed = await asyncio.to_thread(onboarding.remove_everywhere, config)
+    state = await asyncio.to_thread(ops.service_state, config)
+    if state.installed:
+        await asyncio.to_thread(ops.uninstall_service, config)
+        removed.append("로그인 시 자동 실행 해제")
+    username = await services.get_setting(session, caldav_sync.ICLOUD_USERNAME)
+    if username:
+        await asyncio.to_thread(_calendar_sync(request).keychain.delete, username)
+        await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, None)
+        removed.append("키체인의 iCloud 앱 암호 삭제")
+    return UninstallOut(removed=removed)
+
+
 @router.post("/setup/done")
 async def finish_setup(session: Session, config: Config) -> SetupOut:
     await services.set_setting(session, ONBOARDED, True, USER)

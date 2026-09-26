@@ -1050,3 +1050,9 @@ export function useSetAgentModel() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["agents"] }),
   });
 }
+
+/** Uninstall, first step: takes Argos out of the agent tools, login items and Keychain. */
+export const usePrepareUninstall = () =>
+  useMutation({
+    mutationFn: () => call(client.POST("/api/v1/setup/uninstall")),
+  });

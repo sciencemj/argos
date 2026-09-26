@@ -2,6 +2,8 @@
 //! shows it in a window once it answers, and stays in the menu bar when the window is
 //! closed so other devices, sync, jobs and notices keep working.
 
+#[cfg(target_os = "macos")]
+mod macos;
 mod update;
 
 use std::io::{Read, Write};
@@ -24,9 +26,9 @@ const PORT: u16 = 8000;
 const QUICK_SHORTCUT: &str = "CommandOrControl+Shift+Space";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
-/// Whether Argos' main window had focus when quick capture opened: closing it then goes
-/// back there, otherwise to whatever app the user was in.
-struct QuickFrom(Mutex<bool>);
+/// The app that was in front when quick capture opened (its pid): closing quick capture
+/// gives it the focus back — Argos' own window, or whatever the user was working in.
+struct QuickFrom(Mutex<Option<i32>>);
 
 /// The running server, so it can be stopped when the app quits.
 struct Server(Mutex<Option<CommandChild>>);
@@ -166,6 +168,11 @@ fn open_when_ready(app: AppHandle) {
             }
             std::thread::sleep(Duration::from_millis(300));
         }
+        // Let the welcome on the start page finish (the dog hops in and says hello).
+        let shown = Duration::from_millis(2600);
+        if let Some(rest) = shown.checked_sub(started.elapsed()) {
+            std::thread::sleep(rest);
+        }
         let base = base_url();
         if let Some(main) = app.get_webview_window("main") {
             if let Ok(url) = Url::parse(&format!("{base}/")) {
@@ -216,31 +223,38 @@ fn toggle_quick(app: &AppHandle) {
     if quick.is_visible().unwrap_or(false) {
         close_quick(app);
     } else {
-        let main_focused = app
-            .get_webview_window("main")
-            .and_then(|w| w.is_focused().ok())
-            .unwrap_or(false);
-        *app.state::<QuickFrom>().0.lock().unwrap() = main_focused;
+        #[cfg(target_os = "macos")]
+        let front = macos::frontmost_pid();
+        #[cfg(not(target_os = "macos"))]
+        let front = None;
+        *app.state::<QuickFrom>().0.lock().unwrap() = front;
         let _ = quick.center();
         let _ = quick.show();
         let _ = quick.set_focus();
     }
 }
 
-/// Hides quick capture and gives focus back: to Argos if it was in front, else to the
-/// previous app (hiding Argos hands the focus back, as Spotlight does).
+/// Hides quick capture only (the main window stays where it was) and gives the focus
+/// back to the app that had it: Argos' window, or the other app the user was in.
 fn close_quick(app: &AppHandle) {
     let Some(quick) = app.get_webview_window("quick") else {
         return;
     };
     let _ = quick.hide();
-    if *app.state::<QuickFrom>().0.lock().unwrap() {
-        if let Some(main) = app.get_webview_window("main") {
-            let _ = main.set_focus();
+    let front = app.state::<QuickFrom>().0.lock().unwrap().take();
+    match front {
+        Some(pid) if pid == std::process::id() as i32 => {
+            if let Some(main) = app.get_webview_window("main") {
+                if main.is_visible().unwrap_or(false) {
+                    let _ = main.set_focus();
+                }
+            }
         }
-    } else {
         #[cfg(target_os = "macos")]
-        let _ = app.hide();
+        Some(pid) => {
+            macos::activate(pid);
+        }
+        _ => {}
     }
 }
 
@@ -284,6 +298,48 @@ fn open_main(app: AppHandle, path: String) {
     show_main(&app, Some(&path));
 }
 
+/// The last step of "Argos 완전 삭제" (settings), after the server has removed what it
+/// installed elsewhere (agent MCP entries and skills, start at login, Keychain items):
+/// stops the server and moves the app, its caches and — when asked — the data to the
+/// Trash, so a mistake can still be undone from there. Then quits.
+#[tauri::command]
+fn uninstall(app: AppHandle, delete_data: bool) -> Result<(), String> {
+    stop_server(&app);
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let id = app.config().identifier.clone();
+    let mut paths = vec![
+        home.join("Library/Caches").join(&id),
+        home.join("Library/WebKit").join(&id),
+        home.join("Library/HTTPStorages").join(&id),
+        home.join("Library/Application Support").join(&id),
+        home.join("Library/Saved Application State")
+            .join(format!("{id}.savedState")),
+        home.join("Library/Preferences").join(format!("{id}.plist")),
+    ];
+    if delete_data {
+        paths.push(data_dir());
+    }
+    if let Some(bundle) = the_app_bundle() {
+        paths.push(bundle);
+    }
+    let mut failed = Vec::new();
+    for path in paths {
+        #[cfg(target_os = "macos")]
+        if let Err(e) = macos::trash(&path) {
+            failed.push(e);
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = &path;
+    }
+    if !failed.is_empty() {
+        return Err(failed.join("\n"));
+    }
+    app.exit(0);
+    Ok(())
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -302,14 +358,15 @@ pub fn run() {
                 .build(),
         )
         .manage(Server(Mutex::new(None)))
-        .manage(QuickFrom(Mutex::new(false)))
+        .manage(QuickFrom(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             notify,
             hide_quick,
             open_main,
             update::update_status,
             update::check_update,
-            update::restart_to_update
+            update::restart_to_update,
+            uninstall
         ])
         .setup(|app| {
             let handle = app.handle().clone();

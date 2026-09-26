@@ -42,3 +42,11 @@ export const updateStatus = () =>
 export const checkUpdate = () =>
   invoke("check_update") as Promise<UpdateState | undefined> | undefined;
 export const restartToUpdate = () => invoke("restart_to_update");
+
+/** Uninstall, last step: the app moves itself (and the data, if asked) to the Trash
+ * and quits. Resolves with an error message if something could not be moved. */
+export const uninstallApp = (deleteData: boolean) =>
+  tauri()
+    ?.core.invoke("uninstall", { deleteData })
+    .then(() => null)
+    .catch((e: unknown) => String(e));

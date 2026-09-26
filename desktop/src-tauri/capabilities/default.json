@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The Argos pages (served by the bundled server on 127.0.0.1:8000) may call the app's own commands only: notifications, the quick-capture window, opening the main window and updates. No shell, no files.",
+  "description": "The Argos pages (served by the bundled server on 127.0.0.1:8000) may call the app's own commands only: notifications, the quick-capture window, opening the main window, updates and uninstalling (moving the app to the Trash, after a confirmation in settings). No shell, no files.",
   "windows": [
     "main",
     "quick"
@@ -20,6 +20,7 @@
     "allow-open-main",
     "allow-update-status",
     "allow-check-update",
-    "allow-restart-to-update"
+    "allow-restart-to-update",
+    "allow-uninstall"
   ]
 }

@@ -1235,6 +1235,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Uninstall
+         * @description "Argos 완전 삭제", first half: removes what Argos put outside its own folders —
+         *     agent MCP entries and skills, starting at login, the iCloud password in the
+         *     Keychain. The desktop app then moves itself (and the data, if asked) to the Trash.
+         */
+        post: operations["prepare_uninstall_api_v1_setup_uninstall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup/done": {
         parameters: {
             query?: never;
@@ -2597,6 +2619,11 @@ export interface components {
             kind: "read" | "write" | "approval";
             /** Description */
             description: string;
+        };
+        /** UninstallOut */
+        UninstallOut: {
+            /** Removed */
+            removed: string[];
         };
         /** UsageOut */
         UsageOut: {
@@ -5045,6 +5072,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_uninstall_api_v1_setup_uninstall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UninstallOut"];
                 };
             };
         };

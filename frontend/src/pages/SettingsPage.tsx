@@ -32,7 +32,12 @@ import {
 import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
-import { AppUpdateSection, NotifySection, OpsSection } from "./OpsSettings";
+import {
+  AppUpdateSection,
+  NotifySection,
+  OpsSection,
+  UninstallSection,
+} from "./OpsSettings";
 import { ToolsSection } from "./Welcome";
 
 const OFF = "";
@@ -160,6 +165,7 @@ export function SettingsPage() {
               <JobRootsSection />
               <OpsSection />
               <AppUpdateSection />
+              <UninstallSection />
             </>,
           )}
         </div>
