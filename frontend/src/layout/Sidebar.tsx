@@ -50,6 +50,8 @@ const SECTIONS: { kind: Kind; title: string }[] = [
 
 const row =
   "flex h-8 items-center gap-[9px] rounded-full px-3 text-text-2 hover:bg-inset aria-[current=page]:bg-inset aria-[current=page]:font-medium aria-[current=page]:text-ink";
+const count =
+  "inline-flex min-w-7 shrink-0 items-center justify-center font-mono text-[11.5px] tabular-nums";
 
 /** Nearest open deadline per channel: the sidebar shows D-day instead of unread counts. */
 function nearestDue(tasks: Task[] | undefined): Map<string, number> {
@@ -126,16 +128,16 @@ export function Sidebar({
           <NavLink to="/" end className={row}>
             <SunIcon />
             <span className="grow">today</span>
-            <span className="font-mono text-[11.5px] text-meta">
-              {todayCount}
-            </span>
+            <span className={`${count} text-meta`}>{todayCount}</span>
           </NavLink>
           {inbox && (
             <NavLink to={`/c/${inbox.id}`} className={row}>
               <InboxIcon />
               <span className="grow">inbox</span>
               {!!today.data?.inbox_count && (
-                <span className="rounded-full border border-line bg-inset px-2 py-px font-mono text-[11.5px] font-semibold text-text">
+                <span
+                  className={`${count} rounded-full border border-line bg-inset px-1 py-px font-semibold text-text`}
+                >
                   {today.data.inbox_count}
                 </span>
               )}
@@ -145,7 +147,9 @@ export function Sidebar({
             <BellIcon />
             <span className="grow">알림</span>
             {unread > 0 && (
-              <span className="rounded-full border border-line bg-inset px-2 py-px font-mono text-[11.5px] font-semibold text-text">
+              <span
+                className={`${count} rounded-full border border-line bg-inset px-1 py-px font-semibold text-text`}
+              >
                 {unread}
               </span>
             )}
@@ -154,7 +158,9 @@ export function Sidebar({
             <ShieldIcon />
             <span className="grow">승인 대기</span>
             {approvals > 0 && (
-              <span className="rounded-full bg-danger-bg px-[9px] py-0.5 font-mono text-[11.5px] font-medium text-danger">
+              <span
+                className={`${count} rounded-full bg-danger-bg px-1 py-0.5 font-medium text-danger`}
+              >
                 {approvals}
               </span>
             )}

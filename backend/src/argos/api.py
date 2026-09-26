@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import httpx2
+import keyring.errors
 import yaml
 from fastapi import (
     APIRouter,
@@ -1331,7 +1332,13 @@ async def connect_icloud(
     finally:
         if isinstance(server, caldav_sync.CalDAVClient):
             await server.aclose()
-    await asyncio.to_thread(sync.keychain.set, username, body.password)
+    try:
+        await asyncio.to_thread(sync.keychain.set, username, body.password)
+    except keyring.errors.KeyringError:
+        raise services.InvalidError(
+            "키체인에 암호를 저장하지 못했어요. macOS 키체인 접근을 확인하거나 "
+            "기존 Argos iCloud CalDAV 항목을 지운 뒤 다시 시도해 주세요"
+        ) from None
     await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, username)
     background.add_task(sync.run)
     return await _icloud_out(request, session, config)
@@ -1343,7 +1350,12 @@ async def disconnect_icloud(request: Request, session: Session, config: Config) 
     sync = _calendar_sync(request)
     username = await services.get_setting(session, caldav_sync.ICLOUD_USERNAME)
     if username:
-        await asyncio.to_thread(sync.keychain.delete, username)
+        try:
+            await asyncio.to_thread(sync.keychain.delete, username)
+        except keyring.errors.KeyringError:
+            raise services.InvalidError(
+                "키체인에서 암호를 지우지 못했어요. macOS 키체인 접근을 확인해 주세요"
+            ) from None
     await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, None)
     return await _icloud_out(request, session, config)
 
@@ -2223,7 +2235,12 @@ async def prepare_uninstall(request: Request, session: Session, config: Config) 
         removed.append("로그인 시 자동 실행 해제")
     username = await services.get_setting(session, caldav_sync.ICLOUD_USERNAME)
     if username:
-        await asyncio.to_thread(_calendar_sync(request).keychain.delete, username)
+        try:
+            await asyncio.to_thread(_calendar_sync(request).keychain.delete, username)
+        except keyring.errors.KeyringError:
+            raise services.InvalidError(
+                "키체인에서 암호를 지우지 못했어요. macOS 키체인 접근을 확인해 주세요"
+            ) from None
         await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, None)
         removed.append("키체인의 iCloud 앱 암호 삭제")
     return UninstallOut(removed=removed)

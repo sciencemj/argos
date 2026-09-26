@@ -35,7 +35,6 @@ from zoneinfo import ZoneInfo
 
 import httpx2
 import keyring
-import keyring.errors
 from icalendar import Calendar, vRecur
 from icalendar import Event as VEvent
 from icalendar.error import IncompleteComponent, InvalidCalendar
@@ -620,13 +619,14 @@ class Keychain:
         return keyring.get_password(KEYCHAIN_SERVICE, username)
 
     def set(self, username: str, password: str) -> None:
-        keyring.set_password(KEYCHAIN_SERVICE, username, password)
+        # keyring replaces a macOS item by deleting it first. A previously installed
+        # app may still read its item but be unable to delete it (Security -25244).
+        if self.get(username) != password:
+            keyring.set_password(KEYCHAIN_SERVICE, username, password)
 
     def delete(self, username: str) -> None:
-        try:
+        if self.get(username) is not None:
             keyring.delete_password(KEYCHAIN_SERVICE, username)
-        except keyring.errors.PasswordDeleteError:
-            pass
 
 
 ServerFactory = Callable[[Settings, str, str], CalendarServer]

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx2
+import keyring.errors
 import pytest
 from fastapi.testclient import TestClient
 
@@ -208,6 +209,48 @@ def test_password_lives_only_in_the_keychain(
     app.delete("/api/v1/settings/icloud")
     assert keychain.saved == {}
     assert app.get("/api/v1/settings/icloud").json()["connected"] is False
+
+
+def test_existing_keychain_password_does_not_need_replacing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def saved_password(_service: str, _username: str) -> str:
+        return PASSWORD
+
+    monkeypatch.setattr(caldav_sync.keyring, "get_password", saved_password)
+
+    def cannot_replace(*_args: str) -> None:
+        raise keyring.errors.PasswordSetError("Security -25244")
+
+    monkeypatch.setattr(caldav_sync.keyring, "set_password", cannot_replace)
+    caldav_sync.Keychain().set("me@icloud.com", PASSWORD)
+
+
+def test_keychain_write_failure_does_not_connect(app: TestClient) -> None:
+    class FailingKeychain(FakeKeychain):
+        def set(self, username: str, password: str) -> None:
+            raise keyring.errors.PasswordSetError("Security -25244")
+
+    app.app.state.calendar_sync.keychain = FailingKeychain()  # type: ignore[attr-defined]
+    response = app.put(
+        "/api/v1/settings/icloud", json={"username": "me@icloud.com", "password": PASSWORD}
+    )
+    assert response.status_code == 422
+    assert "키체인" in response.json()["error"]["message"]
+    assert PASSWORD not in response.text
+    assert app.get("/api/v1/settings/icloud").json()["connected"] is False
+
+
+def test_keychain_delete_failure_keeps_connection(app: TestClient, keychain: FakeKeychain) -> None:
+    connect(app)
+
+    def cannot_delete(_username: str) -> None:
+        raise keyring.errors.PasswordDeleteError("Security -25244")
+
+    keychain.delete = cannot_delete  # type: ignore[method-assign]
+    response = app.delete("/api/v1/settings/icloud")
+    assert response.status_code == 422
+    assert app.get("/api/v1/settings/icloud").json()["connected"] is True
 
 
 def test_first_sync_reads_every_calendar_and_writes_only_to_argos(
