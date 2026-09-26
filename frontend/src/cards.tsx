@@ -45,6 +45,9 @@ const TYPE_LABEL: Record<string, string> = {
   study_note: "공부 노트",
 };
 
+const channelLabel = (channel: Channel) =>
+  channel.kind === "personal" ? "내 공간" : `# ${channel.name}`;
+
 // --- suggestion ("알아봤어요") -------------------------------------------------------
 
 /** Card for an inbox item: pending, failed, or a suggestion the user accepts or fixes.
@@ -122,7 +125,11 @@ function Proposal({
     channels.data?.channels.filter((c) => c.kind !== "system") ?? [];
   const byName = pickable.find((c) => c.name === s.channel_hint);
   const target =
-    byName ?? (channel && channel.kind !== "system" ? channel : undefined);
+    byName ??
+    (channel && channel.kind !== "system" ? channel : undefined) ??
+    (channel?.name === "inbox"
+      ? pickable.find((c) => c.kind === "personal")
+      : undefined);
   const fromContext = target !== undefined && target.id === channel?.id;
 
   if (hidden) return <Quiet>인박스에 두었어요</Quiet>;
@@ -172,7 +179,7 @@ function Proposal({
             <span>
               {target ? (
                 <>
-                  # {target.name}
+                  {channelLabel(target)}
                   {fromContext && (
                     <span className="text-[12px] text-meta">
                       {" "}
@@ -327,7 +334,7 @@ function FixForm({
             <option value="">골라 주세요</option>
             {channels.map((c) => (
               <option key={c.id} value={c.id}>
-                # {c.name}
+                {channelLabel(c)}
               </option>
             ))}
           </select>
@@ -478,7 +485,10 @@ export function InboxRow({ item }: { item: InboxItem }) {
   const pickable =
     channels.data?.channels.filter((c) => c.kind !== "system") ?? [];
   const captured = pickable.find((c) => c.id === item.channel_id);
-  const target = pickable.find((c) => c.name === s.channel_hint) ?? captured;
+  const target =
+    pickable.find((c) => c.name === s.channel_hint) ??
+    captured ??
+    pickable.find((c) => c.kind === "personal");
 
   if (item.status === "new") {
     return s.error ? (
@@ -506,7 +516,7 @@ export function InboxRow({ item }: { item: InboxItem }) {
   const parts = [
     TYPE_LABEL[s.type ?? "task"],
     when,
-    target ? `# ${target.name}` : "채널 미정",
+    target ? channelLabel(target) : "채널 미정",
   ];
   const note = s.type === "study_note";
 
@@ -532,7 +542,7 @@ export function InboxRow({ item }: { item: InboxItem }) {
             <option value="">채널 고르기</option>
             {pickable.map((c) => (
               <option key={c.id} value={c.id}>
-                # {c.name}
+                {channelLabel(c)}
               </option>
             ))}
           </select>

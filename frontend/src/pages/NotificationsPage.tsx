@@ -30,7 +30,9 @@ export function NotificationsPage() {
   const open = (n: Notice) => {
     if (!n.read_at) read.mutate(n.id);
     const inbox = list.find((c) => c.kind === "system" && c.name === "inbox");
-    if (n.object_type === "task" && n.object_id && n.channel_id) {
+    if (n.kind === "weekly_review") {
+      navigate("/review");
+    } else if (n.object_type === "task" && n.object_id && n.channel_id) {
       navigate(`/c/${n.channel_id}/kanban?task=${n.object_id}`);
     } else if (n.object_type === "inbox" && inbox) {
       navigate(`/c/${inbox.id}`);

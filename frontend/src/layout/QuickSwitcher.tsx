@@ -43,23 +43,27 @@ export function QuickSwitcher({
           찾는 게 없어요
         </Command.Empty>
         <Command.Group heading="채널" className={group}>
-          {channels.data?.channels.map((c) => (
-            <Command.Item
-              key={c.id}
-              value={`channel ${c.name}`}
-              onSelect={() =>
-                go(
-                  c.kind === "system" && c.name === "today"
-                    ? "/"
-                    : `/c/${c.id}`,
-                )
-              }
-              className={item}
-            >
-              <span className="font-mono text-hash">#</span>
-              {c.name}
-            </Command.Item>
-          ))}
+          {channels.data?.channels
+            .filter((c) => c.kind !== "personal")
+            .map((c) => (
+              <Command.Item
+                key={c.id}
+                value={`channel ${c.name} ${c.name === "inbox" ? "내 공간 일상" : ""}`}
+                onSelect={() =>
+                  go(
+                    c.kind === "system" && c.name === "today"
+                      ? "/"
+                      : `/c/${c.id}`,
+                  )
+                }
+                className={item}
+              >
+                {c.name !== "inbox" && (
+                  <span className="font-mono text-hash">#</span>
+                )}
+                {c.name === "inbox" ? "내 공간" : c.name}
+              </Command.Item>
+            ))}
         </Command.Group>
         <Command.Group heading="할 일" className={group}>
           {tasks.data?.map((t) => (
@@ -71,7 +75,10 @@ export function QuickSwitcher({
             >
               <span className="grow truncate">{t.title}</span>
               <span className="text-[12px] text-meta">
-                #{byId.get(t.channel_id)?.name} · {statusLabel.get(t.status)}
+                {byId.get(t.channel_id)?.kind === "personal"
+                  ? "내 공간"
+                  : `#${byId.get(t.channel_id)?.name}`}{" "}
+                · {statusLabel.get(t.status)}
               </span>
             </Command.Item>
           ))}

@@ -100,7 +100,11 @@ function TaskDetail({
           <span className="rounded-full border border-line bg-inset px-2 py-px text-[11.5px] font-semibold text-text">
             ● {statusLabel.get(task.status)}
           </span>
-          {channel && <Chip># {channel.name}</Chip>}
+          {channel && (
+            <Chip>
+              {channel.kind === "personal" ? "내 공간" : `# ${channel.name}`}
+            </Chip>
+          )}
           {task.due_at && <Chip>{fmt(task.due_at, "M/d (EEE) HH:mm")}</Chip>}
           {task.due_at && task.status !== "done" && (
             <DdayBadge days={dday(task.due_at)} />

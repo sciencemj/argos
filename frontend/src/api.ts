@@ -193,16 +193,20 @@ export const useOpenInbox = () =>
   });
 
 /** Newest page first from the API; pages are rendered oldest → newest. */
-export const useMessages = (channelId: string) =>
+export const useMessages = (channelId: string, includePersonal = false) =>
   useInfiniteQuery({
-    queryKey: ["messages", channelId],
+    queryKey: ["messages", channelId, includePersonal],
+    enabled: Boolean(channelId),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       call(
         client.GET("/api/v1/channels/{channel_id}/messages", {
           params: {
             path: { channel_id: channelId },
-            query: pageParam ? { cursor: pageParam } : {},
+            query: {
+              ...(pageParam ? { cursor: pageParam } : {}),
+              ...(includePersonal ? { include_personal: true } : {}),
+            },
           },
         }),
       ),

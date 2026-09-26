@@ -1,6 +1,6 @@
-import { useNavigate } from "react-router";
-import { useAnalytics, useChannels, useMakeReview } from "../api";
+import { useAnalytics, useChannels, useMakeReview, useMessages } from "../api";
 import { fmt } from "../dates";
+import { Markdown } from "../markdown";
 import { btn, card, ErrorText, label } from "../ui";
 
 /** How the weeks go (PLAN Phase 11): done per week, days from creation to done per
@@ -9,7 +9,13 @@ export function ReviewPage() {
   const stats = useAnalytics();
   const make = useMakeReview();
   const channels = useChannels();
-  const navigate = useNavigate();
+  const today = channels.data?.channels.find(
+    (c) => c.kind === "system" && c.name === "today",
+  );
+  const messages = useMessages(today?.id ?? "");
+  const reviews = (messages.data?.pages ?? [])
+    .flatMap((page) => [...page.items].reverse())
+    .filter((message) => message.body.startsWith("# 주간 리뷰"));
   const weekly = stats.data?.weekly_done ?? [];
   const most = Math.max(1, ...weekly.map((w) => w.count));
   const processing = stats.data?.processing ?? [];
@@ -26,25 +32,49 @@ export function ReviewPage() {
             type="button"
             className={btn.outline}
             disabled={make.isPending}
-            onClick={() =>
-              make.mutate(undefined, {
-                onSuccess: (message) => {
-                  const today = channels.data?.channels.find(
-                    (c) => c.id === message.channel_id,
-                  );
-                  if (today) navigate(`/c/${today.id}`);
-                },
-              })
-            }
+            onClick={() => make.mutate()}
           >
             {make.isPending ? "만드는 중…" : "이번 주 리뷰 만들기"}
           </button>
         </div>
         <p className="m-0 text-[13px] leading-relaxed text-text-3">
-          주간 리뷰는 설정한 요일·시간에 #today로 자동으로 와요. 끝낸 일, 오래된
-          backlog, 비슷한 인박스 메모를 모아 보여줘요.
+          주간 리뷰는 설정한 요일·시간에 이곳에 자동으로 쌓여요. 끝낸 일, 오래된
+          백로그, 비슷한 수집함 메모를 모아 보여줘요.
         </p>
-        <ErrorText error={stats.error ?? make.error} />
+        <ErrorText error={stats.error ?? make.error ?? messages.error} />
+        <section aria-label="주간 리뷰 기록" className="flex flex-col gap-3">
+          <span className={label}>주간 리뷰 기록</span>
+          {messages.isSuccess && reviews.length === 0 && (
+            <div className={`${card} px-6 py-8 text-[13px] text-text-3`}>
+              {messages.hasNextPage
+                ? "불러온 기록에 리뷰가 없어요. 이전 기록을 더 볼 수 있어요."
+                : "아직 작성된 리뷰가 없어요."}
+            </div>
+          )}
+          {reviews.map((message, index) => (
+            <details
+              key={message.id}
+              open={index === 0}
+              className={`${card} p-5`}
+            >
+              <summary className="cursor-pointer text-[14px] font-medium text-ink">
+                주간 리뷰 · {fmt(message.created_at, "yyyy.M.d")}
+              </summary>
+              <div className="mt-4 text-[13px] leading-relaxed text-text-2">
+                <Markdown text={message.body} />
+              </div>
+            </details>
+          ))}
+          {messages.hasNextPage && (
+            <button
+              type="button"
+              className={btn.ghost}
+              onClick={() => void messages.fetchNextPage()}
+            >
+              이전 기록 더 보기
+            </button>
+          )}
+        </section>
         <section
           aria-label="주간 완료"
           className={`${card} flex flex-col gap-3 p-6`}

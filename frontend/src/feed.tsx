@@ -66,7 +66,11 @@ export const FEED_COLUMN = "mx-auto w-full max-w-[960px]";
 
 /** Channel feed: messages are the input layer, the cards show the objects (PLAN P4). */
 export function Feed({ channel }: { channel: Channel }) {
-  const messages = useMessages(channel.id);
+  const channels = useChannels();
+  const messages = useMessages(
+    channel.id,
+    channel.kind === "system" && channel.name === "inbox",
+  );
   const scroller = useRef<HTMLDivElement>(null);
   const openThread = useOpenThread();
   const pages = messages.data?.pages ?? [];
@@ -112,15 +116,18 @@ export function Feed({ channel }: { channel: Channel }) {
           )}
           {messages.isSuccess && items.length === 0 && (
             <div className="text-[13px] text-text-3">
-              #{channel.name}에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할
-              일·일정으로 정리해요.
+              {channel.name === "inbox" ? "내 공간" : `#${channel.name}`}에 첫
+              메시지를 적어 보세요. 그냥 쓰면 Argos가 할 일·일정으로 정리해요.
             </div>
           )}
           {items.map((m) => (
             <MessageItem
               key={m.id}
               message={m}
-              channel={channel}
+              channel={
+                channels.data?.channels.find((c) => c.id === m.channel_id) ??
+                channel
+              }
               onThread={openThread}
             />
           ))}
@@ -746,7 +753,7 @@ export function Composer({
               ? "스레드에 답장… (/task, /debate 같은 명령도 돼요)"
               : dm
                 ? `${dmAgent?.display_name ?? "에이전트"}에게 메시지`
-                : `#${channel.name}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+                : `${channel.name === "inbox" ? "내 공간" : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
           }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />

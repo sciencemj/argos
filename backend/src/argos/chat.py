@@ -76,6 +76,12 @@ async def post_message(
     if not body:
         raise services.InvalidError("빈 메시지는 보낼 수 없어요")
     channel = await services.get_channel(session, channel_id)
+    personal = (
+        await services.get_personal_channel(session)
+        if channel.kind == ChannelKind.SYSTEM and channel.name == "inbox"
+        else None
+    )
+    agent_channel = personal or channel
     mentioned = await mentioned_agents(session, body)
     dm_agent = (
         await services.get_agent(session, channel.default_agent_id)
@@ -190,7 +196,7 @@ async def post_message(
                 raise services.InvalidError(f"없는 에이전트예요: {', '.join(missing)}")
             participants = [a for a in found if a is not None]
             moderator = (
-                await services.default_agent(session, channel, settings.default_agent)
+                await services.default_agent(session, agent_channel, settings.default_agent)
                 or participants[0]
             )
             debate = await services.create_debate(
@@ -211,7 +217,7 @@ async def post_message(
             return Posted(message, debate=debate)
         case commands.AskCommand():
             message = await _say(session, channel, body, None, in_thread)
-            agent = await services.default_agent(session, channel, settings.default_agent)
+            agent = await services.default_agent(session, agent_channel, settings.default_agent)
             if agent is None:
                 await services.create_message(
                     session,

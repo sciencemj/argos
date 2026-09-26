@@ -671,7 +671,6 @@ function ICloudSection() {
   const choices = (channels.data?.channels ?? []).filter(
     (c) => c.kind !== "system" && c.kind !== "dm",
   );
-  const personal = choices.find((c) => c.kind === "personal");
   const result = status?.last_result
     ? RESULT_TEXT.filter(([key]) => status.last_result?.[key])
         .map(([key, text]) => `${text} ${status.last_result?.[key]}`)
@@ -815,9 +814,7 @@ function ICloudSection() {
                       })
                     }
                   >
-                    <option value="">
-                      # {personal?.name ?? "일상"} (기본)
-                    </option>
+                    <option value="">내 공간 (기본)</option>
                     {choices
                       .filter((ch) => ch.kind !== "personal")
                       .map((ch) => (
@@ -965,7 +962,7 @@ export function VaultSection() {
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
         볼트의 노트를 검색하고 읽을 수 있어요. 채널 설정에서 폴더를 연결하면 그
         폴더 노트의 체크박스 할 일이 칸반으로 오고, 체크 표시가 양쪽에 반영돼요.
-        최근 데일리 노트의 할 일은 #일상으로 와요.
+        최근 데일리 노트의 할 일은 내 공간으로 와요.
       </p>
       <form
         className="flex flex-col gap-3"

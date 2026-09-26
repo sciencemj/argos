@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useState } from "react";
 import {
+  Navigate,
   NavLink,
   Outlet,
+  useLocation,
   useMatch,
   useNavigate,
   useOutletContext,
@@ -36,6 +38,7 @@ const TABS = [
 ];
 
 const SYSTEM_TABS = TABS.slice(0, 3); // #today-style channels have no vault folder
+const SPACE_TABS = [{ path: "", label: "수집함" }, ...TABS.slice(1)];
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -43,10 +46,14 @@ const ALT = isMac ? "⌥" : "Alt+";
 /** Feed · kanban · calendar · notes · materials. ⌥1–5 jumps to a tab and ⌥[ / ⌥]
  * steps left/right (by key position, so it works with any keyboard layout or IME);
  * holding ⌥ shows the keys on the tabs. */
-function ChannelTabs({ channel }: { channel: Channel }) {
+function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
   const navigate = useNavigate();
   const [showKeys, setShowKeys] = useState(false);
-  const tabs = channel.kind === "system" ? SYSTEM_TABS : TABS;
+  const tabs = space
+    ? SPACE_TABS
+    : channel.kind === "system"
+      ? SYSTEM_TABS
+      : TABS;
   const base = `/c/${channel.id}`;
 
   useEffect(() => {
@@ -127,9 +134,14 @@ function ChannelTabs({ channel }: { channel: Channel }) {
 
 export function ChannelPage() {
   const { channelId } = useParams();
+  const location = useLocation();
   const { data, isLoading } = useChannels();
   const [editing, setEditing] = useState(false);
   const channel = data?.channels.find((c) => c.id === channelId);
+  const inbox = data?.channels.find(
+    (c) => c.kind === "system" && c.name === "inbox",
+  );
+  const personal = data?.channels.find((c) => c.kind === "personal");
   // The feed reads in a centered column; kanban, calendar and notes get more room.
   const onFeed = useMatch("/c/:channelId") !== null;
   const column = onFeed ? FEED_COLUMN : "mx-auto w-full max-w-[1480px]";
@@ -142,7 +154,20 @@ export function ChannelPage() {
       </p>
     );
   }
-  const editable = channel.kind !== "system" && channel.kind !== "dm";
+  if (channel.kind === "personal" && inbox) {
+    const suffix = location.pathname.slice(`/c/${channel.id}`.length);
+    return (
+      <Navigate
+        to={`/c/${inbox.id}${suffix}${location.search}${location.hash}`}
+        replace
+      />
+    );
+  }
+  const space = channel.id === inbox?.id;
+  const settingsChannel = space ? personal : channel;
+  const editable =
+    Boolean(settingsChannel) &&
+    (space || (channel.kind !== "system" && channel.kind !== "dm"));
 
   if (channel.kind === "dm") {
     return <DMPage channel={channel} />;
@@ -153,7 +178,8 @@ export function ChannelPage() {
       <header className={`${column} flex flex-col gap-3 px-8 pt-[18px] pb-4`}>
         <div className="flex items-center gap-3.5">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-            <span className="text-hash">#</span> {channel.name}
+            {!space && <span className="text-hash">#</span>}{" "}
+            {space ? "내 공간" : channel.name}
           </h1>
           {editable && (
             <button
@@ -167,11 +193,12 @@ export function ChannelPage() {
           )}
         </div>
         <div className="flex items-center gap-3.5">
-          <ChannelTabs channel={channel} />
+          <ChannelTabs channel={channel} space={space} />
           <span className="grow" />
-          {channel.vault_path && (
+          {settingsChannel?.vault_path && (
             <span className="truncate text-[12.5px] text-meta">
-              옵시디언 <span className="font-mono">{channel.vault_path}/</span>
+              옵시디언{" "}
+              <span className="font-mono">{settingsChannel.vault_path}/</span>
             </span>
           )}
         </div>
@@ -179,12 +206,13 @@ export function ChannelPage() {
       <div
         className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
       >
-        <Outlet context={channel} />
+        <Outlet context={space && !onFeed && personal ? personal : channel} />
       </div>
-      {editable && (
+      {editable && settingsChannel && (
         <ChannelSettings
-          key={channel.id}
-          channel={channel}
+          key={settingsChannel.id}
+          channel={settingsChannel}
+          space={space}
           open={editing}
           onClose={() => setEditing(false)}
         />
@@ -224,10 +252,12 @@ export function FeedTab() {
 
 function ChannelSettings({
   channel,
+  space,
   open,
   onClose,
 }: {
   channel: Channel;
+  space: boolean;
   open: boolean;
   onClose: () => void;
 }) {
@@ -246,7 +276,7 @@ function ChannelSettings({
     update.mutate(
       {
         id: channel.id,
-        name: name.trim(),
+        ...(space ? {} : { name: name.trim() }),
         vault_path: vaultPath.trim() || null,
         default_agent_id: agentId || null,
       },
@@ -273,17 +303,23 @@ function ChannelSettings({
     );
 
   return (
-    <Dialog open={open} onClose={onClose} title="채널 설정">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={space ? "내 공간 설정" : "채널 설정"}
+    >
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className={label}>이름</span>
-          <input
-            className={field}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </label>
+        {!space && (
+          <label className="flex flex-col gap-1">
+            <span className={label}>이름</span>
+            <input
+              className={field}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className={label}>기본 에이전트 (/ask를 받음)</span>
           <select

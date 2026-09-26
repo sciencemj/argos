@@ -725,10 +725,20 @@ async def list_messages(
     channel_id: str,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    include_personal: bool = False,
 ) -> MessagePage:
-    await services.get_channel(session, channel_id)
+    channel = await services.get_channel(session, channel_id)
+    personal = (
+        await services.get_personal_channel(session)
+        if include_personal and channel.kind == ChannelKind.SYSTEM and channel.name == "inbox"
+        else None
+    )
     messages, next_cursor = await services.list_messages(
-        session, channel_id, cursor=cursor, limit=limit
+        session,
+        channel_id,
+        also_channel_id=personal.id if personal else None,
+        cursor=cursor,
+        limit=limit,
     )
     return MessagePage(items=await _messages_out(session, messages), next_cursor=next_cursor)
 

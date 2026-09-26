@@ -61,7 +61,7 @@ export function TodayPage() {
           <div className="flex gap-2.5">
             <Stat label="일정" value={events.length} />
             <Stat label="마감 임박" value={due.length} />
-            <Stat label="인박스" value={today.data?.inbox_count ?? 0} />
+            <Stat label="수집함" value={today.data?.inbox_count ?? 0} />
             <Link to="/approvals">
               <Stat
                 label="승인 대기"
@@ -257,8 +257,10 @@ function Deadlines({
           >
             <span className="font-medium text-ink">{t.title}</span>
             <span className="text-[12px] text-text-3">
-              # {byId.get(t.channel_id)?.name} ·{" "}
-              {relativeDue(t.due_at ?? "", now)}
+              {byId.get(t.channel_id)?.kind === "personal"
+                ? "내 공간"
+                : `# ${byId.get(t.channel_id)?.name}`}{" "}
+              · {relativeDue(t.due_at ?? "", now)}
             </span>
           </Link>
           <CheckButton
@@ -306,11 +308,11 @@ function Inbox({
 
   return (
     <Panel
-      title="인박스"
-      label="인박스"
+      title="수집함"
+      label="수집함"
       aside={`정리 안 된 입력 ${items.length}`}
     >
-      {items.length === 0 && <Empty>인박스가 비었어요.</Empty>}
+      {items.length === 0 && <Empty>수집함이 비었어요.</Empty>}
       {items.map((i) => (
         <div
           key={i.id}
@@ -363,21 +365,22 @@ const STEP: Record<Task["status"], string> = {
 };
 
 function Progress({ channels, tasks }: { channels: Channel[]; tasks: Task[] }) {
-  // Courses plus the personal #일상 channel, which lives on Home.
+  // Courses plus the personal board shown under 내 공간.
   const courses = channels.filter(
     (c) => c.kind === "course" || c.kind === "personal",
   );
+  const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
   if (courses.length === 0) return null;
   const grid =
     "grid grid-cols-[120px_repeat(5,minmax(0,1fr))] items-center gap-2.5";
 
   return (
     <section
-      aria-label="과목별 진행"
+      aria-label="진행 현황"
       className={`${card} flex flex-col gap-3 px-[22px] py-[18px]`}
     >
       <div className={`${grid} text-[11.5px] font-medium text-meta`}>
-        <span>과목별 진행</span>
+        <span>진행 현황</span>
         {STATUSES.map((s) => (
           <span key={s.id}>{s.label}</span>
         ))}
@@ -385,10 +388,12 @@ function Progress({ channels, tasks }: { channels: Channel[]; tasks: Task[] }) {
       {courses.map((c) => (
         <Link
           key={c.id}
-          to={`/c/${c.id}/kanban`}
+          to={`/c/${c.kind === "personal" && inbox ? inbox.id : c.id}/kanban`}
           className={`${grid} text-[13px]`}
         >
-          <span className="truncate text-ink"># {c.name}</span>
+          <span className="truncate text-ink">
+            {c.kind === "personal" ? "내 공간" : `# ${c.name}`}
+          </span>
           {STATUSES.map((s) => {
             const inCell = tasks.filter(
               (t) => t.channel_id === c.id && t.status === s.id,

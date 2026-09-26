@@ -139,7 +139,7 @@ export function NotifySection() {
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <span className={label}>주간 리뷰 (#today로)</span>
+        <span className={label}>주간 리뷰 (리뷰 화면에 표시)</span>
         <div className="flex items-center gap-2 text-[13.5px] text-text">
           매주
           <select

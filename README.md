@@ -38,7 +38,7 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 ## Features
 
 **Organize**
-- **Channels per course and project**, grouped into areas, plus `#today`, `#inbox` and a personal `#일상`.
+- **Channels per course and project**, grouped into areas, plus **Today** and **My Space**. My Space combines the capture inbox with personal tasks, events and notes.
 - **Feed first**: plain messages land in the inbox and are sorted by a local model (Ollama) or Hermes into
   tasks, events and notes; slash commands (`/task`, `/event`, `/note`, `/ask`, `/job`, `/debate`) skip the guessing.
 - **Kanban** with WIP warnings and drag and drop, **calendar** (week and month) with recurring events,
@@ -47,7 +47,7 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   Dataview syntax), with backups before every edit.
 - **Calendars**: an ICS feed for any calendar app and two-way iCloud (CalDAV) sync.
 - **Notices and weekly review**: deadline and stale-inbox notices in the app, as macOS notifications
-  or through Hermes to your messenger; a weekly review with numbers per course.
+  or through Hermes to your messenger; weekly reviews are available on the Review page.
 
 **Work with agents**
 - **Hermes, Claude Code, Codex and local models** in threads and 1:1 chats; `@mention` any of them.

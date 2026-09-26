@@ -2956,6 +2956,7 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                include_personal?: boolean;
             };
             header?: never;
             path: {

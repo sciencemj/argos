@@ -118,6 +118,52 @@ def test_inbox_crud_and_today_count(client: TestClient) -> None:
     assert page["next_cursor"] is None
 
 
+def test_personal_space_keeps_capture_and_organised_items_together(client: TestClient) -> None:
+    channels = client.get("/api/v1/channels").json()["channels"]
+    inbox = next(c for c in channels if c["name"] == "inbox")
+    personal = next(c for c in channels if c["kind"] == "personal")
+
+    capture = client.post(
+        f"/api/v1/channels/{inbox['id']}/messages", json={"body": "/task 장보기"}
+    ).json()
+    history = client.post(
+        f"/api/v1/channels/{personal['id']}/messages", json={"body": "/event 약속 2026-10-01"}
+    ).json()
+    assert capture["ref"]["task"]["channel_id"] == personal["id"]
+    assert history["ref"]["event"]["channel_id"] == personal["id"]
+    task_id = capture["ref"]["task"]["id"]
+    event_id = history["ref"]["event"]["id"]
+    assert (
+        client.patch(f"/api/v1/tasks/{task_id}", json={"channel_id": inbox["id"]}).json()[
+            "channel_id"
+        ]
+        == personal["id"]
+    )
+    assert (
+        client.patch(f"/api/v1/events/{event_id}", json={"channel_id": inbox["id"]}).json()[
+            "channel_id"
+        ]
+        == personal["id"]
+    )
+
+    path = f"/api/v1/channels/{inbox['id']}/messages"
+    assert [m["id"] for m in client.get(path).json()["items"]] == [capture["id"]]
+    merged = client.get(path, params={"include_personal": True}).json()["items"]
+    assert {m["id"] for m in merged} == {capture["id"], history["id"]}
+    first = client.get(path, params={"include_personal": True, "limit": 1}).json()
+    second = client.get(
+        path, params={"include_personal": True, "limit": 1, "cursor": first["next_cursor"]}
+    ).json()
+    assert {first["items"][0]["id"], second["items"][0]["id"]} == {
+        capture["id"],
+        history["id"],
+    }
+    assert [
+        t["title"]
+        for t in client.get("/api/v1/tasks", params={"channel_id": personal["id"]}).json()
+    ] == ["장보기"]
+
+
 def test_errors_use_uniform_shape(client: TestClient) -> None:
     missing = client.get("/api/v1/tasks/nope")
     assert missing.status_code == 404

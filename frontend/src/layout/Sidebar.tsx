@@ -81,7 +81,6 @@ export function Sidebar({
   const area = data?.areas.find((a) => a.id === areaId);
   const channels = data?.channels ?? [];
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
-  const personal = channels.find((c) => c.kind === "personal");
   const approvals = usePendingApprovals().data?.length ?? 0;
   const unread = useNotifications().data?.unread ?? 0;
   const inScope = channels.filter(
@@ -133,7 +132,7 @@ export function Sidebar({
           {inbox && (
             <NavLink to={`/c/${inbox.id}`} className={row}>
               <InboxIcon />
-              <span className="grow">inbox</span>
+              <span className="grow">내 공간</span>
               {!!today.data?.inbox_count && (
                 <span
                   className={`${count} rounded-full border border-line bg-inset px-1 py-px font-semibold text-text`}
@@ -169,9 +168,6 @@ export function Sidebar({
             <ChartIcon />
             <span className="grow">리뷰</span>
           </NavLink>
-          {personal && (
-            <ChannelRow channel={personal} days={due.get(personal.id)} />
-          )}
         </Section>
 
         <div ref={scoped} className="flex flex-col gap-5">

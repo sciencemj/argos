@@ -28,7 +28,8 @@ from argos.models import Channel, ChannelKind, Event, InboxStatus, Task, TaskSta
 INSTRUCTIONS = """Argos is the user's single source of truth for schedules and tasks.
 When the user mentions a task, deadline or appointment, record it here with these tools
 instead of keeping it in your own memory. Times are Asia/Seoul unless an offset is given.
-Channels are courses/projects; use list_channels to find names. "일상" holds everyday
+Channels are courses/projects; use list_channels to find names. The UI's "내 공간"
+combines the capture inbox with the personal "일상" channel, which stores organised
 items that belong to no course. Deleting always waits for the user's approval."""
 
 _AGENT = re.compile(r"^[a-z0-9_-]{1,40}$")
@@ -101,7 +102,7 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
     @tool
     async def list_channels(ctx: Context) -> list[dict[str, Any]]:
-        """Channels (courses, projects, 일상, inbox) with their names and kinds."""
+        """Channels (courses, projects, and the two parts of 내 공간) with their names and kinds."""
 
         async def work(s: AsyncSession) -> list[dict[str, Any]]:
             areas = {a.id: a.name for a in await services.list_areas(s)}

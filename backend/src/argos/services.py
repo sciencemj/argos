@@ -368,7 +368,7 @@ async def create_task(
     due_at: datetime | None = None,
     priority: int | None = None,
 ) -> Task:
-    await get_channel(session, channel_id)
+    channel_id = await _personal_destination(session, channel_id)
     task = Task(
         channel_id=channel_id,
         title=title,
@@ -388,7 +388,10 @@ async def update_task(
     column; use move_task to place it precisely."""
     task = await get_task(session, task_id)
     if "channel_id" in changes:
-        await get_channel(session, changes["channel_id"])
+        changes = {
+            **changes,
+            "channel_id": await _personal_destination(session, changes["channel_id"]),
+        }
     new_channel = changes.get("channel_id", task.channel_id)
     new_status = changes.get("status", task.status)
     if (new_channel, new_status) != (task.channel_id, task.status):
@@ -503,7 +506,7 @@ async def create_event(
     rrule: str | None = None,
     calendar_id: str | None = None,
 ) -> Event:
-    await get_channel(session, channel_id)
+    channel_id = await _personal_destination(session, channel_id)
     times = _check_event_times(starts_at, ends_at, start_date, end_date)
     event = Event(
         channel_id=channel_id,
@@ -545,7 +548,10 @@ async def update_event(
     event = await get_event(session, event_id)
     await _check_event_writable(session, event, actor, changes)
     if "channel_id" in changes:
-        await get_channel(session, changes["channel_id"])
+        changes = {
+            **changes,
+            "channel_id": await _personal_destination(session, changes["channel_id"]),
+        }
     if any(key in changes for key in EVENT_TIME_FIELDS):
         current = {key: getattr(event, key) for key in EVENT_TIME_FIELDS}
         times = {k: v for k, v in changes.items() if k in EVENT_TIME_FIELDS}
@@ -829,6 +835,16 @@ async def get_personal_channel(session: AsyncSession) -> Channel | None:
     return await session.scalar(select(Channel).where(Channel.kind == ChannelKind.PERSONAL))
 
 
+async def _personal_destination(session: AsyncSession, channel_id: str) -> str:
+    """The inbox collects input; organised tasks and events belong to the personal channel."""
+    channel = await get_channel(session, channel_id)
+    if channel.kind == ChannelKind.SYSTEM and channel.name == "inbox":
+        personal = await get_personal_channel(session)
+        if personal is not None:
+            return personal.id
+    return channel.id
+
+
 def _as_datetime(value: Any) -> datetime | None:
     if value is None or isinstance(value, datetime):
         return value
@@ -887,12 +903,18 @@ async def update_message(
 
 
 async def list_messages(
-    session: AsyncSession, channel_id: str, *, cursor: str | None = None, limit: int = 50
+    session: AsyncSession,
+    channel_id: str,
+    *,
+    also_channel_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
 ) -> tuple[list[Message], str | None]:
     """Top-level messages, oldest first; `next_cursor` fetches the page before this one."""
+    channels = [channel_id, also_channel_id] if also_channel_id else [channel_id]
     query = (
         select(Message)
-        .where(Message.channel_id == channel_id, Message.thread_root_id.is_(None))
+        .where(Message.channel_id.in_(channels), Message.thread_root_id.is_(None))
         .order_by(Message.created_at.desc(), Message.id.desc())
     )
     if cursor is not None:
@@ -1600,6 +1622,25 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
         await _create(
             session, Channel(name=name, kind=ChannelKind.PERSONAL, sort_order=0), "system"
         )
+
+    # Older versions allowed organised items directly in #inbox. Move them once so
+    # the unified personal board/calendar includes them without changing message history.
+    inbox = await session.scalar(
+        select(Channel).where(Channel.name == "inbox", Channel.kind == ChannelKind.SYSTEM)
+    )
+    personal = await get_personal_channel(session)
+    if inbox is not None and personal is not None:
+        old_tasks = (
+            select(Task)
+            .where(Task.channel_id == inbox.id)
+            .order_by(Task.status, Task.position, Task.id)
+        )
+        for task in (await session.scalars(old_tasks)).all():
+            await update_task(session, task.id, {"channel_id": personal.id}, "system")
+        for event in (
+            await session.scalars(select(Event).where(Event.channel_id == inbox.id))
+        ).all():
+            await update_event(session, event.id, {"channel_id": personal.id}, "system")
 
     has_user_data = await session.scalar(select(Area.id).limit(1)) is not None
     if has_user_data:

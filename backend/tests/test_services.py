@@ -64,6 +64,31 @@ async def test_personal_channel_is_built_in(session: AsyncSession) -> None:
         await services.update_channel(session, personal.id, {"kind": "course"}, "user")
 
 
+async def test_existing_inbox_tasks_and_events_move_to_personal_once(
+    session: AsyncSession,
+) -> None:
+    await services.seed_defaults(session, {})
+    personal = await services.get_personal_channel(session)
+    assert personal is not None
+    inbox = next(c for c in await services.list_channels(session) if c.name == "inbox")
+    task = await services.create_task(session, channel_id=personal.id, title="장보기", actor="user")
+    event = await services.create_event(
+        session, channel_id=personal.id, title="약속", start_date=date(2026, 10, 1), actor="user"
+    )
+    task.channel_id = inbox.id  # data written by an older version
+    event.channel_id = inbox.id
+    await session.flush()
+
+    await services.seed_defaults(session, {})
+    assert task.channel_id == event.channel_id == personal.id
+    assert len(await activity(session, task.id)) == 2
+    assert len(await activity(session, event.id)) == 2
+
+    await services.seed_defaults(session, {})
+    assert len(await activity(session, task.id)) == 2
+    assert len(await activity(session, event.id)) == 2
+
+
 # --- areas & channels -----------------------------------------------------------
 
 
