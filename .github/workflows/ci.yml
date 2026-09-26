@@ -79,3 +79,24 @@ jobs:
         run: |
           git diff --exit-code frontend/src/api-types.ts \
             || { echo "::error::api-types.ts is stale: run 'make api-types' and commit"; exit 1; }
+
+  desktop:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Placeholder server binary (built only for releases)
+        run: |
+          mkdir -p binaries
+          touch "binaries/argos-server-$(rustc -vV | sed -n 's/^host: //p')"
+      - run: cargo fmt --check
+      - run: cargo clippy --locked -- -D warnings

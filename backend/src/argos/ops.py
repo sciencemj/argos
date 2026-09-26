@@ -100,13 +100,19 @@ class Backups:
 
 # --- start at login (launchd) -----------------------------------------------------------------
 
-LABEL = "app.argos.server"
+LABEL = "app.argos.server"  # a checkout: runs `make dev`
+DESKTOP_LABEL = "app.argos.desktop"  # the desktop app: opens Argos.app at login
 REPO = Path(__file__).resolve().parents[3]  # the checkout: backend/src/argos/ops.py
+
+
+def label_for(settings: Settings) -> str:
+    return DESKTOP_LABEL if settings.desktop_app else LABEL
 
 
 @dataclass
 class ServiceState:
     supported: bool
+    desktop: bool  # the desktop app: it is running whenever this is shown
     installed: bool  # the LaunchAgent file is there: starts at the next login
     running: bool  # launchd has it loaded now
     plist: str
@@ -114,8 +120,8 @@ class ServiceState:
     problem: str | None = None
 
 
-def plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+def plist_path(label: str = LABEL) -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
 
 
 def service_plist(repo: Path, log_file: Path) -> bytes:
@@ -141,6 +147,18 @@ def service_plist(repo: Path, log_file: Path) -> bytes:
     )
 
 
+def desktop_plist(app: Path) -> bytes:
+    """Opens the app at login. The app keeps its own server running, so launchd only
+    starts it (no KeepAlive: quitting the app from the menu bar stays quit)."""
+    return plistlib.dumps(
+        {
+            "Label": DESKTOP_LABEL,
+            "ProgramArguments": ["/usr/bin/open", "-g", "-a", str(app)],
+            "RunAtLoad": True,
+        }
+    )
+
+
 def _launchctl(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["launchctl", *args], capture_output=True, text=True, timeout=30)
 
@@ -149,19 +167,25 @@ def _domain() -> str:
     return f"gui/{os.getuid()}"
 
 
+def _log_file(settings: Settings) -> Path:
+    name = "server.log" if settings.desktop_app else "service.log"
+    return (settings.data_dir / "logs" / name).resolve()
+
+
 def service_state(settings: Settings) -> ServiceState:
-    log_file = (settings.db_path.parent / "logs" / "service.log").resolve()
+    label = label_for(settings)
     state = ServiceState(
         supported=sys.platform == "darwin",
-        installed=plist_path().exists(),
-        running=False,
-        plist=str(plist_path()),
-        log=str(log_file),
+        desktop=settings.desktop_app is not None,
+        installed=plist_path(label).exists(),
+        running=settings.desktop_app is not None,
+        plist=str(plist_path(label)),
+        log=str(_log_file(settings)),
     )
     if not state.supported:
         state.problem = "자동 실행 등록은 macOS에서만 돼요"
-        return state
-    state.running = _launchctl("print", f"{_domain()}/{LABEL}").returncode == 0
+    elif not state.desktop:
+        state.running = _launchctl("print", f"{_domain()}/{label}").returncode == 0
     return state
 
 
@@ -170,10 +194,13 @@ def install_service(settings: Settings, start_now: bool = False) -> ServiceState
     now (only when nothing else is running Argos on the same ports)."""
     if sys.platform != "darwin":
         return service_state(settings)
-    log_file = (settings.db_path.parent / "logs" / "service.log").resolve()
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    target = plist_path()
+    target = plist_path(label_for(settings))
     target.parent.mkdir(parents=True, exist_ok=True)
+    if settings.desktop_app:  # already running: only the next logins
+        target.write_bytes(desktop_plist(settings.desktop_app))
+        return service_state(settings)
+    log_file = _log_file(settings)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(service_plist(REPO, log_file))
     if start_now:
         _launchctl("bootout", f"{_domain()}/{LABEL}")
@@ -188,6 +215,8 @@ def install_service(settings: Settings, start_now: bool = False) -> ServiceState
 def uninstall_service(settings: Settings) -> ServiceState:
     """Stops it if launchd has it loaded and removes the LaunchAgent."""
     if sys.platform == "darwin":
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
-        plist_path().unlink(missing_ok=True)
+        label = label_for(settings)
+        if not settings.desktop_app:  # don't stop the app we are part of
+            _launchctl("bootout", f"{_domain()}/{label}")
+        plist_path(label).unlink(missing_ok=True)
     return service_state(settings)

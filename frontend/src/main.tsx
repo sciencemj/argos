@@ -11,9 +11,11 @@ import { KanbanTab } from "./pages/KanbanTab";
 import { MaterialsTab } from "./pages/MaterialsTab";
 import { NotesTab } from "./pages/NotesTab";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { QuickCapture } from "./pages/QuickCapture";
 import { ReviewPage } from "./pages/ReviewPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
+import { WelcomePage } from "./pages/Welcome";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +24,8 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
+  { path: "/quick", element: <QuickCapture /> }, // the desktop app's capture window
+  { path: "/welcome", element: <WelcomePage /> }, // first-run setup
   {
     path: "/",
     element: <Shell />,

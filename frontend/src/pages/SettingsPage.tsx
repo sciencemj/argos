@@ -29,12 +29,13 @@ import {
 import { fmt } from "../dates";
 import { btn, card, ErrorText, field, label } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
-import { NotifySection, OpsSection } from "./OpsSettings";
+import { AppUpdateSection, NotifySection, OpsSection } from "./OpsSettings";
+import { ToolsSection } from "./Welcome";
 
 const OFF = "";
 
 const GROUPS = [
-  { id: "agents", title: "에이전트", hint: "누가 답하고, 얼마나 썼는지" },
+  { id: "agents", title: "에이전트", hint: "누가 답하고, MCP·스킬, 사용량" },
   { id: "capture", title: "입력과 알림", hint: "정리 모델, 알림, 주간 리뷰" },
   { id: "links", title: "연결", hint: "옵시디언, 애플 캘린더" },
   { id: "work", title: "작업과 운영", hint: "코딩 잡 폴더, 백업, 자동 실행" },
@@ -129,6 +130,7 @@ export function SettingsPage() {
             "agents",
             <>
               <AgentSection />
+              <ToolsSection />
               <CustomAgentsSection />
               <UsageSection />
             </>,
@@ -153,6 +155,7 @@ export function SettingsPage() {
             <>
               <JobRootsSection />
               <OpsSection />
+              <AppUpdateSection />
             </>,
           )}
         </div>
@@ -168,7 +171,7 @@ const SOURCE_TEXT = {
 } as const;
 
 /** Picks which installed Ollama model classifies inbox text (PLAN §9). */
-function ClassifierSection() {
+export function ClassifierSection() {
   const current = useClassifierSettings();
   const models = useOllamaModels();
   const save = useSaveClassifier();
@@ -342,7 +345,7 @@ const BACKEND_TEXT: Record<string, string> = {
 };
 
 /** App-wide default agent: answers /ask where the channel sets none (user decision). */
-function AgentSection() {
+export function AgentSection() {
   const agents = useAgents();
   const current = useAgentSettings();
   const save = useSaveDefaultAgent();
@@ -536,8 +539,9 @@ function CalendarFeedSection() {
         </button>
       </div>
       <p className="m-0 text-[12px] leading-relaxed text-meta">
-        주소를 아는 사람은 누구나 일정을 볼 수 있어요. 이 주소는 Tailscale에
-        연결된 기기에서만 열려요. 주소가 새어 나갔다면 새 주소로 바꾸세요.
+        주소를 아는 사람은 누구나 일정을 볼 수 있어요. Argos는 이 Mac에서만
+        열리므로 이 Mac의 캘린더 앱에서 구독하세요. 주소가 새어 나갔다면 새
+        주소로 바꾸세요.
       </p>
       <ErrorText error={rotate.error} />
       <div>
@@ -847,7 +851,7 @@ const TASK_TEXT: [string, string][] = [
 ];
 
 /** Obsidian vault (PLAN Phase 8): which vault, where daily notes live, what happened. */
-function VaultSection() {
+export function VaultSection() {
   const vault = useVaultSettings();
   const save = useSaveVault();
   const sync = useSyncVault();

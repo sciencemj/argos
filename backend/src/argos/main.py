@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from argos import caldav_sync, notify, ops, services, usage, vault
 from argos.api import install_error_handlers, router, ws_router
@@ -80,7 +82,28 @@ def create_app(config: Settings = settings) -> FastAPI:
         mcp.streamable_http_app(streamable_http_path="/mcp", host=config.host).routes
     )
     install_error_handlers(app)
+    if config.static_dir is not None:
+        serve_frontend(app, config.static_dir)
     return app
+
+
+def serve_frontend(app: FastAPI, root: Path) -> None:
+    """The built frontend on the API's own port (desktop app, PLAN Phase 12). Unknown
+    paths get index.html so client-side routes (/c/…, /settings) load on refresh."""
+    root = root.resolve()
+    index = root / "index.html"
+
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def frontend(path: str) -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+        if path.split("/", 1)[0] in ("api", "ws", "mcp"):
+            raise HTTPException(404)
+        file = (root / path).resolve()
+        if path and file.is_file() and file.is_relative_to(root):
+            # Built assets carry a content hash in their names; the page itself must not stick.
+            hashed = path.startswith("assets/")
+            cache = "public, max-age=31536000, immutable" if hashed else "no-cache"
+            return FileResponse(file, headers={"Cache-Control": cache})
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 app = create_app()

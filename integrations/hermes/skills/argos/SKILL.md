@@ -13,7 +13,7 @@ metadata:
 # Argos — the user's schedule and task hub
 
 Argos is the single source of truth for the user's events, tasks and deadlines
-(courses, projects, everyday life). It runs locally at `http://127.0.0.1:8000` and is
+(courses, projects, everyday life). It runs locally on the user's Mac and is
 connected to you as the `argos` MCP server. Use it instead of your own memory for
 anything time- or task-related, so the user sees it in the app and on their calendar.
 
@@ -50,7 +50,7 @@ facts about the user, not for their schedule.
 
 1. **Channel**: call `list_channels` if unsure. Course or project matters go to that
    channel; everyday things (errands, appointments, exercise) go to `일상`.
-2. **Time**: Asia/Seoul. Dates as `YYYY-MM-DD` (a task due that day gets 23:59; an event
+2. **Time**: the user's local time zone. Dates as `YYYY-MM-DD` (a task due that day gets 23:59; an event
    on a date only becomes all-day) or ISO datetimes like `2026-09-29T15:00`. Resolve
    relative dates ("다음주 화요일") against today's date before calling the tool.
 3. **Deleting** only creates an approval request. Tell the user it waits for their

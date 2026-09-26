@@ -239,3 +239,4 @@ data/
 # macOS
 .DS_Store
 /backend/seed.toml
+!desktop/argos-server.spec

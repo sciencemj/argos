@@ -135,3 +135,16 @@
 | 2026-09-25 | DB 백업: SQLite 온라인 백업으로 하루 한 번(시작 시 마지막 백업이 하루 넘었으면), 최근 N개(기본 14, 설정) 보관 | PLAN Phase 11 |
 | 2026-09-25 | 자동 실행: 설정 버튼으로 `~/Library/LaunchAgents/app.argos.server.plist` 등록(`make -C <저장소> dev`, KeepAlive, 도구 경로를 PATH에 명시). 등록만 하면 다음 로그인부터, "지금 시작"은 바로 bootstrap. 해제는 bootout + 파일 삭제. 데스크톱 앱(Phase 12)이 이어받음 | 사용자 결정. 이 Mac에 설치해 launchd 시작·강제 종료 후 재시작까지 확인 |
 | 2026-09-25 | 시스템 메시지(주간 리뷰 등)는 마크다운으로 렌더링 | 리뷰가 원문으로 보이던 문제 |
+| 2026-09-26 | 데스크톱 앱 데이터는 `~/Library/Application Support/Argos`에서 새로 시작(개발 DB 복사 안 함). 경로 설정은 `ARGOS_DATA_DIR` 기준 상대 경로로 바꿈(`db_path=argos.db` 등) | 사용자 결정. 개발 중 테스트가 실제 데이터를 건드리지 않게 |
+| 2026-09-26 | 포트: 앱 8000(API+화면 한 포트, FastAPI가 `frontend/dist` 서빙), 개발 `make dev`는 8100/5273 | 사용자 결정. Hermes MCP 설정(8000)을 그대로 두고 개발 서버와 동시 실행 |
+| 2026-09-26 | ad-hoc 서명(개발자 ID 없음). PyInstaller one-file이 푼 라이브러리는 Team ID가 없어 hardened runtime의 라이브러리 검증에 막히므로 `disable-library-validation` 엔타이틀먼트 | 사용자 결정. 다른 사람은 처음 한 번 우클릭 → 열기 |
+| 2026-09-26 | 로그인 시 자동 실행은 기존 설정 버튼 재사용: 앱 모드에선 `app.argos.desktop` LaunchAgent가 `open -g -a Argos.app`(KeepAlive 없음, 메뉴에서 종료하면 그대로) | Tauri autostart 플러그인 대신 이미 검증된 launchd 코드와 화면 재사용 |
+| 2026-09-26 | Hermes API 키는 설정 안 했으면 `~/.hermes/.env`의 `API_SERVER_KEY`를 읽기 전용으로 사용 | PLAN "`.env` 대신 설정 화면", 다른 사람도 설정 없이 쓰게 |
+| 2026-09-26 | 앱 알림은 macOS 알림(Tauri 명령 `notify`), 빠른 입력은 전역 단축키 `⌘⇧Space` → 작은 창(`/quick`)에서 인박스로. 원격 페이지 권한은 `127.0.0.1:8000`의 앱 명령 3개로 제한 | WKWebView에는 웹 Notification이 없음 |
+| 2026-09-26 | dmg는 `hdiutil`로 직접 생성(Tauri의 꾸민 dmg는 Finder AppleScript 자동화 권한이 필요해 터미널 빌드에서 시간 초과) | 실측 |
+| 2026-09-26 | 서버는 앱 pid(`ARGOS_PARENT_PID`)를 2초마다 확인해 앱이 강제 종료되면 스스로 끝남. 정상 종료는 SIGTERM 후 5초 뒤 강제 종료 | one-file 로더가 중간에 있어 부모 pid 변화로는 감지 안 됨(실측) |
+| 2026-09-26 | Tailscale은 개발용: serve는 개발 서버(5273)를 가리키고, 앱은 이 Mac 전용(다른 기기 접속 없음). PLAN 12 완료 기준의 "창을 닫아도 아이패드에서 접속"은 원격 접속 설계 때까지 보류(backlog) | 사용자 결정 |
+| 2026-09-26 | 자동 업데이트: Tauri updater + GitHub Releases(`releases/latest/download/latest.json`). 저장소를 공개로 전환. 태그 `v*` → CI(macOS)가 빌드·서명·릴리스. 받은 업데이트는 바로 설치해 두고 다음 시작 때 적용 | 사용자 결정("이 저장소를 공개로") |
+| 2026-09-26 | 처음 설정: 환영 화면(도구 점검 → Argos에 연결 → 기본 설정 → 자동 실행), `onboarded` 설정값이 없으면 표시, 건너뛰기 가능 | 사용자 요청("자동 설치/설정") |
+| 2026-09-26 | 에이전트 연결 = MCP 등록 + `argos` 스킬 설치. Claude·Codex는 `~/.claude/skills`, `~/.codex/skills`에 복사하고 `.installed-by-argos` 표시로 우리 것만 교체·삭제, Hermes는 `skills.external_dirs`. 설정에서 MCP/스킬/모두 제거 | 사용자 요청. 도구마다 CLI(`mcp add/remove`, `hermes config set/unset`)로 바꾸고 설정 파일을 직접 편집하지 않음 |
+| 2026-09-26 | 원격 페이지(`127.0.0.1:8000`)의 앱 명령 호출은 `build.rs` 앱 매니페스트가 만든 `allow-<명령>` 권한이 있어야 함 | 실측: 권한 없이는 "not allowed by ACL" |

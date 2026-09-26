@@ -1158,6 +1158,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Setup */
+        get: operations["get_setup_api_v1_setup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/tools/{name}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Tool
+         * @description Registers Argos' MCP server and installs the argos skill — the user pressed the button.
+         */
+        post: operations["connect_tool_api_v1_setup_tools__name__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/tools/{name}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect Tool
+         * @description Removes Argos' MCP entry and/or skill from the tool (settings → 에이전트 도구).
+         */
+        post: operations["disconnect_tool_api_v1_setup_tools__name__disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish Setup */
+        post: operations["finish_setup_api_v1_setup_done_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config": {
         parameters: {
             query?: never;
@@ -1701,6 +1775,19 @@ export interface components {
          * @enum {string}
          */
         DebateStatus: "running" | "done" | "cancelled" | "error";
+        /** DisconnectIn */
+        DisconnectIn: {
+            /**
+             * Mcp
+             * @default true
+             */
+            mcp: boolean;
+            /**
+             * Skill
+             * @default true
+             */
+            skill: boolean;
+        };
         /** EventCreate */
         EventCreate: {
             /** Channel Id */
@@ -2338,6 +2425,42 @@ export interface components {
              * @default false
              */
             start_now: boolean;
+        };
+        /** SetupOut */
+        SetupOut: {
+            /** Done */
+            done: boolean;
+            /** Desktop */
+            desktop: boolean;
+            /** Data Dir */
+            data_dir: string;
+            /** Tools */
+            tools: components["schemas"]["SetupToolOut"][];
+        };
+        /** SetupToolOut */
+        SetupToolOut: {
+            /** Name */
+            name: string;
+            /** Label */
+            label: string;
+            /** Installed */
+            installed: boolean;
+            /** Path */
+            path: string | null;
+            /** Version */
+            version: string | null;
+            /** Connectable */
+            connectable: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Skill */
+            skill: boolean;
+            /** Skill Path */
+            skill_path: string | null;
+            /** Skill Conflict */
+            skill_conflict: boolean;
+            /** Hint */
+            hint: string;
         };
         /** SyncStatusOut */
         SyncStatusOut: {
@@ -4776,6 +4899,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OllamaModelsOut"];
+                };
+            };
+        };
+    };
+    get_setup_api_v1_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOut"];
+                };
+            };
+        };
+    };
+    connect_tool_api_v1_setup_tools__name__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupToolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_tool_api_v1_setup_tools__name__disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisconnectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupToolOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_setup_api_v1_setup_done_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOut"];
                 };
             };
         };

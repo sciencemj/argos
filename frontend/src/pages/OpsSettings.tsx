@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useBackupKeep,
   useBackupNow,
@@ -11,6 +11,13 @@ import {
   useUninstallService,
 } from "../api";
 import { fmt } from "../dates";
+import {
+  checkUpdate,
+  inDesktopApp,
+  restartToUpdate,
+  type UpdateState,
+  updateStatus,
+} from "../desktop";
 import { btn, card, ErrorText, field, label } from "../ui";
 
 const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -179,6 +186,7 @@ export function OpsSection() {
   if (!data) return null;
   const service = data.service as {
     supported: boolean;
+    desktop: boolean;
     installed: boolean;
     running: boolean;
     plist: string;
@@ -237,24 +245,36 @@ export function OpsSection() {
       <div className="flex flex-col gap-2 rounded-2xl border border-line-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="grow text-[13.5px] text-ink">
-            로그인할 때 Argos 자동 실행
+            {service.desktop
+              ? "로그인할 때 Argos 앱 열기"
+              : "로그인할 때 Argos 자동 실행"}
           </span>
           <span className="text-[12px] text-text-3">
             {!service.supported
               ? "macOS 전용"
               : service.installed
-                ? service.running
-                  ? "등록됨 · 실행 중"
-                  : "등록됨 · 다음 로그인부터"
+                ? service.desktop
+                  ? "켜짐"
+                  : service.running
+                    ? "등록됨 · 실행 중"
+                    : "등록됨 · 다음 로그인부터"
                 : "꺼짐"}
           </span>
         </div>
-        <p className="m-0 text-[12px] leading-relaxed text-text-3">
-          macOS의 launchd에 등록해 로그인하면 서버와 화면(make dev)을 켜고,
-          꺼지면 다시 켜요. 설정 파일은 <code>{service.plist}</code>, 기록은{" "}
-          <code>{service.log}</code>. 터미널에서 이미 켜 둔 Argos가 있으면 그걸
-          끈 뒤 "지금 시작"을 누르세요.
-        </p>
+        {service.desktop ? (
+          <p className="m-0 text-[12px] leading-relaxed text-text-3">
+            로그인하면 Argos 앱이 메뉴 막대에서 조용히 켜져요. 창을 닫아도
+            서버는 계속 돌아서 아이패드 접속·동기화·알림이 이어져요. 끄려면 메뉴
+            막대 아이콘의 "Argos 종료". 기록은 <code>{service.log}</code>.
+          </p>
+        ) : (
+          <p className="m-0 text-[12px] leading-relaxed text-text-3">
+            macOS의 launchd에 등록해 로그인하면 서버와 화면(make dev)을 켜고,
+            꺼지면 다시 켜요. 설정 파일은 <code>{service.plist}</code>, 기록은{" "}
+            <code>{service.log}</code>. 터미널에서 이미 켜 둔 Argos가 있으면
+            그걸 끈 뒤 "지금 시작"을 누르세요.
+          </p>
+        )}
         {service.problem && (
           <span className="text-[12px] text-danger">{service.problem}</span>
         )}
@@ -262,7 +282,7 @@ export function OpsSection() {
           <div className="flex gap-2">
             {service.installed ? (
               <>
-                {!service.running && (
+                {!service.running && !service.desktop && (
                   <button
                     type="button"
                     className={btn.outline}
@@ -277,9 +297,11 @@ export function OpsSection() {
                   className={btn.ghost}
                   disabled={uninstall.isPending}
                   onClick={() =>
-                    confirm(
-                      "자동 실행을 끌까요? 지금 launchd로 실행 중이면 멈춰요.",
-                    ) && uninstall.mutate(undefined)
+                    (service.desktop ||
+                      confirm(
+                        "자동 실행을 끌까요? 지금 launchd로 실행 중이면 멈춰요.",
+                      )) &&
+                    uninstall.mutate(undefined)
                   }
                 >
                   자동 실행 끄기
@@ -301,6 +323,76 @@ export function OpsSection() {
       <ErrorText
         error={backup.error ?? keep.error ?? install.error ?? uninstall.error}
       />
+    </section>
+  );
+}
+
+/** The desktop app's version and automatic updates (PLAN Phase 12). */
+export function AppUpdateSection() {
+  const [state, setState] = useState<UpdateState | null>(null);
+  useEffect(() => {
+    if (!inDesktopApp()) return;
+    const read = () => void updateStatus()?.then((s) => s && setState(s));
+    read();
+    const id = setInterval(read, 5000); // follow a download started in the background
+    return () => clearInterval(id);
+  }, []);
+  if (!inDesktopApp() || !state) return null;
+
+  const status = state.checking
+    ? "확인하는 중…"
+    : state.ready
+      ? `${state.available} 설치됨 · 다시 시작하면 적용돼요`
+      : state.available
+        ? `${state.available} 받는 중…`
+        : state.error
+          ? state.error
+          : state.checked_at
+            ? `최신 버전이에요 · ${fmt(new Date(state.checked_at * 1000), "M/d HH:mm")} 확인`
+            : "곧 확인해요";
+
+  return (
+    <section
+      aria-label="앱 업데이트"
+      className={`${card} flex w-full flex-col gap-3 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        앱 업데이트
+      </h2>
+      <p className="m-0 text-[13px] leading-relaxed text-text-3">
+        새 버전이 나오면 알아서 받아 설치해 두고, 다음에 다시 시작할 때
+        적용해요(6시간마다 확인). 데이터는 그대로이고, 업데이트 전에 DB를
+        백업해요.
+      </p>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line-soft px-4 py-3">
+        <span className="font-mono text-[13px] text-ink">v{state.current}</span>
+        <span
+          className={`grow text-[12.5px] ${state.error && !state.checking ? "text-danger" : "text-text-3"}`}
+        >
+          {status}
+        </span>
+        {state.ready ? (
+          <button
+            type="button"
+            className={btn.cta}
+            onClick={() => void restartToUpdate()}
+          >
+            다시 시작해 업데이트
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={btn.outline}
+            disabled={state.checking}
+            onClick={() => {
+              setState({ ...state, checking: true });
+              void checkUpdate()?.then((s) => s && setState(s));
+            }}
+          >
+            지금 확인
+          </button>
+        )}
+      </div>
     </section>
   );
 }

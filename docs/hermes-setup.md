@@ -36,6 +36,9 @@ Hermes가 디스코드 스레드처럼 대화별 세션(도구 호출 기록 포
 
 ## 2. Hermes가 Argos에 기록하게 하기 (PLAN P2)
 
+앱의 설정 → 에이전트 도구 → Hermes "Argos에 연결"이 아래 두 항목을 `hermes config set`으로 넣고
+게이트웨이를 다시 시작한다. 손으로 할 때는:
+
 `~/.hermes/config.yaml`:
 
 ```yaml

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Outlet, useParams, useSearchParams } from "react-router";
+import { Navigate, Outlet, useParams, useSearchParams } from "react-router";
 import { registerAgents } from "../agents";
-import { useAgents, useChannels, useConfig } from "../api";
+import { useAgents, useChannels, useConfig, useSetup } from "../api";
 import { setZone } from "../dates";
 import { useRealtime } from "../realtime";
 import { Toaster } from "../toast";
@@ -19,6 +19,7 @@ export function Shell() {
   const config = useConfig();
   const channels = useChannels();
   const agents = useAgents();
+  const setup = useSetup();
   // Custom agents' names and avatars for every place that shows an agent.
   if (agents.data) registerAgents(agents.data);
   const { channelId } = useParams();
@@ -55,6 +56,9 @@ export function Shell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // First run: the setup screen comes before everything else (it can be skipped).
+  if (setup.data && !setup.data.done) return <Navigate to="/welcome" replace />;
 
   return (
     <div

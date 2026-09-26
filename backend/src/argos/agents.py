@@ -879,7 +879,8 @@ def build_adapter(
         case AgentBackend.HERMES:
             if settings.hermes_api_key is None:
                 raise AgentUnavailable(
-                    "Hermes API 키가 없어요 (ARGOS_HERMES_API_KEY, docs/hermes-setup.md)"
+                    "Hermes API 키를 찾지 못했어요 "
+                    "(~/.hermes/.env의 API_SERVER_KEY, docs/hermes-setup.md)"
                 )
             client = AsyncOpenAI(
                 base_url=settings.hermes_base_url,

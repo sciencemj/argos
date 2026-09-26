@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { onAgentEvent } from "./agentStream";
 import { invalidateFor } from "./api";
+import { desktopNotify, inDesktopApp } from "./desktop";
 
 export type LinkState = "connecting" | "open" | "closed";
 
@@ -14,6 +15,15 @@ type ServerEvent = {
 /** A system notification for a new Argos notice, when the user allowed them (settings)
  * and this page is in the background. */
 function showBrowserNotice(data: Record<string, unknown>) {
+  if (inDesktopApp()) {
+    // The app's window may be closed to the menu bar; notify unless it is in front.
+    if (!document.hasFocus())
+      void desktopNotify(
+        String(data.title ?? "Argos"),
+        data.body ? String(data.body) : undefined,
+      );
+    return;
+  }
   if (!("Notification" in window) || Notification.permission !== "granted")
     return;
   if (document.visibilityState === "visible") return; // the badge is enough on screen

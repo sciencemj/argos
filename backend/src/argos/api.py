@@ -38,6 +38,7 @@ from argos import (
     ics,
     mcp_server,
     notify,
+    onboarding,
     ops,
     services,
     usage,
@@ -2122,6 +2123,78 @@ async def list_classifier_models(request: Request) -> OllamaModelsOut:
             for m in models
         ],
     )
+
+
+# --- first-run setup (PLAN Phase 12) ------------------------------------------------------
+
+ONBOARDED = "onboarded"
+
+
+class SetupToolOut(BaseModel):
+    name: str
+    label: str
+    installed: bool
+    path: str | None
+    version: str | None
+    connectable: bool
+    connected: bool  # MCP server registered
+    skill: bool
+    skill_path: str | None
+    skill_conflict: bool
+    hint: str
+
+
+class DisconnectIn(BaseModel):
+    mcp: bool = True
+    skill: bool = True
+
+
+class SetupOut(BaseModel):
+    done: bool
+    desktop: bool  # running inside the desktop app
+    data_dir: str
+    tools: list[SetupToolOut]
+
+
+async def _setup_out(session: AsyncSession, config: Settings) -> SetupOut:
+    tools = await asyncio.to_thread(onboarding.statuses, config)
+    return SetupOut(
+        done=bool(await services.get_setting(session, ONBOARDED)),
+        desktop=config.desktop_app is not None,
+        data_dir=str(config.data_dir.resolve()),
+        tools=[SetupToolOut(**asdict(t)) for t in tools],
+    )
+
+
+@router.get("/setup")
+async def get_setup(session: Session, config: Config) -> SetupOut:
+    return await _setup_out(session, config)
+
+
+@router.post("/setup/tools/{name}/connect")
+async def connect_tool(name: str, config: Config) -> SetupToolOut:
+    """Registers Argos' MCP server and installs the argos skill — the user pressed the button."""
+    try:
+        status = await asyncio.to_thread(onboarding.connect, config, name)
+    except onboarding.ConnectError as exc:
+        raise services.InvalidError(str(exc)) from exc
+    return SetupToolOut(**asdict(status))
+
+
+@router.post("/setup/tools/{name}/disconnect")
+async def disconnect_tool(name: str, config: Config, body: DisconnectIn) -> SetupToolOut:
+    """Removes Argos' MCP entry and/or skill from the tool (settings → 에이전트 도구)."""
+    try:
+        status = await asyncio.to_thread(onboarding.disconnect, config, name, body.mcp, body.skill)
+    except onboarding.ConnectError as exc:
+        raise services.InvalidError(str(exc)) from exc
+    return SetupToolOut(**asdict(status))
+
+
+@router.post("/setup/done")
+async def finish_setup(session: Session, config: Config) -> SetupOut:
+    await services.set_setting(session, ONBOARDED, True, USER)
+    return await _setup_out(session, config)
 
 
 @router.get("/config")

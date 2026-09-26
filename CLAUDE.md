@@ -27,7 +27,8 @@ Argos: 개인용 학업·프로젝트 대시보드. 채널(과목·프로젝트)
 
 ```bash
 make install      # uv sync + bun install
-make dev          # alembic upgrade 후 backend :8000 + frontend :5173 (Vite가 /api, /ws, /mcp 프록시)
+make dev          # alembic upgrade 후 backend :8100 + frontend :5273 (Vite가 /api, /ws 프록시)
+make app          # 데스크톱 앱: frontend build + PyInstaller 서버 + Tauri → desktop/build/Argos.{app,dmg}
 make test         # pytest + vitest
 make lint         # ruff check/format --check + pyright(strict) + biome + tsc
 make format
@@ -37,6 +38,10 @@ cd backend && uv run pytest tests/test_jobs.py::test_job_moves_card_and_reports_
 cd backend && uv run alembic revision --autogenerate -m "..."   # 모델 변경 시, 그다음 alembic check
 cd frontend && bunx vitest run src/dates.test.ts
 ```
+
+포트 8000은 데스크톱 앱(`docs/desktop.md`, 데이터는 `~/Library/Application Support/Argos`) 몫이다. 에이전트
+MCP 등록이 8000을 가리키므로 개발 서버는 8100/5273을 쓴다. Tailscale serve는 개발용으로 5273을 가리킨다
+(앱 기능 아님). 릴리스: `make release VERSION=x.y.z` → 태그 → `.github/workflows/release.yml`.
 
 개발 서버가 launchd로 떠 있을 수 있다(설정 → 백업과 자동 실행, `~/Library/LaunchAgents/app.argos.server.plist`가
 `make dev`를 실행, 기록은 `backend/data/logs/service.log`). 그때는 `make dev`를 또 띄우지 말고(포트 충돌) 코드
@@ -70,12 +75,21 @@ vitest, build), api-types 최신 여부.
   샌드박스 + 작업 디렉터리 허용 목록. `build_adapter`가 에이전트 → 어댑터를 고른다.
 - **`mcp_server.py`**: 같은 프로세스의 `/mcp`(Streamable HTTP). `?agent=` 또는 `X-Argos-Agent`로
   호출자 식별. 삭제 도구는 즉시 지우지 않고 approval을 만든다(사용자 승인 후 실행).
+- **데이터 경로**: `data_dir`(기본 `backend/data`, 앱은 Application Support) 기준 상대 경로. 새 경로 설정도
+  `_inside_data_dir`에 넣는다.
 - **설정**: `config.py`의 `Settings`(env prefix `ARGOS_`, `backend/.env`) 위에 앱에서 바꾼 값
   (`app_setting` 테이블: `default_agent`, `classifier_model`, `job_roots`)을
   `classifier.apply_overrides`로 덮어 `app.state.settings`에 둔다. 요청마다 `Config` 의존성으로 읽는다.
 - 시간은 UTC 저장(`UTCDateTime`), 표시는 `Asia/Seoul`. 종일 일정은 날짜로만.
 - 첫 실행(빈 DB)에만 `seed.example.toml`(또는 gitignore된 `seed.toml`)로 데모 영역·채널을 만든다.
 - 마이그레이션은 Alembic `render_as_batch`(SQLite). `UTCDateTime`은 `sa.DateTime`으로 렌더링된다.
+
+### 데스크톱 앱 (`desktop/`, Tauri v2)
+
+`src-tauri/src/lib.rs`가 PyInstaller sidecar(`argos.desktop` 진입점)를 띄우고 8000이 답하면 창을 그 주소로
+옮긴다. 창 닫기 = 숨기기(메뉴 막대 상주), `⌘⇧Space` 빠른 입력 창(`/quick`). 화면 → 앱 호출은
+`frontend/src/desktop.ts`(`window.__TAURI__`)로만, 허용 명령은 `build.rs`(권한 생성) + `capabilities/default.json`. 자동 업데이트는 `src/update.rs`.
+처음 설정(환영 화면)과 에이전트 MCP·스킬 설치/제거는 `onboarding.py` + `pages/Welcome.tsx`.
 
 ### 프런트엔드 (`frontend/src`, React 19 + Vite + Tailwind v4 + TanStack Query)
 

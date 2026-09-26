@@ -231,7 +231,7 @@ def test_launch_agent_install_and_remove(
         return Done(0 if args[0] == "bootstrap" or plist.exists() else 113)
 
     monkeypatch.setattr(ops, "_launchctl", fake)
-    monkeypatch.setattr(ops, "plist_path", lambda: plist)
+    monkeypatch.setattr(ops, "plist_path", lambda _label=ops.LABEL: plist)
     monkeypatch.setattr(ops.sys, "platform", "darwin")
 
     service = app.post("/api/v1/ops/service", json={}).json()["service"]

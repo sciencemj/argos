@@ -973,3 +973,65 @@ export const useInstallService = () =>
   );
 export const useUninstallService = () =>
   useOpsWrite(() => call(client.DELETE("/api/v1/ops/service")));
+
+// --- first-run setup (PLAN Phase 12) ------------------------------------------------
+
+export type Setup = Schemas["SetupOut"];
+export type SetupTool = Schemas["SetupToolOut"];
+
+export const useSetup = () =>
+  useQuery({
+    queryKey: ["setup"],
+    queryFn: () => call(client.GET("/api/v1/setup")),
+    staleTime: Number.POSITIVE_INFINITY, // tool checks run CLIs; refetch on purpose
+  });
+
+function useToolWrite<A extends { name: string }>(
+  fn: (args: A) => Promise<SetupTool>,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (tool) => {
+      qc.setQueryData<Setup>(["setup"], (old) =>
+        old
+          ? {
+              ...old,
+              tools: old.tools.map((t) => (t.name === tool.name ? tool : t)),
+            }
+          : old,
+      );
+      void qc.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+}
+
+/** Registers Argos' MCP server and installs the argos skill in the tool. */
+export const useConnectTool = () =>
+  useToolWrite(({ name }: { name: string }) =>
+    call(
+      client.POST("/api/v1/setup/tools/{name}/connect", {
+        params: { path: { name } },
+      }),
+    ),
+  );
+
+/** Removes Argos' MCP entry and/or skill from the tool. */
+export const useDisconnectTool = () =>
+  useToolWrite(
+    ({ name, mcp, skill }: { name: string; mcp: boolean; skill: boolean }) =>
+      call(
+        client.POST("/api/v1/setup/tools/{name}/disconnect", {
+          params: { path: { name } },
+          body: { mcp, skill },
+        }),
+      ),
+  );
+
+export function useFinishSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.POST("/api/v1/setup/done")),
+    onSuccess: (data) => qc.setQueryData(["setup"], data),
+  });
+}
