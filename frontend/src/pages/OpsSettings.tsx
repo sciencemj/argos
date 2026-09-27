@@ -152,11 +152,11 @@ export function NotifySection() {
       </div>
       <div className="flex flex-col gap-1">
         <span className={label}>{tr("주간 리뷰 (리뷰 화면에 표시)")}</span>
-        <div className="flex items-center gap-2 text-[13.5px] text-text">
-          {tr("매주") + " "}
+        <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-text">
+          <span className="shrink-0 whitespace-nowrap">{tr("매주")}</span>
           <select
             aria-label={tr("리뷰 요일")}
-            className={`${field} w-20`}
+            className={`${field} min-w-28 flex-1`}
             value={data.weekly_review_weekday}
             onChange={(e) =>
               change({ weekly_review_weekday: Number(e.target.value) })
@@ -171,7 +171,7 @@ export function NotifySection() {
           </select>
           <select
             aria-label={tr("리뷰 시각")}
-            className={`${field} w-20`}
+            className={`${field} min-w-24 flex-1`}
             value={data.weekly_review_hour}
             onChange={(e) =>
               change({ weekly_review_hour: Number(e.target.value) })
