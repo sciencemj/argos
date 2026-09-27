@@ -22,6 +22,7 @@ import {
   useUpdateEvent,
 } from "../api";
 import { fmt } from "../dates";
+import { language, t, tr, tt } from "../i18n";
 import { btn, Chip, Dialog, ErrorText, field, label } from "../ui";
 import { useChannel } from "./ChannelPage";
 
@@ -72,7 +73,7 @@ export function CalendarTab() {
       .filter((t) => t.due_at && t.status !== "done")
       .map<EventInput>((t) => ({
         id: `task:${t.id}`,
-        title: `마감 · ${t.title}`,
+        title: tt`마감 · ${t.title}`,
         start: t.due_at ?? undefined,
         classNames: ["argos-deadline"],
         editable: false,
@@ -127,14 +128,16 @@ export function CalendarTab() {
           className="mb-3 flex items-center gap-3 rounded-2xl bg-danger-bg px-4 py-2.5 text-[13px] text-danger"
         >
           <span className="grow">
-            앱과 캘린더에서 같은 일정을 각각 고쳤어요 ({conflicts.data?.length}
-            건). 어느 쪽을 남길지 골라 주세요.
+            {t(
+              `앱과 캘린더에서 같은 일정을 각각 고쳤어요 (${conflicts.data?.length}건). 어느 쪽을 남길지 골라 주세요.`,
+              `${conflicts.data?.length} events were changed in both Argos and Calendar. Choose which version to keep.`,
+            )}
           </span>
           <Link
             to="/settings#calendar-conflicts"
             className="font-medium underline"
           >
-            고르러 가기
+            {tr("고르러 가기")}
           </Link>
         </div>
       )}
@@ -143,7 +146,7 @@ export function CalendarTab() {
         <FullCalendar
           plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
           initialView="timeGridWeek"
-          locale={koLocale}
+          locale={language() === "ko" ? koLocale : "en"}
           height="100%"
           headerToolbar={{
             left: "prev,next today",
@@ -210,31 +213,31 @@ function NewEventDialog({
 
   const summary = draft
     ? draft.allDay
-      ? `${fmt(draft.start, "M/d (EEE)")} 종일`
+      ? tt`${fmt(draft.start, "M/d (EEE)")} 종일`
       : `${fmt(draft.start, "M/d (EEE) HH:mm")} – ${fmt(draft.end, "HH:mm")}`
     : "";
 
   return (
-    <Dialog open={draft !== null} onClose={onClose} title="일정 추가">
+    <Dialog open={draft !== null} onClose={onClose} title={tr("일정 추가")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="font-mono text-[12.5px] text-text-3">{summary}</div>
         <label className="flex flex-col gap-1">
-          <span className={label}>제목</span>
+          <span className={label}>{tr("제목")}</span>
           <input
             className={field}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="예: 3주차 퀴즈"
+            placeholder={tr("예: 3주차 퀴즈")}
             required
           />
         </label>
         <ErrorText error={create.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button type="submit" className={btn.cta} disabled={create.isPending}>
-            추가하기
+            {tr("추가하기")}
           </button>
         </div>
       </form>
@@ -262,7 +265,7 @@ function EventDialog({
   const readOnly = Boolean(event?.read_only);
   const when = event
     ? event.all_day
-      ? `${fmt(event.start_date ?? "", "M/d (EEE)")} 종일`
+      ? tt`${fmt(event.start_date ?? "", "M/d (EEE)")} 종일`
       : `${fmt(event.starts_at ?? "", "M/d (EEE) HH:mm")}${event.ends_at ? ` – ${fmt(event.ends_at, "HH:mm")}` : ""}`
     : "";
 
@@ -276,22 +279,22 @@ function EventDialog({
   };
 
   return (
-    <Dialog open={event !== null} onClose={onClose} title="일정">
+    <Dialog open={event !== null} onClose={onClose} title={tr("일정")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[12.5px] text-text-3">{when}</span>
           {event?.source && <Chip>{event.source}</Chip>}
-          {event?.rrule && <Chip>반복</Chip>}
+          {event?.rrule && <Chip>{tr("반복")}</Chip>}
         </div>
         {readOnly && (
           <p className="m-0 text-[12.5px] text-text-3">
             {event?.rrule
-              ? "반복 일정은 캘린더 앱에서 고쳐 주세요."
-              : `'${event?.source}' 캘린더의 일정이라 캘린더 앱에서 고쳐 주세요.`}
+              ? tr("반복 일정은 캘린더 앱에서 고쳐 주세요.")
+              : tt`'${event?.source}' 캘린더의 일정이라 캘린더 앱에서 고쳐 주세요.`}
           </p>
         )}
         <label className="flex flex-col gap-1">
-          <span className={label}>제목</span>
+          <span className={label}>{tr("제목")}</span>
           <input
             className={field}
             value={title}
@@ -308,15 +311,15 @@ function EventDialog({
             hidden={readOnly}
             onClick={() =>
               event &&
-              confirm(`"${event.title}" 일정을 삭제할까요?`) &&
+              confirm(tt`"${event.title}" 일정을 삭제할까요?`) &&
               remove.mutate(event.id, { onSuccess: onClose })
             }
           >
-            삭제
+            {tr("삭제")}
           </button>
           <span className="grow" />
           <button type="button" className={btn.ghost} onClick={onClose}>
-            닫기
+            {tr("닫기")}
           </button>
           {!readOnly && (
             <button
@@ -324,7 +327,7 @@ function EventDialog({
               className={btn.cta}
               disabled={update.isPending}
             >
-              저장
+              {tr("저장")}
             </button>
           )}
         </div>

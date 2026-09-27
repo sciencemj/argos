@@ -33,7 +33,7 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 `~/Library/Application Support/Argos`, and stores secrets in the macOS Keychain.
 
 > [!NOTE]
-> The interface is in Korean for now ([한국어 README](README.ko.md)). The code is in English.
+> The interface supports Korean and English. Choose a language during setup or in Settings ([한국어 README](README.ko.md)).
 
 ## Features
 
@@ -63,6 +63,7 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 - Menu bar app: closing the window keeps sync, jobs and notices running.
 - **Quick capture** anywhere with <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>, straight into the inbox.
 - **First-run setup** that finds your agent tools and connects them (MCP + an `argos` skill) in one click.
+- **Korean and English interface**: choose a language during setup or in Settings. Argos uses your device's preferred language on first launch and remembers your choice.
 - **Automatic updates**, signed and checked against the public key built into the app.
 - **Clean uninstall** that also removes what Argos added to your agent tools, login items and Keychain.
 
@@ -82,7 +83,7 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 2. Open it and drag **Argos** into **Applications**.
 3. The first time, **right-click Argos → Open**. The app is ad-hoc signed (no paid Apple developer
    certificate), so a double click shows an "unidentified developer" warning.
-4. Follow the welcome screen: check your tools, connect them, pick defaults, turn on start at login.
+4. Follow the welcome screen: choose a language, check and connect your tools, pick defaults, and turn on start at login if you want it.
 
 Updates arrive on their own: Argos checks GitHub Releases every six hours, installs a new version in
 the background and applies it on the next restart (or from the menu bar right away).
@@ -101,7 +102,7 @@ Argos works on its own; each tool adds more.
 
 ### Connecting your agents
 
-**Settings → Agents → Agent tools → "Argos에 연결"** registers Argos' MCP server with each tool's own CLI
+**Settings → Agents → Agent tools → "Connect to Argos"** registers Argos' MCP server with each tool's own CLI
 and installs an `argos` skill that explains when to use it. The same card removes either one again.
 
 | Tool | MCP | Skill |

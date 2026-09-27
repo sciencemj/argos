@@ -143,6 +143,18 @@ def test_weekly_review_summarizes_the_week(app: TestClient) -> None:
     assert review.json()["channel_id"] == today["id"]
 
 
+def test_english_notices_and_review(app: TestClient) -> None:
+    assert app.put("/api/v1/settings/language", json={"language": "en"}).status_code == 200
+    task(app, "Report", datetime.now(UTC) - timedelta(hours=1))
+    notices = app.post("/api/v1/notifications/check").json()
+    assert any(n["title"] == "Overdue · Report" for n in notices)
+
+    review = app.post("/api/v1/review/weekly")
+    assert review.status_code == 201
+    assert review.json()["body"].startswith("# Weekly Review")
+    assert "## Completed this week" in review.json()["body"]
+
+
 def test_review_arrives_once_on_its_day(app: TestClient, settings: Settings) -> None:
     local = datetime.now(settings.zoneinfo)
     sunday = (local + timedelta(days=(6 - local.weekday()) % 7)).replace(hour=21, minute=0)

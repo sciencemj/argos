@@ -1,6 +1,7 @@
 import { Command } from "cmdk";
 import { useNavigate } from "react-router";
 import { STATUSES, useChannels, useTasks } from "../api";
+import { tr } from "../i18n";
 
 const item =
   "flex h-10 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-[14px] text-text-2 data-[selected=true]:bg-inset data-[selected=true]:text-ink";
@@ -30,25 +31,25 @@ export function QuickSwitcher({
     <Command.Dialog
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      label="채널·할 일 찾기"
+      label={tr("채널·할 일 찾기")}
       overlayClassName="fixed inset-0 bg-black/30"
       contentClassName="fixed top-[14vh] left-1/2 w-[560px] max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-3xl border border-line-soft bg-card text-text shadow-lift"
     >
       <Command.Input
-        placeholder="채널이나 할 일 이름"
+        placeholder={tr("채널이나 할 일 이름")}
         className="h-14 w-full border-0 border-b border-line-soft bg-transparent px-5 text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
       />
       <Command.List className="max-h-[50vh] overflow-y-auto p-2">
         <Command.Empty className="px-3 py-6 text-center text-[13px] text-meta">
-          찾는 게 없어요
+          {tr("찾는 게 없어요")}
         </Command.Empty>
-        <Command.Group heading="채널" className={group}>
+        <Command.Group heading={tr("채널")} className={group}>
           {channels.data?.channels
             .filter((c) => c.kind !== "personal")
             .map((c) => (
               <Command.Item
                 key={c.id}
-                value={`channel ${c.name} ${c.name === "inbox" ? "내 공간 일상" : ""}`}
+                value={`channel ${c.name} ${c.name === "inbox" ? tr("내 공간 일상") : ""}`}
                 onSelect={() =>
                   go(
                     c.kind === "system" && c.name === "today"
@@ -61,11 +62,11 @@ export function QuickSwitcher({
                 {c.name !== "inbox" && (
                   <span className="font-mono text-hash">#</span>
                 )}
-                {c.name === "inbox" ? "내 공간" : c.name}
+                {c.name === "inbox" ? tr("내 공간") : c.name}
               </Command.Item>
             ))}
         </Command.Group>
-        <Command.Group heading="할 일" className={group}>
+        <Command.Group heading={tr("할 일")} className={group}>
           {tasks.data?.map((t) => (
             <Command.Item
               key={t.id}
@@ -76,7 +77,7 @@ export function QuickSwitcher({
               <span className="grow truncate">{t.title}</span>
               <span className="text-[12px] text-meta">
                 {byId.get(t.channel_id)?.kind === "personal"
-                  ? "내 공간"
+                  ? tr("내 공간")
                   : `#${byId.get(t.channel_id)?.name}`}{" "}
                 · {statusLabel.get(t.status)}
               </span>

@@ -9,6 +9,7 @@ import {
   vaultFileUrl,
 } from "../api";
 import { fmt } from "../dates";
+import { tr, tt } from "../i18n";
 import { Markdown } from "../markdown";
 import { card, ErrorText, field } from "../ui";
 import { useChannel } from "./ChannelPage";
@@ -32,7 +33,7 @@ export function obsidianToMarkdown(body: string, notePath: string): string {
         return `![${name}](${vaultFileUrl(path)})`;
       },
     )
-    .replace(/!\[\[([^\]]+)\]\]/g, (_, name: string) => `*(첨부: ${name})*`)
+    .replace(/!\[\[([^\]]+)\]\]/g, (_, name: string) => tt`*(첨부: ${name})*`)
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
     .replace(/\[\[([^\]]+)\]\]/g, "$1")
     .replace(/\s\^[A-Za-z0-9-]+$/gm, "");
@@ -58,10 +59,10 @@ function Snippet({ text }: { text: string }) {
 }
 
 const SORTS: { id: NoteSort; label: string }[] = [
-  { id: "relevance", label: "관련도" },
-  { id: "modified", label: "수정" },
-  { id: "title", label: "이름" },
-  { id: "path", label: "경로" },
+  { id: "relevance", label: tr("관련도") },
+  { id: "modified", label: tr("수정") },
+  { id: "title", label: tr("이름") },
+  { id: "path", label: tr("경로") },
 ];
 const SORT_KEY = "argos.notes.sort";
 
@@ -97,19 +98,19 @@ function SortBar({
   const labelOf = (s: NoteSort) =>
     s === "modified"
       ? order === "desc"
-        ? "최근 것부터"
-        : "오래된 것부터"
+        ? tr("최근 것부터")
+        : tr("오래된 것부터")
       : s === "relevance"
         ? order === "asc"
-          ? "잘 맞는 것부터"
-          : "덜 맞는 것부터"
+          ? tr("잘 맞는 것부터")
+          : tr("덜 맞는 것부터")
         : order === "asc"
-          ? "가나다순"
-          : "역순";
+          ? tr("가나다순")
+          : tr("역순");
   return (
     <div className="mx-1 flex items-center gap-1">
       <fieldset className="m-0 flex min-w-0 gap-0.5 rounded-full border-0 bg-inset p-[2px] text-[12px]">
-        <legend className="sr-only">정렬 기준</legend>
+        <legend className="sr-only">{tr("정렬 기준")}</legend>
         {SORTS.filter((s) => searching || s.id !== "relevance").map((s) => (
           <button
             key={s.id}
@@ -126,7 +127,7 @@ function SortBar({
       <button
         type="button"
         onClick={onOrder}
-        aria-label={`순서 바꾸기 (지금: ${labelOf(sort)})`}
+        aria-label={tt`순서 바꾸기 (지금: ${labelOf(sort)})`}
         title={labelOf(sort)}
         className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[12px] text-text-3 hover:bg-inset hover:text-ink"
       >
@@ -191,8 +192,8 @@ export function NotesTab() {
       <div className={`${card} flex min-h-0 flex-col gap-2 p-3`}>
         <input
           type="search"
-          aria-label="노트 검색"
-          placeholder="노트 검색 (제목·본문)"
+          aria-label={tr("노트 검색")}
+          placeholder={tr("노트 검색 (제목·본문)")}
           className={`${field} mx-1 w-auto`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -232,7 +233,7 @@ export function NotesTab() {
           ))}
           {notes.data?.length === 0 && (
             <li className="px-3 py-6 text-center text-[13px] text-text-3">
-              {query ? "찾는 노트가 없어요" : "이 폴더에 노트가 없어요"}
+              {query ? tr("찾는 노트가 없어요") : tr("이 폴더에 노트가 없어요")}
             </li>
           )}
         </ul>
@@ -249,13 +250,13 @@ function NoteReader({ noteId }: { noteId: string | null }) {
       <div
         className={`${card} flex items-center justify-center text-[13px] text-text-3`}
       >
-        왼쪽에서 노트를 고르세요
+        {tr("왼쪽에서 노트를 고르세요")}
       </div>
     );
   }
   return (
     <article
-      aria-label="노트"
+      aria-label={tr("노트")}
       className={`${card} flex min-h-0 flex-col gap-3 overflow-y-auto px-8 py-6`}
     >
       <ErrorText error={note.error} />
@@ -267,7 +268,7 @@ function NoteReader({ noteId }: { noteId: string | null }) {
             </h2>
             <span className="font-mono text-[11.5px] text-meta">
               {note.data.vault_path} · {fmt(note.data.modified_at, "M/d HH:mm")}{" "}
-              · 읽기 전용
+              {tr("· 읽기 전용")}
             </span>
           </header>
           <div className="text-[14px] leading-[1.7] text-text [&_img]:max-w-full [&_img]:rounded-lg">
@@ -287,10 +288,11 @@ export function NoFolder() {
       <div
         className={`${card} flex flex-col gap-1 px-6 py-8 text-center text-[13.5px] text-text-3`}
       >
-        <span>이 채널에 연결된 옵시디언 폴더가 없어요.</span>
+        <span>{tr("이 채널에 연결된 옵시디언 폴더가 없어요.")}</span>
         <span className="text-[12.5px]">
-          채널 설정(오른쪽 위 톱니바퀴)에서 폴더를 고르세요. 볼트는 앱 설정에서
-          지정해요.
+          {tr(
+            "채널 설정(오른쪽 위 톱니바퀴)에서 폴더를 고르세요. 볼트는 앱 설정에서 지정해요.",
+          )}
         </span>
       </div>
     </div>

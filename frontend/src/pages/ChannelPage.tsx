@@ -20,6 +20,7 @@ import {
 } from "../api";
 import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { FEED_COLUMN, Feed } from "../feed";
+import { tr } from "../i18n";
 import { SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
 
@@ -29,15 +30,15 @@ const tab =
 export const useChannel = () => useOutletContext<Channel>();
 
 const TABS = [
-  { path: "", label: "피드" },
-  { path: "kanban", label: "칸반" },
-  { path: "calendar", label: "캘린더" },
-  { path: "notes", label: "노트" },
-  { path: "materials", label: "자료" },
+  { path: "", label: tr("피드") },
+  { path: "kanban", label: tr("칸반") },
+  { path: "calendar", label: tr("캘린더") },
+  { path: "notes", label: tr("노트") },
+  { path: "materials", label: tr("자료") },
 ];
 
 const SYSTEM_TABS = TABS.slice(0, 3); // #today-style channels have no vault folder
-const SPACE_TABS = [{ path: "", label: "수집함" }, ...TABS.slice(1)];
+const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(1)];
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -99,7 +100,7 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
       <nav
-        aria-label="채널 탭"
+        aria-label={tr("채널 탭")}
         className="flex gap-0.5 rounded-full bg-inset p-[3px] text-[13.5px] whitespace-nowrap"
       >
         {tabs.map((t, i) => (
@@ -125,7 +126,8 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
         className={`font-mono text-[11px] text-meta transition-opacity ${showKeys ? "opacity-100" : "opacity-0"}`}
         aria-hidden={!showKeys}
       >
-        {ALT}[ {ALT}] 이전·다음
+        {ALT}[ {ALT}
+        {tr("] 이전·다음")}
       </span>
     </div>
   );
@@ -151,7 +153,7 @@ export function ChannelPage() {
   if (!channel) {
     return (
       <p className="p-8 text-text-3">
-        채널을 찾을 수 없어요. 삭제되었을 수 있어요.
+        {tr("채널을 찾을 수 없어요. 삭제되었을 수 있어요.")}
       </p>
     );
   }
@@ -180,12 +182,12 @@ export function ChannelPage() {
         <div className="flex items-center gap-3.5">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {!space && <span className="text-hash">#</span>}{" "}
-            {space ? "내 공간" : channel.name}
+            {space ? tr("내 공간") : channel.name}
           </h1>
           {editable && (
             <button
               type="button"
-              aria-label="채널 설정"
+              aria-label={tr("채널 설정")}
               className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-soft bg-card text-text-3 hover:text-ink"
               onClick={() => setEditing(true)}
             >
@@ -198,7 +200,7 @@ export function ChannelPage() {
           <span className="grow" />
           {settingsChannel?.vault_path && (
             <span className="truncate text-[12.5px] text-meta">
-              옵시디언{" "}
+              {tr("옵시디언")}{" "}
               <span className="font-mono">{settingsChannel.vault_path}/</span>
             </span>
           )}
@@ -249,7 +251,7 @@ function DMPage({ channel }: { channel: Channel }) {
         <AgentAvatar id={agent?.name} size={36} />
         <div className="flex grow flex-col">
           <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-            {agent?.display_name ?? "에이전트"}
+            {agent?.display_name ?? tr("에이전트")}
           </h1>
           {agent && !agent.available && (
             <span className="text-[12.5px] text-danger">{agent.problem}</span>
@@ -312,12 +314,12 @@ function ChannelSettings({
     <Dialog
       open={open}
       onClose={onClose}
-      title={space ? "내 공간 설정" : "채널 설정"}
+      title={space ? tr("내 공간 설정") : tr("채널 설정")}
     >
       <form onSubmit={submit} className="flex flex-col gap-4">
         {!space && (
           <label className="flex flex-col gap-1">
-            <span className={label}>이름</span>
+            <span className={label}>{tr("이름")}</span>
             <input
               className={field}
               value={name}
@@ -328,13 +330,13 @@ function ChannelSettings({
         )}
         {!space && (
           <label className="flex flex-col gap-1">
-            <span className={label}>영역</span>
+            <span className={label}>{tr("영역")}</span>
             <select
               className={field}
               value={areaId}
               onChange={(event) => setAreaId(event.target.value)}
             >
-              <option value="">전체 (영역 없음)</option>
+              <option value="">{tr("전체 (영역 없음)")}</option>
               {areas.map((area) => (
                 <option key={area.id} value={area.id}>
                   {area.name}
@@ -344,13 +346,13 @@ function ChannelSettings({
           </label>
         )}
         <label className="flex flex-col gap-1">
-          <span className={label}>기본 에이전트 (/ask를 받음)</span>
+          <span className={label}>{tr("기본 에이전트 (/ask를 받음)")}</span>
           <select
             className={field}
             value={agentId}
             onChange={(e) => setAgentId(e.target.value)}
           >
-            <option value="">앱 기본값 따르기</option>
+            <option value="">{tr("앱 기본값 따르기")}</option>
             {agents.data?.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.display_name}
@@ -360,11 +362,11 @@ function ChannelSettings({
         </label>
         <div className="flex flex-col gap-1">
           <label htmlFor={`vault-folder-${channel.id}`} className={label}>
-            옵시디언 폴더 (선택)
+            {tr("옵시디언 폴더 (선택)")}
           </label>
           <fieldset
             className="relative m-0 min-w-0 border-0 p-0"
-            aria-label="옵시디언 폴더 선택"
+            aria-label={tr("옵시디언 폴더 선택")}
             onBlur={(event) => {
               if (
                 !event.currentTarget.contains(
@@ -402,8 +404,8 @@ function ChannelSettings({
               }}
               placeholder={
                 folders.data
-                  ? "볼트 안의 폴더 고르기"
-                  : "앱 설정에서 볼트를 먼저 지정하세요"
+                  ? tr("볼트 안의 폴더 고르기")
+                  : tr("앱 설정에서 볼트를 먼저 지정하세요")
               }
               disabled={!folders.data && !vaultPath}
             />
@@ -427,23 +429,24 @@ function ChannelSettings({
             )}
           </fieldset>
           <span className="text-[11.5px] text-meta">
-            이 폴더의 노트·자료가 채널에 보이고, 노트의 체크박스 할 일이
-            칸반으로 와요.
+            {tr(
+              "이 폴더의 노트·자료가 채널에 보이고, 노트의 체크박스 할 일이 칸반으로 와요.",
+            )}
           </span>
         </div>
         <ErrorText error={update.error} />
         <div className="flex items-center gap-2">
           {channel.kind !== "personal" && (
             <button type="button" className={btn.danger} onClick={onDelete}>
-              채널 삭제
+              {tr("채널 삭제")}
             </button>
           )}
           <span className="grow" />
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button type="submit" className={btn.cta} disabled={update.isPending}>
-            저장
+            {tr("저장")}
           </button>
         </div>
       </form>

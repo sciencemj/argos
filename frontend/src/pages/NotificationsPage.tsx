@@ -7,15 +7,16 @@ import {
   useReadNotification,
 } from "../api";
 import { fmt } from "../dates";
+import { tr, tt } from "../i18n";
 import { BellIcon } from "../icons";
 import { btn, card, ErrorText } from "../ui";
 
 const KIND_TEXT: Record<string, string> = {
-  due_soon: "마감 임박",
-  overdue: "마감 지남",
-  inbox_stale: "인박스",
-  undated: "날짜 없는 할 일",
-  weekly_review: "주간 리뷰",
+  due_soon: tr("마감 임박"),
+  overdue: tr("마감 지남"),
+  inbox_stale: tr("인박스"),
+  undated: tr("날짜 없는 할 일"),
+  weekly_review: tr("주간 리뷰"),
 };
 
 /** What Argos brought up on its own (PLAN Phase 11), newest first. */
@@ -50,7 +51,7 @@ export function NotificationsPage() {
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-9 pt-8 pb-8">
         <div className="flex items-baseline gap-3">
           <h1 className="m-0 grow text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-            알림
+            {tr("알림")}
           </h1>
           {(notices.data?.unread ?? 0) > 0 && (
             <button
@@ -58,7 +59,7 @@ export function NotificationsPage() {
               className={btn.ghost}
               onClick={() => readAll.mutate(undefined)}
             >
-              모두 읽음
+              {tr("모두 읽음")}
             </button>
           )}
         </div>
@@ -68,7 +69,9 @@ export function NotificationsPage() {
             className={`${card} flex flex-col items-center gap-2 px-6 py-10 text-[13.5px] text-text-3`}
           >
             <BellIcon size={20} />
-            다가오는 마감이나 오래 둔 인박스가 있으면 여기에 알려 드려요.
+            {tr(
+              "다가오는 마감이나 오래 둔 인박스가 있으면 여기에 알려 드려요.",
+            )}
           </div>
         )}
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -82,7 +85,9 @@ export function NotificationsPage() {
                 <span
                   className={`mt-[7px] size-2 shrink-0 rounded-full ${n.read_at ? "bg-transparent" : n.kind === "overdue" ? "bg-danger" : "bg-ink"}`}
                 >
-                  {!n.read_at && <span className="sr-only">안 읽음</span>}
+                  {!n.read_at && (
+                    <span className="sr-only">{tr("안 읽음")}</span>
+                  )}
                 </span>
                 <span className="flex min-w-0 grow flex-col gap-0.5">
                   <span
@@ -98,8 +103,8 @@ export function NotificationsPage() {
                   <span className="font-mono text-[11px] text-meta">
                     {KIND_TEXT[n.kind] ?? n.kind} ·{" "}
                     {fmt(n.created_at, "M/d HH:mm")}
-                    {n.sent_at ? " · 메신저로 보냄" : ""}
-                    {n.send_error ? ` · 메신저 실패: ${n.send_error}` : ""}
+                    {n.sent_at ? tr(" · 메신저로 보냄") : ""}
+                    {n.send_error ? tt` · 메신저 실패: ${n.send_error}` : ""}
                   </span>
                 </span>
               </button>

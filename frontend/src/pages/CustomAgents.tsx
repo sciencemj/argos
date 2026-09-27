@@ -11,18 +11,27 @@ import {
   useImportAgent,
   useSaveAgent,
 } from "../api";
+import { t, tr, tt } from "../i18n";
 import { btn, card, Dialog, ErrorText, field, label } from "../ui";
 
 const BACKENDS = [
-  { id: "claude_code", label: "Claude", hint: "Claude Code 로그인으로 동작" },
-  { id: "codex", label: "Codex", hint: "Codex 로그인으로 동작" },
-  { id: "ollama", label: "로컬 모델", hint: "Ollama 모델, 이 컴퓨터에서만" },
+  {
+    id: "claude_code",
+    label: "Claude",
+    hint: tr("Claude Code 로그인으로 동작"),
+  },
+  { id: "codex", label: "Codex", hint: tr("Codex 로그인으로 동작") },
+  {
+    id: "ollama",
+    label: tr("로컬 모델"),
+    hint: tr("Ollama 모델, 이 컴퓨터에서만"),
+  },
 ] as const;
 
 const KIND_TEXT = {
-  read: "읽기",
-  write: "쓰기",
-  approval: "삭제 (허용해도 항상 사용자 승인)",
+  read: tr("읽기"),
+  write: tr("쓰기"),
+  approval: tr("삭제 (허용해도 항상 사용자 승인)"),
 } as const;
 
 /** Custom agents (PLAN Phase 10): "봇 만들기", YAML import/export. */
@@ -35,36 +44,36 @@ export function CustomAgentsSection() {
 
   return (
     <section
-      aria-label="커스텀 에이전트"
+      aria-label={tr("커스텀 에이전트")}
       className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <div className="flex items-center gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
-          커스텀 에이전트
+          {tr("커스텀 에이전트")}
         </h2>
         <button
           type="button"
           className={btn.ghost}
           onClick={() => setImporting(true)}
         >
-          YAML 가져오기
+          {tr("YAML 가져오기")}
         </button>
         <button
           type="button"
           className={btn.outline}
           onClick={() => setEditing("new")}
         >
-          봇 만들기
+          {tr("봇 만들기")}
         </button>
       </div>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        역할과 말투(시스템 프롬프트)와 쓸 수 있는 Argos 도구를 정해 나만의
-        에이전트를 만들어요. 허용하지 않은 도구는 Argos가 막아요. 메시지에
-        @이름으로 부르거나 채널의 /ask 담당으로 정할 수 있어요.
+        {tr(
+          "역할과 말투(시스템 프롬프트)와 쓸 수 있는 Argos 도구를 정해 나만의 에이전트를 만들어요. 허용하지 않은 도구는 Argos가 막아요. 메시지에 @이름으로 부르거나 채널의 /ask 담당으로 정할 수 있어요.",
+        )}
       </p>
       {custom.length === 0 && (
         <p className="m-0 rounded-2xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-text-3">
-          아직 만든 에이전트가 없어요
+          {tr("아직 만든 에이전트가 없어요")}
         </p>
       )}
       {custom.map((a) => (
@@ -80,9 +89,13 @@ export function CustomAgentsSection() {
             </span>
             <span className="truncate text-[12px] text-text-3">
               {BACKENDS.find((b) => b.id === a.backend)?.label}
-              {a.model ? ` · ${a.model}` : ""} · 도구 {a.tools?.length ?? 0}개
+              {a.model ? ` · ${a.model}` : ""}{" "}
+              {t(
+                `· 도구 ${a.tools?.length ?? 0}개`,
+                `· ${a.tools?.length ?? 0} tools`,
+              )}{" "}
               {a.channel_ids.length
-                ? ` · /ask 채널 ${a.channel_ids.length}개`
+                ? tt` · /ask 채널 ${a.channel_ids.length}개`
                 : ""}
             </span>
             {!a.available && (
@@ -94,14 +107,14 @@ export function CustomAgentsSection() {
             className={`${btn.ghost} shrink-0 whitespace-nowrap`}
             onClick={() => setEditing(a)}
           >
-            수정
+            {tr("수정")}
           </button>
           <a
             className={`${btn.ghost} shrink-0 whitespace-nowrap`}
             href={agentExportUrl(a.name)}
             download
           >
-            내보내기
+            {tr("내보내기")}
           </a>
           <button
             type="button"
@@ -109,11 +122,11 @@ export function CustomAgentsSection() {
             disabled={remove.isPending}
             onClick={() =>
               confirm(
-                `@${a.name} 에이전트를 지울까요? 1:1 대화도 함께 지워져요.`,
+                tt`@${a.name} 에이전트를 지울까요? 1:1 대화도 함께 지워져요.`,
               ) && remove.mutate(a.name)
             }
           >
-            삭제
+            {tr("삭제")}
           </button>
         </div>
       ))}
@@ -180,7 +193,7 @@ function AgentDialog({
     <Dialog
       open
       onClose={onClose}
-      title={agent ? `@${agent.name} 수정` : "봇 만들기"}
+      title={agent ? tt`@${agent.name} 수정` : tr("봇 만들기")}
     >
       <form
         onSubmit={submit}
@@ -188,7 +201,7 @@ function AgentDialog({
       >
         <div className="grid grid-cols-[1fr_1fr_80px] gap-3">
           <label className="flex flex-col gap-1">
-            <span className={label}>@이름</span>
+            <span className={label}>{tr("@이름")}</span>
             <input
               className={`${field} font-mono`}
               value={name}
@@ -199,17 +212,17 @@ function AgentDialog({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>표시 이름</span>
+            <span className={label}>{tr("표시 이름")}</span>
             <input
               className={field}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="과목 튜터"
+              placeholder={tr("과목 튜터")}
               required
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>아바타</span>
+            <span className={label}>{tr("아바타")}</span>
             <input
               className={field}
               value={avatar}
@@ -221,7 +234,7 @@ function AgentDialog({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
-            <span className={label}>기반 에이전트</span>
+            <span className={label}>{tr("기반 에이전트")}</span>
             <select
               className={field}
               value={backend}
@@ -240,17 +253,23 @@ function AgentDialog({
           <ModelField backend={backend} value={model} onChange={setModel} />
         </div>
         <label className="flex flex-col gap-1">
-          <span className={label}>시스템 프롬프트 (역할·말투·규칙)</span>
+          <span className={label}>
+            {tr("시스템 프롬프트 (역할·말투·규칙)")}
+          </span>
           <textarea
             rows={5}
             className={`${field} h-auto resize-y py-2 text-[13.5px]`}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="채널 과목의 볼트 노트를 근거로, 개념을 예시와 함께 짧게 설명하는 튜터다."
+            placeholder={tr(
+              "채널 과목의 볼트 노트를 근거로, 개념을 예시와 함께 짧게 설명하는 튜터다.",
+            )}
           />
         </label>
         <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-          <legend className={`${label} mb-1`}>쓸 수 있는 Argos 도구</legend>
+          <legend className={`${label} mb-1`}>
+            {tr("쓸 수 있는 Argos 도구")}
+          </legend>
           {(["read", "write", "approval"] as const).map((kind) => (
             <div key={kind} className="flex flex-col gap-1">
               <span className="text-[12px] text-text-3">{KIND_TEXT[kind]}</span>
@@ -277,7 +296,9 @@ function AgentDialog({
           ))}
         </fieldset>
         <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-          <legend className={`${label} mb-1`}>/ask를 맡을 채널 (선택)</legend>
+          <legend className={`${label} mb-1`}>
+            {tr("/ask를 맡을 채널 (선택)")}
+          </legend>
           <div className="flex flex-wrap gap-1.5">
             {choosable.map((c) => (
               <label
@@ -298,10 +319,10 @@ function AgentDialog({
         <ErrorText error={save.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button type="submit" className={btn.cta} disabled={save.isPending}>
-            {agent ? "저장" : "만들기"}
+            {agent ? tr("저장") : tr("만들기")}
           </button>
         </div>
       </form>
@@ -328,7 +349,7 @@ function ModelField({
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor="agent-model" className={label}>
-        모델
+        {tr("모델")}
       </label>
       {list.length > 0 ? (
         <select
@@ -338,7 +359,8 @@ function ModelField({
           onChange={(e) => onChange(e.target.value)}
         >
           <option value="">
-            기본값{byDefault ? ` (${byDefault.label})` : ""}
+            {tr("기본값")}
+            {byDefault ? ` (${byDefault.label})` : ""}
           </option>
           {list.map((m) => (
             <option key={m.id} value={m.id}>
@@ -347,7 +369,9 @@ function ModelField({
             </option>
           ))}
           {value && !known && (
-            <option value={value}>{value} (목록에 없음)</option>
+            <option value={value}>
+              {value} {tr("(목록에 없음)") + " "}
+            </option>
           )}
         </select>
       ) : (
@@ -357,16 +381,18 @@ function ModelField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={
-            models.isLoading ? "모델 목록을 불러오는 중…" : "비우면 기본값"
+            models.isLoading
+              ? tr("모델 목록을 불러오는 중…")
+              : tr("비우면 기본값")
           }
         />
       )}
       <span className="text-[11.5px] text-meta">
         {models.isLoading
-          ? "모델 목록을 불러오는 중…"
+          ? tr("모델 목록을 불러오는 중…")
           : models.data?.error
             ? models.data.error
-            : (selected?.description ?? `${list.length}개 모델`)}
+            : (selected?.description ?? tt`${list.length}개 모델`)}
       </span>
     </div>
   );
@@ -382,7 +408,7 @@ function ImportDialog({
   const importer = useImportAgent();
   const [text, setText] = useState("");
   return (
-    <Dialog open={open} onClose={onClose} title="YAML 가져오기">
+    <Dialog open={open} onClose={onClose} title={tr("YAML 가져오기")}>
       <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
@@ -398,31 +424,31 @@ function ImportDialog({
         <input
           type="file"
           accept=".yaml,.yml,text/yaml"
-          aria-label="YAML 파일"
+          aria-label={tr("YAML 파일")}
           className="text-[12.5px] text-text-3"
           onChange={(e) => void e.target.files?.[0]?.text().then(setText)}
         />
         <textarea
           rows={10}
-          aria-label="YAML 내용"
+          aria-label={tr("YAML 내용")}
           className={`${field} h-auto resize-y py-2 font-mono text-[12px]`}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={
-            "name: tutor\ndisplay_name: 과목 튜터\nbackend: llm\ntools: [search_notes]"
-          }
+          placeholder={tr(
+            "name: tutor\ndisplay_name: 과목 튜터\nbackend: llm\ntools: [search_notes]",
+          )}
         />
         <ErrorText error={importer.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button
             type="submit"
             className={btn.cta}
             disabled={!text.trim() || importer.isPending}
           >
-            가져오기
+            {tr("가져오기")}
           </button>
         </div>
       </form>

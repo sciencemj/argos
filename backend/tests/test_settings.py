@@ -1,8 +1,9 @@
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import httpx2
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from argos import classifier
@@ -72,6 +73,20 @@ def test_pick_model_persists_across_restart(settings: Settings, ollama: Any) -> 
     env_model = settings.model_copy(update={"classifier_model": "qwen3.5:9b-mlx"})
     for client in app_client(env_model):  # "off" in the app beats a model in .env
         assert client.get("/api/v1/settings/classifier").json()["enabled"] is False
+
+
+def test_language_persists_across_restart(settings: Settings) -> None:
+    for client in app_client(settings):
+        response = client.put("/api/v1/settings/language", json={"language": "en"})
+        assert response.status_code == 200
+        app = cast(FastAPI, client.app)
+        assert cast(Settings, app.state.settings).language == "en"
+        assert cast(Settings, app.state.runner.settings).language == "en"
+
+    for client in app_client(settings):
+        app = cast(FastAPI, client.app)
+        assert cast(Settings, app.state.settings).language == "en"
+        assert client.put("/api/v1/settings/language", json={"language": "fr"}).status_code == 422
 
 
 def test_env_model_is_reported(settings: Settings) -> None:

@@ -29,6 +29,7 @@ import {
 } from "./cards";
 import { useCompleteTask } from "./complete";
 import { fmt, localInputToIso } from "./dates";
+import { t, tr, tt } from "./i18n";
 import {
   CalendarIcon,
   CheckIcon,
@@ -42,12 +43,12 @@ import { PawTrail } from "./paws";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
 const COMMANDS = [
-  { name: "/task", usage: "제목 [날짜] [시간] — 할 일" },
-  { name: "/event", usage: "제목 날짜 [시작-끝] — 일정" },
-  { name: "/note", usage: "내용 — 공부 노트" },
-  { name: "/ask", usage: "질문 — 기본 에이전트에게" },
-  { name: "/job", usage: "@claude|@codex 할 일 [--dir 경로] — 코딩 잡" },
-  { name: "/debate", usage: "@a @b 주제 [--mode] [--rounds N] — 토론" },
+  { name: "/task", usage: tr("제목 [날짜] [시간] — 할 일") },
+  { name: "/event", usage: tr("제목 날짜 [시작-끝] — 일정") },
+  { name: "/note", usage: tr("내용 — 공부 노트") },
+  { name: "/ask", usage: tr("질문 — 기본 에이전트에게") },
+  { name: "/job", usage: tr("@claude|@codex 할 일 [--dir 경로] — 코딩 잡") },
+  { name: "/debate", usage: tr("@a @b 주제 [--mode] [--rounds N] — 토론") },
 ];
 const SLASH = COMMANDS.map((c) => c.name);
 
@@ -98,7 +99,7 @@ export function Feed({ channel }: { channel: Channel }) {
       )}
       <section
         ref={scroller}
-        aria-label="메시지"
+        aria-label={tr("메시지")}
         className="flex min-h-0 grow flex-col overflow-y-auto"
       >
         <div
@@ -111,13 +112,15 @@ export function Feed({ channel }: { channel: Channel }) {
               className={`${btn.ghost} self-center`}
               onClick={() => void messages.fetchNextPage()}
             >
-              이전 메시지 더 보기
+              {tr("이전 메시지 더 보기")}
             </button>
           )}
           {messages.isSuccess && items.length === 0 && (
             <div className="text-[13px] text-text-3">
-              {channel.name === "inbox" ? "내 공간" : `#${channel.name}`}에 첫
-              메시지를 적어 보세요. 그냥 쓰면 Argos가 할 일·일정으로 정리해요.
+              {channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}
+              {tr(
+                "에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할 일·일정으로 정리해요.",
+              )}
             </div>
           )}
           {items.map((m) => (
@@ -150,7 +153,7 @@ function Author({ message }: { message: Message }) {
   }
   return (
     <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-line-soft bg-inset text-[12px] font-semibold text-text">
-      나
+      {tr("나")}
     </div>
   );
 }
@@ -180,18 +183,18 @@ export function MessageItem({
             className="font-medium"
             style={{ color: agent?.text ?? "var(--ink)" }}
           >
-            {agent ? agent.name : system ? "Argos" : "나"}
+            {agent ? agent.name : system ? "Argos" : tr("나")}
           </span>
           {(system || agent) && (
             <span className="rounded-full border border-line-soft px-[7px] text-[11px] text-meta">
-              {agent ? "에이전트" : "시스템"}
+              {agent ? tr("에이전트") : tr("시스템")}
             </span>
           )}
           <span className="font-mono text-[11px] text-meta">
             {fmt(message.created_at, "HH:mm")}
           </span>
           {message.pinned && (
-            <span className="text-meta" title="고정됨">
+            <span className="text-meta" title={tr("고정됨")}>
               <PinIcon size={12} />
             </span>
           )}
@@ -240,7 +243,10 @@ export function MessageItem({
             onClick={() => onThread(message.id)}
             className="cursor-pointer self-start text-[12.5px] font-medium text-text-2 underline underline-offset-[3px]"
           >
-            답글 {message.reply_count}
+            {t(
+              `답글 ${message.reply_count}`,
+              `${message.reply_count} ${message.reply_count === 1 ? "reply" : "replies"}`,
+            )}
           </button>
         )}
       </div>
@@ -270,12 +276,15 @@ function RunLabel({
 function runLabel(message: Message, liveStatus?: string): string {
   const run = message.run;
   if (!run) return "";
-  if (run.status === "queued") return "잡 대기 중 · 앞 잡이 끝나면 시작해요";
+  if (run.status === "queued")
+    return tr("잡 대기 중 · 앞 잡이 끝나면 시작해요");
   if (run.status === "running") {
-    return liveStatus && liveStatus !== "thinking" ? liveStatus : "입력 중…";
+    return liveStatus && liveStatus !== "thinking"
+      ? liveStatus
+      : tr("입력 중…");
   }
-  if (run.status === "cancelled") return "중단됨";
-  if (run.status === "error") return "오류";
+  if (run.status === "cancelled") return tr("중단됨");
+  if (run.status === "error") return tr("오류");
   const seconds = run.finished_at
     ? Math.max(
         1,
@@ -284,7 +293,7 @@ function runLabel(message: Message, liveStatus?: string): string {
         ),
       )
     : null;
-  return seconds ? `완료 · ${seconds}초` : "완료";
+  return seconds ? tt`완료 · ${seconds}초` : tr("완료");
 }
 
 /** An agent's answer: live tokens while its run streams, the stored text after. */
@@ -328,7 +337,10 @@ function AgentBody({
       {run?.log && !running && (
         <details className="text-[12px] text-text-3">
           <summary className="cursor-pointer">
-            작업 로그 {run.log.split("\n").length}줄
+            {t(
+              `작업 로그 ${run.log.split("\n").length}줄`,
+              `Job log · ${run.log.split("\n").length} lines`,
+            )}{" "}
             {run.workspace && (
               <span className="ml-2 font-mono text-meta">{run.workspace}</span>
             )}
@@ -346,11 +358,11 @@ function CancelButton({ runId, name }: { runId: string; name: string }) {
   return (
     <button
       type="button"
-      aria-label={`${name} 응답 중단`}
+      aria-label={tt`${name} 응답 중단`}
       onClick={() => void cancelRun(runId)}
       className="h-[26px] cursor-pointer rounded-full border border-line bg-card px-2.5 text-[11.5px] text-text-2 hover:text-ink"
     >
-      중단
+      {tr("중단")}
     </button>
   );
 }
@@ -404,13 +416,13 @@ function QuickActions({
   return (
     <div
       role="toolbar"
-      aria-label="빠른 액션"
+      aria-label={tr("빠른 액션")}
       className="absolute -top-2 right-0 hidden gap-0.5 rounded-full border border-line-soft bg-card p-[3px] shadow-raised group-focus-within:flex group-hover:flex"
     >
       {task && task.status !== "done" && (
         <button
           type="button"
-          aria-label="완료"
+          aria-label={tr("완료")}
           className={icon}
           onClick={() => completion.complete(task)}
         >
@@ -421,7 +433,7 @@ function QuickActions({
         <>
           <button
             type="button"
-            aria-label="일정으로"
+            aria-label={tr("일정으로")}
             className={icon}
             onClick={() => setEventOpen(true)}
           >
@@ -429,7 +441,7 @@ function QuickActions({
           </button>
           <button
             type="button"
-            aria-label="칸반으로"
+            aria-label={tr("칸반으로")}
             className={icon}
             onClick={() => convert.mutate({ id: message.id, kind: "task" })}
           >
@@ -439,7 +451,7 @@ function QuickActions({
       )}
       <button
         type="button"
-        aria-label={message.pinned ? "고정 해제" : "고정"}
+        aria-label={message.pinned ? tr("고정 해제") : tr("고정")}
         aria-pressed={message.pinned}
         className={`${icon} ${message.pinned ? "text-ink" : ""}`}
         onClick={() => pin.mutate({ id: message.id, pinned: !message.pinned })}
@@ -451,7 +463,7 @@ function QuickActions({
         className="h-8 cursor-pointer rounded-full px-2.5 text-[12px] text-text-3 hover:bg-inset hover:text-ink"
         onClick={() => onThread(message.id)}
       >
-        스레드
+        {tr("스레드")}
       </button>
       <EventFromMessage
         message={message}
@@ -500,10 +512,10 @@ function EventFromMessage({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="일정으로 만들기">
+    <Dialog open={open} onClose={onClose} title={tr("일정으로 만들기")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
-          <span className={label}>제목</span>
+          <span className={label}>{tr("제목")}</span>
           <input
             className={field}
             value={title}
@@ -517,11 +529,11 @@ function EventFromMessage({
             checked={allDay}
             onChange={(e) => setAllDay(e.target.checked)}
           />
-          종일
+          {tr("종일")}
         </label>
         {allDay ? (
           <label className="flex flex-col gap-1">
-            <span className={label}>날짜</span>
+            <span className={label}>{tr("날짜")}</span>
             <input
               type="date"
               className={field}
@@ -533,7 +545,7 @@ function EventFromMessage({
         ) : (
           <div className="grid grid-cols-2 gap-3.5">
             <label className="flex flex-col gap-1">
-              <span className={label}>시작</span>
+              <span className={label}>{tr("시작")}</span>
               <input
                 type="datetime-local"
                 className={field}
@@ -543,7 +555,7 @@ function EventFromMessage({
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className={label}>끝 (선택)</span>
+              <span className={label}>{tr("끝 (선택)")}</span>
               <input
                 type="datetime-local"
                 className={field}
@@ -556,14 +568,14 @@ function EventFromMessage({
         <ErrorText error={convert.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button
             type="submit"
             className={btn.cta}
             disabled={convert.isPending}
           >
-            추가하기
+            {tr("추가하기")}
           </button>
         </div>
       </form>
@@ -708,7 +720,9 @@ export function Composer({
       {options.length > 0 && (
         <div
           role="listbox"
-          aria-label={command !== undefined ? "명령 고르기" : "에이전트 부르기"}
+          aria-label={
+            command !== undefined ? tr("명령 고르기") : tr("에이전트 부르기")
+          }
           className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex min-w-[260px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
         >
           {options.map((o, i) => (
@@ -733,13 +747,13 @@ export function Composer({
             </button>
           ))}
           <span className="px-2.5 pt-1 pb-0.5 text-[11px] text-meta">
-            Tab·Enter 선택 · ↑↓ 이동 · Esc 닫기
+            {tr("Tab·Enter 선택 · ↑↓ 이동 · Esc 닫기")}
           </span>
         </div>
       )}
       <div className={`${card} flex flex-col gap-3 px-[18px] pt-4 pb-3`}>
         <label htmlFor={inputId} className="sr-only">
-          {threadRootId ? "스레드에 답장" : "메시지 입력"}
+          {threadRootId ? tr("스레드에 답장") : tr("메시지 입력")}
         </label>
         <textarea
           id={inputId}
@@ -750,10 +764,10 @@ export function Composer({
           onKeyDown={onKeyDown}
           placeholder={
             threadRootId
-              ? "스레드에 답장… (/task, /debate 같은 명령도 돼요)"
+              ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
               : dm
-                ? `${dmAgent?.display_name ?? "에이전트"}에게 메시지`
-                : `${channel.name === "inbox" ? "내 공간" : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+                ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
+                : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
           }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
@@ -778,19 +792,21 @@ export function Composer({
             <span className="text-[12px] text-meta">
               {dm ? (
                 <>
-                  받는 이 · <AgentName id={dmAgent?.name} />
+                  {tr("받는 이 ·") + " "}
+                  <AgentName id={dmAgent?.name} />
                 </>
               ) : (
                 <>
-                  @로 에이전트 호출 · /ask는 <AgentName id={askTarget?.name} />
-                  {channelDefault ? " (채널 기본)" : " (기본)"}
+                  {tr("@로 에이전트 호출 · /ask는") + " "}
+                  <AgentName id={askTarget?.name} />
+                  {channelDefault ? tr(" (채널 기본)") : tr(" (기본)")}
                 </>
               )}
             </span>
           )}
           <button
             type="button"
-            aria-label="보내기"
+            aria-label={tr("보내기")}
             onClick={send}
             disabled={!text.trim() || post.isPending}
             className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-cta text-on-cta shadow-raised disabled:opacity-40"
@@ -804,7 +820,7 @@ export function Composer({
 }
 
 function AgentName({ id }: { id: string | undefined }) {
-  if (!id) return <span>없음</span>;
+  if (!id) return <span>{tr("없음")}</span>;
   const agent = agentInfo(id);
   return (
     <span className="font-medium" style={{ color: agent.text }}>
@@ -839,7 +855,9 @@ export function ThreadReplies({
           <MessageItem message={root} channel={channel} inlineReplies={false} />
           <div className="h-px bg-line-soft" />
           {replies.length === 0 && (
-            <p className="m-0 text-[13px] text-meta">아직 답글이 없어요.</p>
+            <p className="m-0 text-[13px] text-meta">
+              {tr("아직 답글이 없어요.")}
+            </p>
           )}
           {replies.map((m) => (
             <MessageItem key={m.id} message={m} channel={channel} />

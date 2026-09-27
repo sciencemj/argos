@@ -18,6 +18,7 @@ import {
 import { InboxRow } from "../cards";
 import { CheckButton, useCompleteTask } from "../complete";
 import { dday, fmt, inZone, relativeDue } from "../dates";
+import { t, tr, tt } from "../i18n";
 import { RoutinePanel } from "../routines";
 import { btn, card, DdayBadge } from "../ui";
 
@@ -55,16 +56,16 @@ export function TodayPage() {
               {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
             </div>
             <h1 className="m-0 text-[50px] leading-[1.1] font-light tracking-[-0.02em] text-ink">
-              오늘 챙길 것
+              {tr("오늘 챙길 것")}
             </h1>
           </div>
           <div className="flex gap-2.5">
-            <Stat label="일정" value={events.length} />
-            <Stat label="마감 임박" value={due.length} />
-            <Stat label="수집함" value={today.data?.inbox_count ?? 0} />
+            <Stat label={tr("일정")} value={events.length} />
+            <Stat label={tr("마감 임박")} value={due.length} />
+            <Stat label={tr("수집함")} value={today.data?.inbox_count ?? 0} />
             <Link to="/approvals">
               <Stat
-                label="승인 대기"
+                label={tr("승인 대기")}
                 value={approvals}
                 danger={approvals > 0}
               />
@@ -152,8 +153,8 @@ function untilLabel(start: Date, now: Date): string | null {
   const minutes = Math.round((start.getTime() - now.getTime()) / 60_000);
   if (minutes <= 0 || minutes > 180) return null;
   return minutes < 60
-    ? `${minutes}분 뒤`
-    : `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 뒤`;
+    ? tt`${minutes}분 뒤`
+    : tt`${Math.floor(minutes / 60)}시간 ${minutes % 60}분 뒤`;
 }
 
 function Schedule({ events, now }: { events: CalEvent[]; now: Date }) {
@@ -169,7 +170,7 @@ function Schedule({ events, now }: { events: CalEvent[]; now: Date }) {
   const row = (e: CalEvent) => {
     const start = new Date(e.starts_at ?? 0);
     const past = ended(e);
-    const note = past ? "끝남" : untilLabel(start, now);
+    const note = past ? tr("끝남") : untilLabel(start, now);
     return (
       <div key={e.id} className="grid grid-cols-[50px_minmax(0,1fr)] gap-3">
         <span className="pt-3 font-mono text-[11.5px] text-meta">
@@ -192,11 +193,11 @@ function Schedule({ events, now }: { events: CalEvent[]; now: Date }) {
   };
 
   return (
-    <Panel title="일정" label="오늘 일정">
-      {events.length === 0 && <Empty>오늘은 일정이 없어요.</Empty>}
+    <Panel title={tr("일정")} label={tr("오늘 일정")}>
+      {events.length === 0 && <Empty>{tr("오늘은 일정이 없어요.")}</Empty>}
       {allDay.map((e) => (
         <div key={e.id} className="grid grid-cols-[50px_minmax(0,1fr)] gap-3">
-          <span className="pt-2.5 text-[11.5px] text-meta">종일</span>
+          <span className="pt-2.5 text-[11.5px] text-meta">{tr("종일")}</span>
           <div className="rounded-xl bg-page px-3.5 py-2.5 font-medium text-ink">
             {e.title}
           </div>
@@ -238,11 +239,11 @@ function Deadlines({
 
   return (
     <Panel
-      title="마감 임박"
-      label="마감 임박"
-      aside={config.data ? `${config.data.due_soon_days}일 이내` : undefined}
+      title={tr("마감 임박")}
+      label={tr("마감 임박")}
+      aside={config.data ? tt`${config.data.due_soon_days}일 이내` : undefined}
     >
-      {due.length === 0 && <Empty>가까운 마감이 없어요.</Empty>}
+      {due.length === 0 && <Empty>{tr("가까운 마감이 없어요.")}</Empty>}
       {due.map((t) => (
         <div
           key={t.id}
@@ -258,14 +259,14 @@ function Deadlines({
             <span className="font-medium text-ink">{t.title}</span>
             <span className="text-[12px] text-text-3">
               {byId.get(t.channel_id)?.kind === "personal"
-                ? "내 공간"
+                ? tr("내 공간")
                 : `# ${byId.get(t.channel_id)?.name}`}{" "}
               · {relativeDue(t.due_at ?? "", now)}
             </span>
           </Link>
           <CheckButton
             checked={completion.pending.has(t.id)}
-            label={`${t.title} 완료 처리`}
+            label={tt`${t.title} 완료 처리`}
             onClick={() => completion.complete(t)}
           />
         </div>
@@ -273,13 +274,16 @@ function Deadlines({
       {undated.length > 0 && (
         <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-line px-3.5 py-2.5 text-[12.5px] text-text-3">
           <span className="grow">
-            날짜 없는 할 일 {undated.length}개가 조용히 있어요
+            {t(
+              `날짜 없는 할 일 ${undated.length}개가 조용히 있어요`,
+              `${undated.length} tasks have no due date`,
+            )}
           </span>
           <Link
             to={`/c/${undated[0].channel_id}/kanban?task=${undated[0].id}`}
             className="font-medium underline underline-offset-[3px]"
           >
-            날짜 정하기
+            {tr("날짜 정하기")}
           </Link>
         </div>
       )}
@@ -308,11 +312,11 @@ function Inbox({
 
   return (
     <Panel
-      title="수집함"
-      label="수집함"
-      aside={`정리 안 된 입력 ${items.length}`}
+      title={tr("수집함")}
+      label={tr("수집함")}
+      aside={tt`정리 안 된 입력 ${items.length}`}
     >
-      {items.length === 0 && <Empty>수집함이 비었어요.</Empty>}
+      {items.length === 0 && <Empty>{tr("수집함이 비었어요.")}</Empty>}
       {items.map((i) => (
         <div
           key={i.id}
@@ -331,7 +335,7 @@ function Inbox({
               className={`${btn.ghost} h-8 text-[12.5px]`}
               onClick={() => update.mutate({ id: i.id, status: "dismissed" })}
             >
-              넘기기
+              {tr("넘기기")}
             </button>
           </div>
         </div>
@@ -339,13 +343,18 @@ function Inbox({
       {stale.length > 0 && (
         <div className="flex items-center gap-2 px-1 py-0.5 text-[12px] text-danger">
           <span className="size-1.5 rounded-full bg-danger" />
-          <span className="grow">{stale.length}개는 하루 넘게 방치됨</span>
+          <span className="grow">
+            {t(
+              `${stale.length}개는 하루 넘게 방치됨`,
+              `${stale.length} items have waited over a day`,
+            )}
+          </span>
           {inboxChannel && (
             <Link
               to={`/c/${inboxChannel.id}`}
               className="underline underline-offset-[3px]"
             >
-              전부 보기
+              {tr("전부 보기")}
             </Link>
           )}
         </div>
@@ -376,11 +385,11 @@ function Progress({ channels, tasks }: { channels: Channel[]; tasks: Task[] }) {
 
   return (
     <section
-      aria-label="진행 현황"
+      aria-label={tr("진행 현황")}
       className={`${card} flex flex-col gap-3 px-[22px] py-[18px]`}
     >
       <div className={`${grid} text-[11.5px] font-medium text-meta`}>
-        <span>진행 현황</span>
+        <span>{tr("진행 현황")}</span>
         {STATUSES.map((s) => (
           <span key={s.id}>{s.label}</span>
         ))}
@@ -392,7 +401,7 @@ function Progress({ channels, tasks }: { channels: Channel[]; tasks: Task[] }) {
           className={`${grid} text-[13px]`}
         >
           <span className="truncate text-ink">
-            {c.kind === "personal" ? "내 공간" : `# ${c.name}`}
+            {c.kind === "personal" ? tr("내 공간") : `# ${c.name}`}
           </span>
           {STATUSES.map((s) => {
             const inCell = tasks.filter(

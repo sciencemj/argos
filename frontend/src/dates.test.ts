@@ -32,6 +32,16 @@ describe("dates (Asia/Seoul)", () => {
     expect(relativeDue("2026-09-25T14:59:00Z", now)).toBe("내일 23:59");
   });
 
+  test("relative due text follows English preference", () => {
+    localStorage.setItem("argos-language", "en");
+    try {
+      expect(relativeDue("2026-09-24T14:59:00Z", now)).toBe("Today 23:59");
+      expect(relativeDue("2026-09-25T14:59:00Z", now)).toBe("Tomorrow 23:59");
+    } finally {
+      localStorage.setItem("argos-language", "ko");
+    }
+  });
+
   test("datetime-local input is read as Seoul wall-clock time", () => {
     expect(localInputToIso("2026-09-26T23:59")).toBe(
       "2026-09-26T14:59:00.000Z",

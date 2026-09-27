@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AgentAvatar } from "./agents";
 import { cancelRun, type Job, type Task, useConfig, useStartJob } from "./api";
 import { useOpenThread } from "./feed";
+import { t, tr, tt } from "./i18n";
 import { btn, ErrorText, field, label } from "./ui";
 
 /** Coding agents that can take a job (PLAN Phase 6). */
@@ -35,21 +36,21 @@ function took(job: Job) {
   const minutes = Math.round(
     (Date.parse(job.finished_at) - Date.parse(job.started_at)) / 60000,
   );
-  return minutes >= 1 ? ` · ${minutes}분` : " · 1분 안에";
+  return minutes >= 1 ? tt` · ${minutes}분` : tr(" · 1분 안에");
 }
 
 export function jobText(job: Job): string {
   switch (job.status) {
     case "queued":
-      return "잡 대기 중";
+      return tr("잡 대기 중");
     case "running":
-      return "잡 실행 중";
+      return tr("잡 실행 중");
     case "done":
-      return `잡 완료${took(job)}`;
+      return tt`잡 완료${took(job)}`;
     case "cancelled":
-      return "잡 중단됨";
+      return tr("잡 중단됨");
     default:
-      return `잡 실패${job.error ? ` · ${job.error}` : ""}`;
+      return tt`잡 실패${job.error ? ` · ${job.error}` : ""}`;
   }
 }
 
@@ -111,7 +112,7 @@ export function JobLine({
                 if (job.trigger_message_id) openThread(job.trigger_message_id);
               }}
             >
-              결과 보기
+              {tr("결과 보기")}
             </button>
           ) : (
             <button
@@ -129,7 +130,7 @@ export function JobLine({
                 });
               }}
             >
-              다시 실행
+              {tr("다시 실행")}
             </button>
           )}
           {job.status !== "done" && (
@@ -142,7 +143,7 @@ export function JobLine({
                 onOpen(task.id);
               }}
             >
-              로그
+              {tr("로그")}
             </button>
           )}
         </div>
@@ -166,8 +167,8 @@ export function JobSection({ task }: { task: Task }) {
   const roots = config.data?.job_roots ?? [];
 
   return (
-    <section aria-label="코딩 잡" className="flex flex-col gap-3">
-      <div className={label}>코딩 잡</div>
+    <section aria-label={tr("코딩 잡")} className="flex flex-col gap-3">
+      <div className={label}>{tr("코딩 잡")}</div>
       {job && (
         <div className="flex flex-col gap-2 rounded-xl bg-page p-3.5">
           <div className="flex items-center gap-2 text-[13px]">
@@ -188,7 +189,7 @@ export function JobSection({ task }: { task: Task }) {
                 className="h-[26px] cursor-pointer rounded-full border border-line bg-card px-2.5 text-[11.5px] text-text-2 hover:text-ink"
                 onClick={() => void cancelRun(job.run_id)}
               >
-                중단
+                {tr("중단")}
               </button>
             )}
           </div>
@@ -205,13 +206,16 @@ export function JobSection({ task }: { task: Task }) {
                 job.trigger_message_id && openThread(job.trigger_message_id)
               }
             >
-              스레드에서 보기
+              {tr("스레드에서 보기")}
             </button>
           )}
           {job.log && (
             <details>
               <summary className="cursor-pointer text-[12px] text-text-3">
-                로그 {job.log.split("\n").length}줄
+                {t(
+                  `로그 ${job.log.split("\n").length}줄`,
+                  `Log · ${job.log.split("\n").length} lines`,
+                )}
               </summary>
               <pre className="mt-2 max-h-60 overflow-auto rounded-lg bg-inset p-2.5 font-mono text-[11px] leading-[1.6] whitespace-pre-wrap text-text-2">
                 {job.log}
@@ -234,7 +238,7 @@ export function JobSection({ task }: { task: Task }) {
           }}
         >
           <label className="flex flex-col gap-1">
-            <span className={label}>에이전트</span>
+            <span className={label}>{tr("에이전트")}</span>
             <select
               className={field}
               value={agent}
@@ -248,7 +252,7 @@ export function JobSection({ task }: { task: Task }) {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>맡길 일</span>
+            <span className={label}>{tr("맡길 일")}</span>
             <textarea
               rows={3}
               required
@@ -258,7 +262,9 @@ export function JobSection({ task }: { task: Task }) {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>작업 디렉터리 (비우면 새 폴더)</span>
+            <span className={label}>
+              {tr("작업 디렉터리 (비우면 새 폴더)")}
+            </span>
             <input
               className={`${field} font-mono text-[12.5px]`}
               value={directory}
@@ -267,7 +273,8 @@ export function JobSection({ task }: { task: Task }) {
             />
             {roots.length > 0 && (
               <span className="text-[11.5px] text-meta">
-                허용: {roots.join(", ")}
+                {tr("허용:") + " "}
+                {roots.join(", ")}
               </span>
             )}
           </label>
@@ -278,7 +285,7 @@ export function JobSection({ task }: { task: Task }) {
               className={btn.cta}
               disabled={start.isPending || !instructions.trim()}
             >
-              {job ? "다시 실행" : "잡 시작"}
+              {job ? tr("다시 실행") : tr("잡 시작")}
             </button>
           </div>
         </form>

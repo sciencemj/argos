@@ -36,6 +36,7 @@ import {
   useUpdateTask,
 } from "../api";
 import { dday, localInputToIso } from "../dates";
+import { tr, tt } from "../i18n";
 import { CheckIcon, PlusIcon } from "../icons";
 import { JobLine } from "../jobs";
 import {
@@ -168,8 +169,8 @@ export function KanbanTab() {
       optimistic: applyColumns(tasks.data, final),
     });
     if (status === "done" && before && before.status !== "done") {
-      toast(`완료했어요 · ${before.title}`, {
-        label: "되돌리기",
+      toast(tt`완료했어요 · ${before.title}`, {
+        label: tr("되돌리기"),
         run: () => undo.mutate({ id, status: before.status }),
       });
     }
@@ -188,14 +189,15 @@ export function KanbanTab() {
       <div className="flex items-center gap-1 px-8 pb-3.5">
         <span className="grow" />
         <span className="mr-2.5 text-[12px] text-meta">
-          드래그로 이동 · 순서는 새로고침 후에도 유지
+          {tr("드래그로 이동 · 순서는 새로고침 후에도 유지")}
         </span>
         <button
           type="button"
           className={btn.cta}
           onClick={() => setCreating(true)}
         >
-          <PlusIcon />할 일
+          <PlusIcon />
+          {tr("할 일")}
         </button>
       </div>
       <ErrorText error={move.error} />
@@ -211,8 +213,9 @@ export function KanbanTab() {
         }}
         accessibility={{
           screenReaderInstructions: {
-            draggable:
+            draggable: tr(
               "스페이스로 카드를 들고, 방향키로 옮긴 뒤 스페이스로 내려놓아요. Esc는 취소.",
+            ),
           },
         }}
       >
@@ -290,8 +293,8 @@ function Column({
       {overLimit && (
         <div className="rounded-xl bg-danger-bg px-3 py-2 text-[12px] text-danger">
           {ids.length > (wipLimit ?? 0)
-            ? "WIP 한도를 넘었어요. 하나 끝내고 시작하는 게 어때요?"
-            : "WIP 한도에 닿았어요. 하나 끝내고 시작하는 게 어때요?"}
+            ? tr("WIP 한도를 넘었어요. 하나 끝내고 시작하는 게 어때요?")
+            : tr("WIP 한도에 닿았어요. 하나 끝내고 시작하는 게 어때요?")}
         </div>
       )}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -379,11 +382,11 @@ function CardBody({
           <DdayBadge days={dday(task.due_at)} />
         ) : (
           <span className="rounded-full border border-line-soft px-[9px] py-px text-[11.5px] text-text-3">
-            날짜 없음
+            {tr("날짜 없음")}
           </span>
         )}
         {task.priority !== null && task.priority >= 2 && (
-          <Chip>{task.priority === 3 ? "긴급" : "높음"}</Chip>
+          <Chip>{task.priority === 3 ? tr("긴급") : tr("높음")}</Chip>
         )}
       </div>
     </article>
@@ -424,20 +427,20 @@ function NewTaskDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="할 일 추가">
+    <Dialog open={open} onClose={onClose} title={tr("할 일 추가")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
-          <span className={label}>제목</span>
+          <span className={label}>{tr("제목")}</span>
           <input
             className={field}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="예: 과제2 제출"
+            placeholder={tr("예: 과제2 제출")}
             required
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className={label}>마감 (선택)</span>
+          <span className={label}>{tr("마감 (선택)")}</span>
           <input
             type="datetime-local"
             className={field}
@@ -446,7 +449,7 @@ function NewTaskDialog({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className={label}>상태</span>
+          <span className={label}>{tr("상태")}</span>
           <select
             className={field}
             value={status}
@@ -462,10 +465,10 @@ function NewTaskDialog({
         <ErrorText error={create.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button type="submit" className={btn.cta} disabled={create.isPending}>
-            추가하기
+            {tr("추가하기")}
           </button>
         </div>
       </form>

@@ -108,6 +108,7 @@ class ClassifyContext:
     channel_kind: str | None
     channel_names: list[str]
     personal_channel: str | None = None  # the built-in #일상 channel's current name
+    language: Literal["ko", "en"] = "ko"
 
 
 class ClassifierError(Exception):
@@ -118,7 +119,7 @@ class Classifier(Protocol):
     async def classify(self, text: str, context: ClassifyContext) -> Suggestion: ...
 
 
-def _calendar(local: datetime) -> str:
+def _calendar(local: datetime, language: str = "ko") -> str:
     """Two weeks of dates with Korean labels: small models get relative dates wrong
     ("다음주 수요일"), so the prompt hands them the lookup table instead of arithmetic."""
     today = local.date()
@@ -126,6 +127,10 @@ def _calendar(local: datetime) -> str:
     lines: list[str] = []
     for offset in range(14):
         day = today + timedelta(days=offset)
+        if language == "en":
+            relative = {0: "today", 1: "tomorrow", 2: "day after tomorrow"}.get(offset, "")
+            lines.append(f"- {day:%Y-%m-%d}: {day:%A} {relative}".rstrip())
+            continue
         week = "이번주" if day < this_monday + timedelta(days=7) else "다음주"
         if (day - this_monday).days >= 14:
             week = "다다음주"
@@ -137,6 +142,46 @@ def _calendar(local: datetime) -> str:
 def build_prompt(text: str, ctx: ClassifyContext) -> list[dict[str, str]]:
     local = ctx.now.astimezone(ctx.tz)
     today = f"{local:%Y-%m-%d} ({WEEKDAY_KO[local.weekday()]}) {local:%H:%M} {ctx.tz.key}"
+    if ctx.language == "en":
+        if ctx.channel_kind in ("course", "project", "personal"):
+            channel_rule = (
+                f"The message came from #{ctx.channel_name}. Set channel_hint to "
+                f'"{ctx.channel_name}".'
+            )
+        else:
+            channel_rule = (
+                "Set channel_hint only when a channel is named or clearly implied by the text; "
+                "otherwise use null."
+            )
+            if ctx.personal_channel:
+                channel_rule += (
+                    f' For personal errands or appointments, use "{ctx.personal_channel}".'
+                )
+        system = f"""You classify messages in a personal task and calendar app.
+Reply with exactly one JSON object.
+
+Current time: {local:%Y-%m-%d %A %H:%M} {ctx.tz.key}
+Date reference (weeks start on Monday):
+{_calendar(local, "en")}
+
+Channels: {", ".join(ctx.channel_names) or "(none)"}
+{channel_rule}
+
+type:
+- task: something to do. Set due_at only when a deadline is stated.
+- event: something happening on a date or at a time. Use starts_at and, if known,
+  ends_at; for an all-day event use all_day_date (YYYY-MM-DD).
+- idea: something to try later. Do not invent a date.
+- study_note: a concept or learning note.
+
+Rules:
+- Never invent dates or times absent from the message.
+- Times use ISO 8601 with a timezone offset. A deadline with a date but no time is 23:59.
+- Keep title brief and faithful to the input. summary is one sentence.
+- confidence is 0–1: at least 0.9 when type, date, and channel are clear;
+  at most 0.7 when any must be guessed.
+- Use null for inapplicable fields and [] for missing tags."""
+        return [{"role": "system", "content": system}, {"role": "user", "content": text}]
     if ctx.channel_kind in ("course", "project", "personal"):
         channel_rule = (
             f'입력은 "#{ctx.channel_name}" 채널에서 들어왔다. 이 채널로 이미 정해진 것으로 보고 '
@@ -210,12 +255,17 @@ class OpenAICompatClassifier:
         self._extra: dict[str, Any] = (
             {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
         )
-        self._cache: OrderedDict[tuple[str, str | None, str], Suggestion] = OrderedDict()
+        self._cache: OrderedDict[tuple[str, str | None, str, str], Suggestion] = OrderedDict()
         self._cache_size = cache_size
         self._schema_supported = True
 
     async def classify(self, text: str, context: ClassifyContext) -> Suggestion:
-        key = (text, context.channel_name, f"{context.now.astimezone(context.tz):%Y-%m-%d}")
+        key = (
+            text,
+            context.channel_name,
+            f"{context.now.astimezone(context.tz):%Y-%m-%d}",
+            context.language,
+        )
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
@@ -316,6 +366,7 @@ def build_classifier(settings: Settings) -> Classifier | None:
 
 # Keys in the app_setting table that override the matching Settings fields.
 OVERRIDABLE = (
+    "language",
     "classifier_model",
     "default_agent",
     "job_roots",

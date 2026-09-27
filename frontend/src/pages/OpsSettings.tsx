@@ -20,9 +20,18 @@ import {
   uninstallApp,
   updateStatus,
 } from "../desktop";
+import { t, tr, tt } from "../i18n";
 import { btn, card, Dialog, ErrorText, field, label } from "../ui";
 
-const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
+const WEEKDAYS = [
+  tr("월"),
+  tr("화"),
+  tr("수"),
+  tr("목"),
+  tr("금"),
+  tr("토"),
+  tr("일"),
+];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** Notices and the weekly review (where they go, when). PLAN Phase 11. */
@@ -51,20 +60,21 @@ export function NotifySection() {
 
   return (
     <section
-      aria-label="알림"
+      aria-label={tr("알림")}
       className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        알림
+        {tr("알림")}
       </h2>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        마감 D-3·D-1·지남, 오래 둔 인박스(매일 {data.digest_hour}시 이후 한 번),
-        날짜 없는 할 일을 알려 드려요. 사이드바 "알림"에 모이고, 켜 두면
-        메신저로도 보내요.
+        {t(
+          `마감 3일 전·하루 전·지난 후, 오래 둔 인박스(매일 ${data.digest_hour}시 이후 한 번), 날짜 없는 할 일을 알려 드려요. 사이드바 "알림"에 모이고, 켜 두면 메신저로도 보내요.`,
+          `Get alerts for tasks due in three days or tomorrow, overdue tasks, older Inbox items (once daily after ${data.digest_hour}:00), and tasks without due dates. They appear under Notifications and can also be sent through your messenger.`,
+        )}
       </p>
       <div className="flex flex-col gap-1">
         <label htmlFor="notify-target" className={label}>
-          메신저로 보내기 (Hermes)
+          {tr("메신저로 보내기 (Hermes)")}
         </label>
         {data.hermes_available ? (
           <div className="flex items-center gap-2">
@@ -77,7 +87,7 @@ export function NotifySection() {
                 change({ hermes_target: e.target.value || null })
               }
             >
-              <option value="">보내지 않음 (앱 안에서만)</option>
+              <option value="">{tr("보내지 않음 (앱 안에서만)")}</option>
               {targets.data?.map((t) => (
                 <option key={t.target} value={t.target}>
                   {t.label}
@@ -96,30 +106,32 @@ export function NotifySection() {
               }
             >
               {test.isPending
-                ? "보내는 중…"
+                ? tr("보내는 중…")
                 : test.isSuccess
-                  ? "보냈어요"
-                  : "테스트"}
+                  ? tr("보냈어요")
+                  : tr("테스트")}
             </button>
           </div>
         ) : (
           <span className="text-[12.5px] text-text-3">
-            Hermes가 설치되어 있지 않아 앱 안에서만 알려요.
+            {tr("Hermes가 설치되어 있지 않아 앱 안에서만 알려요.")}
           </span>
         )}
         {targets.isLoading && data.hermes_available && (
           <span className="text-[11.5px] text-meta">
-            Hermes에 연결된 채널을 불러오는 중…
+            {tr("Hermes에 연결된 채널을 불러오는 중…")}
           </span>
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <span className={label}>브라우저 알림 (창이 뒤에 있을 때)</span>
+        <span className={label}>{tr("브라우저 알림 (창이 뒤에 있을 때)")}</span>
         {permission === "granted" ? (
-          <span className="text-[12.5px] text-text-3">켜져 있어요.</span>
+          <span className="text-[12.5px] text-text-3">
+            {tr("켜져 있어요.")}
+          </span>
         ) : permission === "unsupported" ? (
           <span className="text-[12.5px] text-text-3">
-            이 브라우저는 알림을 지원하지 않아요.
+            {tr("이 브라우저는 알림을 지원하지 않아요.")}
           </span>
         ) : (
           <div>
@@ -132,18 +144,18 @@ export function NotifySection() {
               }
             >
               {permission === "denied"
-                ? "브라우저 설정에서 막혀 있어요"
-                : "브라우저 알림 켜기"}
+                ? tr("브라우저 설정에서 막혀 있어요")
+                : tr("브라우저 알림 켜기")}
             </button>
           </div>
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <span className={label}>주간 리뷰 (리뷰 화면에 표시)</span>
+        <span className={label}>{tr("주간 리뷰 (리뷰 화면에 표시)")}</span>
         <div className="flex items-center gap-2 text-[13.5px] text-text">
-          매주
+          {tr("매주") + " "}
           <select
-            aria-label="리뷰 요일"
+            aria-label={tr("리뷰 요일")}
             className={`${field} w-20`}
             value={data.weekly_review_weekday}
             onChange={(e) =>
@@ -152,12 +164,13 @@ export function NotifySection() {
           >
             {WEEKDAYS.map((d, i) => (
               <option key={d} value={i}>
-                {d}요일
+                {d}
+                {tr("요일")}
               </option>
             ))}
           </select>
           <select
-            aria-label="리뷰 시각"
+            aria-label={tr("리뷰 시각")}
             className={`${field} w-20`}
             value={data.weekly_review_hour}
             onChange={(e) =>
@@ -166,7 +179,8 @@ export function NotifySection() {
           >
             {HOURS.map((h) => (
               <option key={h} value={h}>
-                {h}시
+                {h}
+                {tr("시")}
               </option>
             ))}
           </select>
@@ -198,16 +212,16 @@ export function OpsSection() {
 
   return (
     <section
-      aria-label="운영"
+      aria-label={tr("운영")}
       className={`${card} flex w-full flex-col gap-4 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        백업과 자동 실행
+        {tr("백업과 자동 실행")}
       </h2>
       <div className="flex flex-col gap-2 rounded-2xl border border-line-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="grow text-[13.5px] text-ink">
-            데이터베이스 백업 (매일)
+            {tr("데이터베이스 백업 (매일)")}
           </span>
           <button
             type="button"
@@ -215,16 +229,16 @@ export function OpsSection() {
             disabled={backup.isPending}
             onClick={() => backup.mutate(undefined)}
           >
-            지금 백업
+            {tr("지금 백업")}
           </button>
         </div>
         <span className="text-[12px] text-text-3">
           {data.backup_last
-            ? `마지막 ${fmt(data.backup_last, "M/d HH:mm")} · ${data.backup_count}개 보관 중`
-            : "아직 백업이 없어요"}{" "}
-          · 최근
+            ? tt`마지막 ${fmt(data.backup_last, "M/d HH:mm")} · ${data.backup_count}개 보관 중`
+            : tr("아직 백업이 없어요")}{" "}
+          {tr("· 최근") + " "}
           <input
-            aria-label="보관 개수"
+            aria-label={tr("보관 개수")}
             type="number"
             min={1}
             max={365}
@@ -235,7 +249,7 @@ export function OpsSection() {
             }}
             className="mx-1 w-12 border-0 border-b border-line bg-transparent text-center font-mono text-[12px] text-text outline-none"
           />
-          개 보관
+          {tr("개 보관")}
         </span>
         <span className="font-mono text-[11px] break-all text-meta">
           {data.backup_dir}
@@ -248,33 +262,38 @@ export function OpsSection() {
         <div className="flex items-center gap-2">
           <span className="grow text-[13.5px] text-ink">
             {service.desktop
-              ? "로그인할 때 Argos 앱 열기"
-              : "로그인할 때 Argos 자동 실행"}
+              ? tr("로그인할 때 Argos 앱 열기")
+              : tr("로그인할 때 Argos 자동 실행")}
           </span>
           <span className="text-[12px] text-text-3">
             {!service.supported
-              ? "macOS 전용"
+              ? tr("macOS 전용")
               : service.installed
                 ? service.desktop
-                  ? "켜짐"
+                  ? tr("켜짐")
                   : service.running
-                    ? "등록됨 · 실행 중"
-                    : "등록됨 · 다음 로그인부터"
-                : "꺼짐"}
+                    ? tr("등록됨 · 실행 중")
+                    : tr("등록됨 · 다음 로그인부터")
+                : tr("꺼짐")}
           </span>
         </div>
         {service.desktop ? (
           <p className="m-0 text-[12px] leading-relaxed text-text-3">
-            로그인하면 Argos 앱이 메뉴 막대에서 조용히 켜져요. 창을 닫아도
-            서버는 계속 돌아서 아이패드 접속·동기화·알림이 이어져요. 끄려면 메뉴
-            막대 아이콘의 "Argos 종료". 기록은 <code>{service.log}</code>.
+            {tr(
+              '로그인하면 Argos 앱이 메뉴 막대에서 조용히 켜져요. 창을 닫아도 서버는 계속 돌아서 아이패드 접속·동기화·알림이 이어져요. 끄려면 메뉴 막대 아이콘의 "Argos 종료". 기록은',
+            ) + " "}
+            <code>{service.log}</code>.
           </p>
         ) : (
           <p className="m-0 text-[12px] leading-relaxed text-text-3">
-            macOS의 launchd에 등록해 로그인하면 서버와 화면(make dev)을 켜고,
-            꺼지면 다시 켜요. 설정 파일은 <code>{service.plist}</code>, 기록은{" "}
-            <code>{service.log}</code>. 터미널에서 이미 켜 둔 Argos가 있으면
-            그걸 끈 뒤 "지금 시작"을 누르세요.
+            {tr(
+              "macOS의 launchd에 등록해 로그인하면 서버와 화면(make dev)을 켜고, 꺼지면 다시 켜요. 설정 파일은",
+            ) + " "}
+            <code>{service.plist}</code>
+            {tr(", 기록은")} <code>{service.log}</code>
+            {tr(
+              '. 터미널에서 이미 켜 둔 Argos가 있으면 그걸 끈 뒤 "지금 시작"을 누르세요.',
+            )}
           </p>
         )}
         {service.problem && (
@@ -291,7 +310,7 @@ export function OpsSection() {
                     disabled={install.isPending}
                     onClick={() => install.mutate(true)}
                   >
-                    지금 시작
+                    {tr("지금 시작")}
                   </button>
                 )}
                 <button
@@ -301,12 +320,14 @@ export function OpsSection() {
                   onClick={() =>
                     (service.desktop ||
                       confirm(
-                        "자동 실행을 끌까요? 지금 launchd로 실행 중이면 멈춰요.",
+                        tr(
+                          "자동 실행을 끌까요? 지금 launchd로 실행 중이면 멈춰요.",
+                        ),
                       )) &&
                     uninstall.mutate(undefined)
                   }
                 >
-                  자동 실행 끄기
+                  {tr("자동 실행 끄기")}
                 </button>
               </>
             ) : (
@@ -316,7 +337,7 @@ export function OpsSection() {
                 disabled={install.isPending}
                 onClick={() => install.mutate(false)}
               >
-                자동 실행 켜기
+                {tr("자동 실행 켜기")}
               </button>
             )}
           </div>
@@ -342,29 +363,29 @@ export function AppUpdateSection() {
   if (!inDesktopApp() || !state) return null;
 
   const status = state.checking
-    ? "확인하는 중…"
+    ? tr("확인하는 중…")
     : state.ready
-      ? `${state.available} 설치됨 · 다시 시작하면 적용돼요`
+      ? tt`${state.available} 설치됨 · 다시 시작하면 적용돼요`
       : state.available
-        ? `${state.available} 받는 중…`
+        ? tt`${state.available} 받는 중…`
         : state.error
           ? state.error
           : state.checked_at
-            ? `최신 버전이에요 · ${fmt(new Date(state.checked_at * 1000), "M/d HH:mm")} 확인`
-            : "곧 확인해요";
+            ? tt`최신 버전이에요 · ${fmt(new Date(state.checked_at * 1000), "M/d HH:mm")} 확인`
+            : tr("곧 확인해요");
 
   return (
     <section
-      aria-label="앱 업데이트"
+      aria-label={tr("앱 업데이트")}
       className={`${card} flex w-full flex-col gap-3 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        앱 업데이트
+        {tr("앱 업데이트")}
       </h2>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        새 버전이 나오면 알아서 받아 설치해 두고, 다음에 다시 시작할 때
-        적용해요(6시간마다 확인). 데이터는 그대로이고, 업데이트 전에 DB를
-        백업해요.
+        {tr(
+          "새 버전이 나오면 알아서 받아 설치해 두고, 다음에 다시 시작할 때 적용해요(6시간마다 확인). 데이터는 그대로이고, 업데이트 전에 DB를 백업해요.",
+        )}
       </p>
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line-soft px-4 py-3">
         <span className="font-mono text-[13px] text-ink">v{state.current}</span>
@@ -379,7 +400,7 @@ export function AppUpdateSection() {
             className={btn.cta}
             onClick={() => void restartToUpdate()}
           >
-            다시 시작해 업데이트
+            {tr("다시 시작해 업데이트")}
           </button>
         ) : (
           <button
@@ -391,7 +412,7 @@ export function AppUpdateSection() {
               void checkUpdate()?.then((s) => s && setState(s));
             }}
           >
-            지금 확인
+            {tr("지금 확인")}
           </button>
         )}
       </div>
@@ -417,15 +438,16 @@ export function UninstallSection() {
 
   return (
     <section
-      aria-label="Argos 삭제"
+      aria-label={tr("Argos 삭제")}
       className={`${card} flex w-full flex-col gap-3 p-6`}
     >
       <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        Argos 삭제
+        {tr("Argos 삭제")}
       </h2>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        앱만 휴지통에 버리면 에이전트에 등록한 MCP·스킬, 로그인 시 자동 실행,
-        키체인 암호가 남아요. 여기서 지우면 그것까지 한 번에 정리해요.
+        {tr(
+          "앱만 휴지통에 버리면 에이전트에 등록한 MCP·스킬, 로그인 시 자동 실행, 키체인 암호가 남아요. 여기서 지우면 그것까지 한 번에 정리해요.",
+        )}
       </p>
       <div>
         <button
@@ -433,19 +455,23 @@ export function UninstallSection() {
           className={btn.danger}
           onClick={() => setOpen(true)}
         >
-          Argos 완전 삭제…
+          {tr("Argos 완전 삭제…")}
         </button>
       </div>
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title="Argos 완전 삭제"
+        title={tr("Argos 완전 삭제")}
       >
         <div className="flex flex-col gap-4 text-[13.5px] leading-relaxed text-text">
           <ul className="m-0 flex flex-col gap-1 pl-5 text-text-3">
-            <li>Claude Code·Codex·Hermes에서 Argos MCP와 argos 스킬 제거</li>
-            <li>로그인 시 자동 실행 해제, 키체인의 iCloud 앱 암호 삭제</li>
-            <li>앱과 캐시를 휴지통으로 옮기고 종료</li>
+            <li>
+              {tr("Claude Code·Codex·Hermes에서 Argos MCP와 argos 스킬 제거")}
+            </li>
+            <li>
+              {tr("로그인 시 자동 실행 해제, 키체인의 iCloud 앱 암호 삭제")}
+            </li>
+            <li>{tr("앱과 캐시를 휴지통으로 옮기고 종료")}</li>
           </ul>
           <label className="flex items-start gap-2">
             <input
@@ -455,19 +481,20 @@ export function UninstallSection() {
               className="mt-1 accent-[var(--ink)]"
             />
             <span>
-              내 데이터도 휴지통으로 (일정·할 일·메모·대화·백업)
+              {tr("내 데이터도 휴지통으로 (일정·할 일·메모·대화·백업)") + " "}
               <span className="block text-[12px] text-meta">
-                끄면 다시 설치했을 때 그대로 이어 쓸 수 있어요.
+                {tr("끄면 다시 설치했을 때 그대로 이어 쓸 수 있어요.")}
               </span>
             </span>
           </label>
           <p className="m-0 text-[12px] text-meta">
-            휴지통을 비우기 전까지는 되돌릴 수 있어요.
+            {tr("휴지통을 비우기 전까지는 되돌릴 수 있어요.")}
           </p>
           <ErrorText error={prepare.error} />
           {failed && (
             <p className="m-0 text-[12px] whitespace-pre-wrap text-danger">
-              일부를 옮기지 못했어요: {failed}
+              {tr("일부를 옮기지 못했어요:") + " "}
+              {failed}
             </p>
           )}
           <div className="flex justify-end gap-2">
@@ -476,7 +503,7 @@ export function UninstallSection() {
               className={btn.ghost}
               onClick={() => setOpen(false)}
             >
-              취소
+              {tr("취소")}
             </button>
             <button
               type="button"
@@ -484,7 +511,7 @@ export function UninstallSection() {
               disabled={prepare.isPending}
               onClick={run}
             >
-              {prepare.isPending ? "정리하는 중…" : "삭제"}
+              {prepare.isPending ? tr("정리하는 중…") : tr("삭제")}
             </button>
           </div>
         </div>

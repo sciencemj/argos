@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
+import { language, t, tr } from "./i18n";
 
 type Schemas = components["schemas"];
 export type Area = Schemas["AreaOut"];
@@ -27,23 +28,58 @@ export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
-  { id: "backlog", label: "백로그" },
-  { id: "todo", label: "할 일" },
-  { id: "in_progress", label: "진행 중" },
-  { id: "review", label: "검토" },
-  { id: "done", label: "완료" },
+  { id: "backlog", label: tr("백로그") },
+  { id: "todo", label: tr("할 일") },
+  { id: "in_progress", label: tr("진행 중") },
+  { id: "review", label: tr("검토") },
+  { id: "done", label: tr("완료") },
 ];
 
 export const client = createClient<paths>({
   baseUrl: globalThis.location?.origin,
 });
 
+function errorText(message: string): string {
+  if (language() === "ko") return message;
+  const translated = t(message);
+  if (translated !== message) return translated;
+  const replacements: [RegExp, string][] = [
+    [
+      /^애플 ID나 앱 전용 암호가 맞지 않아요$/,
+      "Check your Apple ID and app-specific password.",
+    ],
+    [/^iCloud에 연결하지 못했어요/, "Could not connect to iCloud."],
+    [/^iCloud가 요청을 거절했어요/, "iCloud rejected the request."],
+    [
+      /^설정에서 옵시디언 볼트를 먼저 지정해 주세요$/,
+      "Choose an Obsidian vault in Settings first.",
+    ],
+    [/^볼트 폴더를 찾을 수 없어요: /, "Vault folder not found: "],
+    [
+      /^볼트에 '(.+)' 폴더가 없어요$/,
+      "Folder '$1' does not exist in the vault.",
+    ],
+    [/^없는 에이전트예요: /, "Agent not found: "],
+    [/^없는 채널이에요: /, "Channel not found: "],
+    [/^폴더를 찾을 수 없어요: /, "Folder not found: "],
+    [
+      /^분류 모델이 설정되지 않았어요/,
+      "No classification model is configured.",
+    ],
+    [/^백업하지 못했어요: /, "Backup failed: "],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    if (pattern.test(message)) return message.replace(pattern, replacement);
+  }
+  return message;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
 
   constructor(status: number, code: string, message: string) {
-    super(message);
+    super(errorText(message));
     this.status = status;
     this.code = code;
   }

@@ -464,6 +464,10 @@ class AgentSettingsIn(BaseModel):
     default_agent: str = Field(min_length=1, max_length=40)
 
 
+class LanguageIn(BaseModel):
+    language: Literal["ko", "en"]
+
+
 class JobSettingsIn(BaseModel):
     """Folders coding jobs may write in; the first one gets jobs without --dir."""
 
@@ -1176,6 +1180,19 @@ async def cancel_run(request: Request, run_id: str) -> dict[str, bool]:
 @router.get("/settings/agents")
 async def get_agent_settings(config: Config) -> AgentSettingsIn:
     return AgentSettingsIn(default_agent=config.default_agent)
+
+
+@router.put("/settings/language")
+async def put_language(request: Request, session: Session, body: LanguageIn) -> LanguageIn:
+    if request.app.state.settings.language == body.language:
+        return body
+    await services.set_setting(session, "language", body.language, USER)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    request.app.state.runner.settings = request.app.state.settings
+    return body
 
 
 @router.put("/settings/agents")

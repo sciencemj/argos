@@ -27,6 +27,23 @@ CONTEXT = ClassifyContext(
     channel_kind="course",
     channel_names=["컴퓨터구조", "운영체제"],
 )
+
+
+def test_english_classifier_prompt() -> None:
+    english = ClassifyContext(
+        now=CONTEXT.now,
+        tz=CONTEXT.tz,
+        channel_name="Computer Architecture",
+        channel_kind="course",
+        channel_names=["Computer Architecture"],
+        language="en",
+    )
+    system = build_prompt("Submit assignment tomorrow", english)[0]["content"]
+    assert "Reply with exactly one JSON object" in system
+    assert "tomorrow" in system
+    assert 'channel_hint to "Computer Architecture"' in system
+
+
 ANSWER: dict[str, Any] = {
     "type": "task",
     "title": "과제2 제출",

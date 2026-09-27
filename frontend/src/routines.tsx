@@ -7,15 +7,24 @@ import {
   useRoutines,
   useUpdateRoutine,
 } from "./api";
+import { t, tr, tt } from "./i18n";
 import { CheckIcon, PlusIcon, SettingsIcon } from "./icons";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
-const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+const DAYS = [
+  tr("월"),
+  tr("화"),
+  tr("수"),
+  tr("목"),
+  tr("금"),
+  tr("토"),
+  tr("일"),
+];
 
 export function weekdaysLabel(weekdays: string): string {
-  if (weekdays === "0123456") return "매일";
-  if (weekdays === "01234") return "평일";
-  if (weekdays === "56") return "주말";
+  if (weekdays === "0123456") return tr("매일");
+  if (weekdays === "01234") return tr("평일");
+  if (weekdays === "56") return tr("주말");
   return [...weekdays].map((d) => DAYS[Number(d)]).join("·");
 }
 
@@ -42,12 +51,12 @@ export function RoutinePanel() {
 
   return (
     <section
-      aria-label="오늘의 루틴"
+      aria-label={tr("오늘의 루틴")}
       className={`${card} flex flex-col gap-3 px-[22px] py-[18px]`}
     >
       <div className="flex items-baseline gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
-          오늘의 루틴
+          {tr("오늘의 루틴")}
         </h2>
         {today.length > 0 && (
           <span className="font-mono text-[12px] text-meta">
@@ -99,12 +108,12 @@ export function RoutinePanel() {
             </label>
             {r.streak > 0 && (
               <span className="font-mono text-[11.5px] whitespace-nowrap text-text-3">
-                {r.streak}일 연속
+                {t(`${r.streak}일 연속`, `${r.streak}-day streak`)}
               </span>
             )}
             <button
               type="button"
-              aria-label={`${r.title} 편집`}
+              aria-label={tt`${r.title} 편집`}
               className={`${btn.icon} opacity-0 group-focus-within:opacity-100 group-hover:opacity-100`}
               onClick={() => setEditing(r)}
             >
@@ -116,12 +125,13 @@ export function RoutinePanel() {
 
       {data && data.routines.length === 0 && (
         <p className="m-0 text-[13px] text-meta">
-          매일 챙길 일을 적어 두면 여기서 체크하고 연속 기록이 쌓여요.
+          {tr("매일 챙길 일을 적어 두면 여기서 체크하고 연속 기록이 쌓여요.")}
         </p>
       )}
       {resting.length > 0 && (
         <p className="m-0 text-[12px] text-meta">
-          오늘 쉬는 루틴: {resting.map((r) => r.title).join(", ")}
+          {tr("오늘 쉬는 루틴:") + " "}
+          {resting.map((r) => r.title).join(", ")}
         </p>
       )}
 
@@ -130,13 +140,13 @@ export function RoutinePanel() {
           <PlusIcon size={14} />
         </span>
         <label htmlFor="new-routine" className="sr-only">
-          루틴 추가
+          {tr("루틴 추가")}
         </label>
         <input
           id="new-routine"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="루틴 추가 (매일)"
+          placeholder={tr("루틴 추가 (매일)")}
           className={`${field} h-9 text-[13.5px]`}
         />
       </form>
@@ -181,10 +191,10 @@ function RoutineDialog({
   };
 
   return (
-    <Dialog open={routine !== null} onClose={onClose} title="루틴 편집">
+    <Dialog open={routine !== null} onClose={onClose} title={tr("루틴 편집")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
-          <span className={label}>이름</span>
+          <span className={label}>{tr("이름")}</span>
           <input
             className={field}
             value={title}
@@ -194,7 +204,8 @@ function RoutineDialog({
         </label>
         <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
           <legend className={`${label} mb-2`}>
-            반복 요일 · {weekdaysLabel(days || "0")}
+            {tr("반복 요일 ·") + " "}
+            {weekdaysLabel(days || "0")}
           </legend>
           <div className="flex gap-1.5">
             {DAYS.map((name, i) => {
@@ -221,22 +232,22 @@ function RoutineDialog({
             className={btn.danger}
             onClick={() =>
               routine &&
-              confirm(`"${routine.title}" 루틴과 체크 기록을 삭제할까요?`) &&
+              confirm(tt`"${routine.title}" 루틴과 체크 기록을 삭제할까요?`) &&
               remove.mutate(routine.id, { onSuccess: onClose })
             }
           >
-            삭제
+            {tr("삭제")}
           </button>
           <span className="grow" />
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button
             type="submit"
             className={btn.cta}
             disabled={update.isPending || !days}
           >
-            저장
+            {tr("저장")}
           </button>
         </div>
       </form>

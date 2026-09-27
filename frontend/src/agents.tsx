@@ -1,5 +1,6 @@
-/** Agent identity colours (Tokens: only agents get their own low-chroma hue). Unknown
+import { tr } from "./i18n"; /** Agent identity colours (Tokens: only agents get their own low-chroma hue). Unknown
  * or custom agents fall back to the neutral ink step. */
+
 const KNOWN: Record<
   string,
   { name: string; initials: string; bg: string; text: string }
@@ -23,7 +24,7 @@ const KNOWN: Record<
     text: "var(--codex-text)",
   },
   local: {
-    name: "로컬 모델",
+    name: tr("로컬 모델"),
     initials: "L",
     bg: "var(--step-4)",
     text: "var(--text-2)",
@@ -60,7 +61,7 @@ export function agentInfo(id: string | null | undefined): Info {
   return (
     KNOWN[key] ??
     custom.get(key) ?? {
-      name: key || "에이전트",
+      name: key || tr("에이전트"),
       initials: (key || "?").slice(0, 2).toUpperCase(),
       bg: "var(--step-4)",
       text: "var(--text-2)",

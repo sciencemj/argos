@@ -278,6 +278,7 @@ async def classify_item(
             channel_kind=channel.kind if channel else None,
             channel_names=list(names.all()),
             personal_channel=personal.name if personal else None,
+            language=settings.language,
         )
         try:
             suggestion = await classifier.classify(item.raw_text, context)

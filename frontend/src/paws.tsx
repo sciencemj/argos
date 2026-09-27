@@ -1,5 +1,6 @@
-/** Waiting indicator (backlog: "채팅 대기 아이콘"): a dog's paw prints stepping forward
+import { tr } from "./i18n"; /** Waiting indicator (backlog: "채팅 대기 아이콘"): a dog's paw prints stepping forward
  * one after another, left and right, then fading — Argos, the dog, on its way. */
+
 function Paw({ index }: { index: number }) {
   const up = index % 2 === 0;
   return (
@@ -30,7 +31,7 @@ export function PawTrail({ label }: { label?: string }) {
       <span
         className="inline-flex items-center gap-[3px] text-ink"
         role="img"
-        aria-label="기다리는 중"
+        aria-label={tr("기다리는 중")}
       >
         {[0, 1, 2, 3].map((i) => (
           <Paw key={i} index={i} />

@@ -1,5 +1,6 @@
 import { useMaterials, vaultFileUrl } from "../api";
 import { fmt } from "../dates";
+import { tr } from "../i18n";
 import { card, ErrorText } from "../ui";
 import { useChannel } from "./ChannelPage";
 import { NoFolder } from "./NotesTab";
@@ -26,13 +27,13 @@ export function MaterialsTab() {
         <div
           className={`${card} px-6 py-8 text-center text-[13.5px] text-text-3`}
         >
-          이 폴더에 자료 파일(PDF, 슬라이드 등)이 없어요.
+          {tr("이 폴더에 자료 파일(PDF, 슬라이드 등)이 없어요.")}
         </div>
       )}
       {[...groups].map(([folder, files]) => (
         <section
           key={folder || "."}
-          aria-label={folder || "폴더"}
+          aria-label={folder || tr("폴더")}
           className={`${card} flex flex-col p-3`}
         >
           {folder && (

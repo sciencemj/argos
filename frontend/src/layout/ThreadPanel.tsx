@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router";
 import { useThread } from "../api";
 import { ThreadReplies } from "../feed";
+import { tr, tt } from "../i18n";
 import { CloseIcon } from "../icons";
 import { btn } from "../ui";
 
@@ -30,15 +31,15 @@ export function ThreadPanel({
 
   return (
     <aside
-      aria-label="스레드"
+      aria-label={tr("스레드")}
       className={`flex min-h-0 flex-col ${wide ? "grow bg-page" : "border-l border-line-soft bg-sidebar"}`}
     >
       <div
         className={`flex h-16 items-center gap-2.5 ${wide ? "px-8" : "px-5"}`}
       >
         <span className="grow text-[12.5px] text-meta">
-          스레드
-          {thread.data ? ` · 답글 ${thread.data.replies.length}` : ""}
+          {tr("스레드") + " "}
+          {thread.data ? tt` · 답글 ${thread.data.replies.length}` : ""}
         </span>
         <button
           type="button"
@@ -46,11 +47,11 @@ export function ThreadPanel({
           onClick={toggleWide}
           aria-pressed={wide}
         >
-          {wide ? "옆으로 좁히기" : "넓게 보기"}
+          {wide ? tr("옆으로 좁히기") : tr("넓게 보기")}
         </button>
         <button
           type="button"
-          aria-label="닫기"
+          aria-label={tr("닫기")}
           className={btn.icon}
           onClick={close}
         >
@@ -59,7 +60,7 @@ export function ThreadPanel({
       </div>
       {thread.isError && (
         <p className="px-5 text-[13px] text-text-3">
-          이 메시지를 찾을 수 없어요.
+          {tr("이 메시지를 찾을 수 없어요.")}
         </p>
       )}
       {thread.data && (

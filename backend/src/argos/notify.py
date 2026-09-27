@@ -60,7 +60,7 @@ def _local_date(value: datetime, tz: ZoneInfo) -> date:
 
 
 async def deadline_candidates(
-    session: AsyncSession, now: datetime, tz: ZoneInfo
+    session: AsyncSession, now: datetime, tz: ZoneInfo, language: str = "ko"
 ) -> list[Candidate]:
     """D-3, D-1 (today or tomorrow) and passed deadlines of open tasks."""
     today = now.astimezone(tz).date()
@@ -81,19 +81,27 @@ async def deadline_candidates(
         where = f"#{names.get(task.channel_id, '?')}"
         days = (_local_date(task.due_at, tz) - today).days
         if task.due_at <= now:
-            key, kind, title = f"overdue:{task.id}:{stamp}", "overdue", f"마감 지남 · {task.title}"
+            title = f"Overdue · {task.title}" if language == "en" else f"마감 지남 · {task.title}"
+            key, kind = f"overdue:{task.id}:{stamp}", "overdue"
         elif days <= 1:
-            label = "오늘" if days == 0 else "내일"
+            label = (
+                ("Today" if days == 0 else "Tomorrow")
+                if language == "en"
+                else ("오늘" if days == 0 else "내일")
+            )
             key, kind, title = (
                 f"due:{task.id}:D-1:{stamp}",
                 "due_soon",
-                f"{label} 마감 · {task.title}",
+                f"{label} due · {task.title}"
+                if language == "en"
+                else f"{label} 마감 · {task.title}",
             )
         elif days <= 3:
             key, kind, title = f"due:{task.id}:D-3:{stamp}", "due_soon", f"D-{days} · {task.title}"
         else:
             continue
-        body = f"{where} · {when:%m/%d} ({WEEKDAY_KO[when.weekday()]}) {when:%H:%M}"
+        weekday = when.strftime("%a") if language == "en" else WEEKDAY_KO[when.weekday()]
+        body = f"{where} · {when:%m/%d} ({weekday}) {when:%H:%M}"
         found.append(Candidate(key, kind, title, body, "task", task.id, task.channel_id))
     return found
 
@@ -118,11 +126,16 @@ async def roundup_candidates(
     ).all()
     if stale:
         sample = " / ".join(i.raw_text.strip()[:30] for i in stale[:3])
+        stale_title = (
+            f"{len(stale)} Inbox items have waited over {settings.inbox_stale_hours} hours"
+            if settings.language == "en"
+            else f"인박스에 {settings.inbox_stale_hours}시간 넘게 정리 안 된 항목 {len(stale)}개"
+        )
         found.append(
             Candidate(
                 f"inbox:{day}",
                 "inbox_stale",
-                f"인박스에 {settings.inbox_stale_hours}시간 넘게 정리 안 된 항목 {len(stale)}개",
+                stale_title,
                 sample,
                 "inbox",
             )
@@ -142,7 +155,9 @@ async def roundup_candidates(
             Candidate(
                 f"undated:{day}",
                 "undated",
-                f"날짜 없는 할 일 {len(undated)}개 · 마감을 정하면 놓치지 않아요",
+                f"{len(undated)} tasks have no due date · Set one so they don't slip by"
+                if settings.language == "en"
+                else f"날짜 없는 할 일 {len(undated)}개 · 마감을 정하면 놓치지 않아요",
                 sample,
                 "task",
             )
@@ -192,7 +207,11 @@ async def hermes_send(settings: Settings, target: str, text: str) -> str | None:
     error message, or None when it went out."""
     binary = shutil.which(settings.hermes_bin)
     if binary is None:
-        return f"{settings.hermes_bin} 명령을 찾을 수 없어요"
+        return (
+            f"{settings.hermes_bin} command not found"
+            if settings.language == "en"
+            else f"{settings.hermes_bin} 명령을 찾을 수 없어요"
+        )
     try:
         process = await asyncio.create_subprocess_exec(
             binary, "send", "--to", target, "--quiet", "--subject", "[Argos]", text,
@@ -201,12 +220,21 @@ async def hermes_send(settings: Settings, target: str, text: str) -> str | None:
         )  # fmt: skip
         _, err = await asyncio.wait_for(process.communicate(), 60)
     except TimeoutError:
-        return "Hermes 전송이 시간 안에 끝나지 않았어요"
+        return (
+            "Hermes delivery timed out"
+            if settings.language == "en"
+            else "Hermes 전송이 시간 안에 끝나지 않았어요"
+        )
     except OSError as exc:
-        return f"Hermes를 실행하지 못했어요 ({type(exc).__name__})"
+        return (
+            f"Could not start Hermes ({type(exc).__name__})"
+            if settings.language == "en"
+            else f"Hermes를 실행하지 못했어요 ({type(exc).__name__})"
+        )
     if process.returncode != 0:
         detail = err.decode(errors="replace").strip().splitlines()[-1:] or [""]
-        return f"Hermes 전송 실패 ({process.returncode}): {detail[0][:200]}"
+        prefix = "Hermes delivery failed" if settings.language == "en" else "Hermes 전송 실패"
+        return f"{prefix} ({process.returncode}): {detail[0][:200]}"
     return None
 
 
@@ -227,7 +255,8 @@ async def hermes_targets(settings: Settings) -> list[dict[str, str]]:
         return []
     targets: list[dict[str, str]] = []
     for platform, entries in cast(dict[str, Any], data.get("platforms") or {}).items():
-        targets.append({"target": platform, "label": f"{platform} · 기본 채널"})
+        label = "default channel" if settings.language == "en" else "기본 채널"
+        targets.append({"target": platform, "label": f"{platform} · {label}"})
         for entry in cast(list[dict[str, Any]], entries or []):
             if entry.get("type") != "channel" or not entry.get("id"):
                 continue
@@ -355,16 +384,33 @@ async def weekly_review(
     done_tasks: Sequence[Task] = []
     if done_ids:
         done_tasks = (await session.scalars(select(Task).where(Task.id.in_(done_ids)))).all()
-    lines = [f"# 주간 리뷰 · {start_day:%m/%d} – {now.astimezone(tz):%m/%d}", ""]
-    lines.append(f"## 이번 주 끝낸 일 {len(done_tasks)}개")
+    en = settings.language == "en"
+    heading = "Weekly Review" if en else "주간 리뷰"
+    lines = [f"# {heading} · {start_day:%m/%d} – {now.astimezone(tz):%m/%d}", ""]
+    lines.append(
+        f"## Completed this week · {len(done_tasks)} tasks"
+        if en
+        else f"## 이번 주 끝낸 일 {len(done_tasks)}개"
+    )
     by_channel: dict[str, list[str]] = defaultdict(list)
     for task in done_tasks:
         by_channel[names.get(task.channel_id, "?")].append(task.title)
     if not done_tasks:
-        lines.append("- 아직 없어요. 다음 주엔 작은 것부터 하나씩!")
+        lines.append(
+            "- Nothing yet. Start with one small task next week."
+            if en
+            else "- 아직 없어요. 다음 주엔 작은 것부터 하나씩!"
+        )
     for channel, titles in sorted(by_channel.items(), key=lambda kv: -len(kv[1])):
-        shown = ", ".join(titles[:5]) + (f" 외 {len(titles) - 5}개" if len(titles) > 5 else "")
-        lines.append(f"- **#{channel}** {len(titles)}개: {shown}")
+        extra = len(titles) - 5
+        shown = ", ".join(titles[:5]) + (
+            (f" and {extra} more" if en else f" 외 {extra}개") if extra > 0 else ""
+        )
+        lines.append(
+            f"- **#{channel}** {len(titles)} tasks: {shown}"
+            if en
+            else f"- **#{channel}** {len(titles)}개: {shown}"
+        )
 
     stale_since = now - timedelta(days=settings.backlog_stale_days)
     stale = (
@@ -375,14 +421,27 @@ async def weekly_review(
             .limit(8)
         )
     ).all()
-    lines += ["", f"## {settings.backlog_stale_days}일 넘게 그대로인 backlog {len(stale)}개"]
+    lines += [
+        "",
+        f"## Backlog older than {settings.backlog_stale_days} days · {len(stale)} tasks"
+        if en
+        else f"## {settings.backlog_stale_days}일 넘게 그대로인 backlog {len(stale)}개",
+    ]
     if stale:
         for task in stale:
             age = (now - task.updated_at).days
-            lines.append(f"- {task.title} (#{names.get(task.channel_id, '?')}, {age}일째)")
-        lines.append("→ 할 일로 옮기거나, 날짜를 정하거나, 이제 필요 없으면 지워 보세요.")
+            lines.append(
+                f"- {task.title} (#{names.get(task.channel_id, '?')}, {age} days)"
+                if en
+                else f"- {task.title} (#{names.get(task.channel_id, '?')}, {age}일째)"
+            )
+        lines.append(
+            "→ Move these to To do, set a due date, or remove them if no longer needed."
+            if en
+            else "→ 할 일로 옮기거나, 날짜를 정하거나, 이제 필요 없으면 지워 보세요."
+        )
     else:
-        lines.append("- 없어요. 깔끔해요.")
+        lines.append("- None. All clear." if en else "- 없어요. 깔끔해요.")
 
     ideas = (
         await session.scalars(
@@ -391,16 +450,32 @@ async def weekly_review(
     ).all()
     groups = await idea_groups([i.raw_text.strip() for i in ideas][:60], settings, embed)
     if groups:
-        lines += ["", "## 비슷한 인박스 메모"]
+        lines += ["", "## Related Inbox notes" if en else "## 비슷한 인박스 메모"]
         for n, group in enumerate(groups, 1):
-            lines.append(f"- 묶음 {n}: " + " / ".join(t[:40] for t in group[:5]))
-        lines.append("→ 한 할 일이나 노트로 합쳐 보세요.")
+            lines.append(
+                (f"- Group {n}: " if en else f"- 묶음 {n}: ")
+                + " / ".join(t[:40] for t in group[:5])
+            )
+        lines.append(
+            "→ Consider combining these into one task or note."
+            if en
+            else "→ 한 할 일이나 노트로 합쳐 보세요."
+        )
 
     stats = await analytics(session, now, tz)
     if stats["processing"]:
-        lines += ["", "## 과목별 평균 처리 시간 (최근 30일)"]
+        lines += [
+            "",
+            "## Average completion time by channel (last 30 days)"
+            if en
+            else "## 과목별 평균 처리 시간 (최근 30일)",
+        ]
         for row in stats["processing"][:6]:
-            lines.append(f"- #{row['channel']}: {row['hours'] / 24:.1f}일 ({row['count']}개)")
+            lines.append(
+                f"- #{row['channel']}: {row['hours'] / 24:.1f} days ({row['count']} tasks)"
+                if en
+                else f"- #{row['channel']}: {row['hours'] / 24:.1f}일 ({row['count']}개)"
+            )
     return "\n".join(lines)
 
 
@@ -427,7 +502,9 @@ async def post_review(
             Candidate(
                 key,
                 "weekly_review",
-                "이번 주 리뷰가 도착했어요",
+                "Your weekly review is ready"
+                if settings.language == "en"
+                else "이번 주 리뷰가 도착했어요",
                 text.split("\n")[2] if len(text.split("\n")) > 2 else None,
                 "message" if message else None,
                 message.id if message else None,
@@ -503,7 +580,7 @@ class Notifier:
                 fresh = await record(
                     session,
                     [
-                        *await deadline_candidates(session, now, config.zoneinfo),
+                        *await deadline_candidates(session, now, config.zoneinfo, config.language),
                         *await roundup_candidates(session, now, config),
                     ],
                 )

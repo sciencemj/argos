@@ -27,6 +27,11 @@
             saved === "dark" ||
             (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
           document.documentElement.dataset.theme = dark ? "dark" : "light";
+          const savedLanguage = localStorage.getItem("argos-language");
+          document.documentElement.lang =
+            savedLanguage === "ko" || savedLanguage === "en"
+              ? savedLanguage
+              : navigator.language.toLowerCase().startsWith("ko") ? "ko" : "en";
         } catch {
           // No storage: the light default from CSS stays.
         }

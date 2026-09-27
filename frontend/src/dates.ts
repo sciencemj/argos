@@ -1,6 +1,7 @@
 import { TZDate } from "@date-fns/tz";
 import { differenceInCalendarDays, format } from "date-fns";
-import { ko } from "date-fns/locale";
+import { enUS, ko } from "date-fns/locale";
+import { language, t } from "./i18n";
 
 /** Display zone (PLAN §5: stored UTC, shown in Asia/Seoul). Set from /config on load. */
 let zone = "Asia/Seoul";
@@ -32,14 +33,14 @@ export function ddayTone(days: number): "danger" | "strong" | "muted" {
 }
 
 export const fmt = (value: string | Date, pattern: string) =>
-  format(inZone(value), pattern, { locale: ko });
+  format(inZone(value), pattern, { locale: language() === "ko" ? ko : enUS });
 
 /** "오늘 23:59", "내일 23:59", "금 23:59" within a week, else "9/30 (수) 23:59". */
 export function relativeDue(due: string, now: Date = new Date()): string {
   const days = dday(due, now);
   const time = fmt(due, "HH:mm");
-  if (days === 0) return `오늘 ${time}`;
-  if (days === 1) return `내일 ${time}`;
+  if (days === 0) return `${t("오늘", "Today")} ${time}`;
+  if (days === 1) return `${t("내일", "Tomorrow")} ${time}`;
   if (days > 1 && days < 7) return `${fmt(due, "EEE")} ${time}`;
   return fmt(due, "M/d (EEE) HH:mm");
 }

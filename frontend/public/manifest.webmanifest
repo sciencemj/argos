@@ -1,8 +1,7 @@
 {
   "name": "Argos",
   "short_name": "Argos",
-  "description": "일정, 할 일, 노트, 에이전트를 한곳에서",
-  "lang": "ko",
+  "description": "Tasks, events, notes, and agents in one place · 일정, 할 일, 노트, 에이전트를 한곳에서",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { type Task, useUpdateTask } from "./api";
+import { tr, tt } from "./i18n";
 import { toast } from "./toast";
 
 const SETTLE_MS = 600; // long enough to see the check and the strike-through
@@ -25,8 +26,8 @@ export function useCompleteTask() {
               return next;
             }),
           onSuccess: () =>
-            toast(`완료했어요 · ${task.title}`, {
-              label: "되돌리기",
+            toast(tt`완료했어요 · ${task.title}`, {
+              label: tr("되돌리기"),
               run: () => update.mutate({ id: task.id, status: before }),
             }),
         },

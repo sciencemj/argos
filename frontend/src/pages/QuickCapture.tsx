@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChannels, usePostMessage } from "../api";
 import { hideQuickWindow, openMainWindow } from "../desktop";
+import { tr } from "../i18n";
 import { ErrorText } from "../ui";
 
 /** The desktop app's quick-capture window (global shortcut, PLAN Phase 12): one line into
@@ -60,10 +61,12 @@ export function QuickCapture() {
     >
       <textarea
         ref={input}
-        aria-label="빠른 입력"
+        aria-label={tr("빠른 입력")}
         rows={2}
         value={text}
-        placeholder="생각난 걸 적고 Enter — 인박스로 가요 (/task, /event도 돼요)"
+        placeholder={tr(
+          "생각난 걸 적고 Enter — 인박스로 가요 (/task, /event도 돼요)",
+        )}
         className="w-full grow resize-none border-0 bg-transparent text-[15px] leading-relaxed text-ink outline-none placeholder:text-meta"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -77,8 +80,8 @@ export function QuickCapture() {
       <div className="flex items-center gap-2 text-[12px] text-meta">
         <span className="grow">
           {sent
-            ? "인박스에 넣었어요"
-            : "Enter 보내기 · Shift+Enter 줄바꿈 · Esc 닫기"}
+            ? tr("인박스에 넣었어요")
+            : tr("Enter 보내기 · Shift+Enter 줄바꿈 · Esc 닫기")}
         </span>
         {inbox && (
           <button
@@ -90,7 +93,7 @@ export function QuickCapture() {
               void openMainWindow(`/c/${inbox.id}`); // the app hides this window
             }}
           >
-            인박스 열기
+            {tr("인박스 열기")}
           </button>
         )}
       </div>

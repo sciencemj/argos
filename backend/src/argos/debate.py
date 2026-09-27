@@ -74,7 +74,9 @@ def render_record(record: list[tuple[str, str]]) -> str:
     return "\n\n".join(f"[{speaker}]: {text}" for speaker, text in record)
 
 
-def turn_context(debate: Debate, agent: Agent, names: dict[str, str], stance: str | None) -> str:
+def turn_context(
+    debate: Debate, agent: Agent, names: dict[str, str], stance: str | None, language: str = "ko"
+) -> str:
     others = ", ".join(f"{names[p]}(@{p})" for p in debate.participants_json if p != agent.name)
     lines = [
         f'너는 Argos 앱의 토론에 참여한 에이전트 "{agent.display_name}"(@{agent.name})다.',
@@ -87,7 +89,9 @@ def turn_context(debate: Debate, agent: Agent, names: dict[str, str], stance: st
         "같은 말을 반복하지 않는다.",
         "기록 앞부분에 검토할 문서나 코드가 있으면 그것을 더 낫게 만드는 것이 목적이다: "
         "고칠 부분을 인용하고 고친 안을 구체적으로 제시한다.",
-        "한국어로 4~6문장 이내. 이름표([이름]:)는 붙이지 않는다.",
+        "Reply in English in 4–6 sentences. Do not add a speaker label."
+        if language == "en"
+        else "한국어로 4~6문장 이내. 이름표([이름]:)는 붙이지 않는다.",
     ]
     if stance:
         lines.insert(2, f"너의 입장: {stance}. 이 입장을 끝까지 지킨다.")
@@ -246,7 +250,7 @@ class DebateRunner:
             agent,
             reply.id,
             [Turn("user", prompt)],
-            turn_context(debate, agent, names, stance),
+            turn_context(debate, agent, names, stance, self.runner.settings.language),
             f"debate-{debate.id}-{self.turn}",
             no_tools=not debate.use_tools,
         )
@@ -272,15 +276,30 @@ class DebateRunner:
             )
         context = (
             f'너는 토론의 사회자 "{moderator.display_name}"다. 토론 주제: {debate.topic}. '
-            "참가자: " + ", ".join(f"{n}(@{p})" for p, n in names.items()) + ". 한국어로 답한다."
+            "참가자: "
+            + ", ".join(f"{n}(@{p})" for p, n in names.items())
+            + (
+                ". Reply in English."
+                if self.runner.settings.language == "en"
+                else ". 한국어로 답한다."
+            )
         )
-        prompt = (
-            f"토론 기록:\n{render_record(record)}\n\n"
-            "토론을 정리하라. 형식:\n## 요약\n(핵심 쟁점과 각 참가자의 주장 3~5줄)\n"
-            "## 합의와 이견\n(짧게)\n## 결론\n(사용자가 취할 행동 한두 가지)\n"
-            "토론이 문서나 코드를 다뤘다면 마지막에 ## 개선안 을 두고, 합의된 수정을 모두 "
-            "반영한 최종본을 그대로 쓸 수 있게 제시하라(코드는 코드 블록으로)."
-        )
+        if self.runner.settings.language == "en":
+            prompt = (
+                f"Debate record:\n{render_record(record)}\n\n"
+                "Summarize the debate using these headings: ## Summary, ## Agreements and "
+                "Disagreements, ## Conclusion. Include the key points and each speaker's "
+                "position, then one or two actions for the user. If documents or code were "
+                "discussed, add ## Revised Proposal with a complete usable final version."
+            )
+        else:
+            prompt = (
+                f"토론 기록:\n{render_record(record)}\n\n"
+                "토론을 정리하라. 형식:\n## 요약\n(핵심 쟁점과 각 참가자의 주장 3~5줄)\n"
+                "## 합의와 이견\n(짧게)\n## 결론\n(사용자가 취할 행동 한두 가지)\n"
+                "토론이 문서나 코드를 다뤘다면 마지막에 ## 개선안 을 두고, 합의된 수정을 모두 "
+                "반영한 최종본을 그대로 쓸 수 있게 제시하라(코드는 코드 블록으로)."
+            )
         await self.runner.run_turn(
             run.id, moderator, reply.id, [Turn("user", prompt)], context,
             f"debate-{debate.id}-summary", no_tools=True,

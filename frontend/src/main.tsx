@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { inDesktopApp } from "./desktop";
+import { syncCurrentLanguage } from "./i18n";
 import "./index.css";
 import { Shell } from "./layout/Shell";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
 
 // In the desktop app the window has no title bar: the traffic lights sit over the rail.
 if (inDesktopApp()) document.documentElement.dataset.desktop = "";
+syncCurrentLanguage();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root element missing");

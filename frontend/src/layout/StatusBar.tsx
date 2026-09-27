@@ -10,6 +10,7 @@ import {
   useVaultSettings,
 } from "../api";
 import { fmt } from "../dates";
+import { t, tr, tt } from "../i18n";
 import { CheckIcon, MoonIcon, SunIcon } from "../icons";
 import type { LinkState } from "../realtime";
 import {
@@ -20,9 +21,9 @@ import {
 } from "../theme";
 
 const LINK_TEXT: Record<LinkState, string> = {
-  open: "실시간 연결됨",
-  connecting: "연결 중…",
-  closed: "연결 끊김 · 다시 시도 중",
+  open: tr("실시간 연결됨"),
+  connecting: tr("연결 중…"),
+  closed: tr("연결 끊김 · 다시 시도 중"),
 };
 
 const NEXT: Record<ThemePref, ThemePref> = {
@@ -31,9 +32,9 @@ const NEXT: Record<ThemePref, ThemePref> = {
   dark: "system",
 };
 const THEME_TEXT: Record<ThemePref, string> = {
-  system: "시스템",
-  light: "라이트",
-  dark: "다크",
+  system: tr("시스템"),
+  light: tr("라이트"),
+  dark: tr("다크"),
 };
 
 /** "4d15h" / "2h13m" / "38m" until `iso`; null once it has passed. */
@@ -52,9 +53,9 @@ function until(iso: string | null | undefined, now: number): string | null {
 function ago(iso: string | null | undefined, now: number): string {
   if (!iso) return "";
   const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
-  if (minutes < 1) return "방금";
-  if (minutes < 60) return `${minutes}분 전`;
-  return `${Math.floor(minutes / 60)}시간 전`;
+  if (minutes < 1) return tr("방금");
+  if (minutes < 60) return tt`${minutes}분 전`;
+  return tt`${Math.floor(minutes / 60)}시간 전`;
 }
 
 const tone = (pct: number) =>
@@ -144,7 +145,7 @@ function UsagePopover({ now, onClose }: { now: number; onClose: () => void }) {
     <div
       ref={ref}
       role="dialog"
-      aria-label="사용량 자세히"
+      aria-label={tr("사용량 자세히")}
       className="absolute bottom-9 left-0 z-20 flex w-[340px] flex-col gap-3 rounded-2xl border border-line-soft bg-card p-4 font-sans text-[12.5px] text-text-2 shadow-lg"
     >
       {usage.providers.map((p) => (
@@ -154,7 +155,7 @@ function UsagePopover({ now, onClose }: { now: number; onClose: () => void }) {
             {p.plan && <span className="ml-1.5 text-meta">{p.plan}</span>}
           </span>
           {p.windows.length === 0 && (
-            <span className="text-text-3">{p.message ?? "정보 없음"}</span>
+            <span className="text-text-3">{p.message ?? tr("정보 없음")}</span>
           )}
           {p.windows.map((w) => {
             const left = until(w.resets_at, now);
@@ -163,20 +164,25 @@ function UsagePopover({ now, onClose }: { now: number; onClose: () => void }) {
                 {w.name} {left ? `${Math.round(w.used_percent)}%` : "—"}
                 {w.resets_at &&
                   (left
-                    ? ` · ${left} 뒤 초기화 (${fmt(w.resets_at, "M/d HH:mm")})`
-                    : " · 초기화됨")}
+                    ? tt` · ${left} 뒤 초기화 (${fmt(w.resets_at, "M/d HH:mm")})`
+                    : tr(" · 초기화됨"))}
               </span>
             );
           })}
           {p.observed_at && (
             <span className="text-[11px] text-meta">
-              {ago(p.observed_at, now)} 확인
+              {t(
+                `${ago(p.observed_at, now)} 확인`,
+                `Checked ${ago(p.observed_at, now)}`,
+              )}
             </span>
           )}
         </div>
       ))}
       <div className="border-t border-line-soft pt-2 text-[12px]">
-        코딩 잡: 실행 중 {usage.jobs_running} · 오늘 {usage.jobs_today}
+        {tr("코딩 잡: 실행 중") + " "}
+        {usage.jobs_running} {tr("· 오늘") + "  "}
+        {usage.jobs_today}
       </div>
     </div>
   );
@@ -189,14 +195,14 @@ function SyncSlot({ now }: { now: number }) {
   const parts = [
     icloud?.connected
       ? {
-          name: "캘린더",
+          name: tr("캘린더"),
           at: icloud.status.last_sync_at,
           error: icloud.status.last_error,
         }
       : null,
     vault?.path
       ? {
-          name: "볼트",
+          name: tr("볼트"),
           at: vault.status.last_run_at,
           error: vault.status.last_error,
         }
@@ -210,7 +216,7 @@ function SyncSlot({ now }: { now: number }) {
     .sort()
     .at(-1);
   const detail = parts
-    .map((p) => `${p.name}: ${p.error ?? (p.at ? ago(p.at, now) : "아직")}`)
+    .map((p) => `${p.name}: ${p.error ?? (p.at ? ago(p.at, now) : tr("아직"))}`)
     .join("\n");
   return (
     <Link
@@ -219,11 +225,12 @@ function SyncSlot({ now }: { now: number }) {
       className={`flex items-center gap-1.5 hover:underline ${failed ? "text-danger" : ""}`}
     >
       {failed ? (
-        `${failed.name} 동기화 오류`
+        tt`${failed.name} 동기화 오류`
       ) : (
         <>
           <CheckIcon size={12} />
-          동기화 {latest ? ago(latest, now) : "대기"}
+          {tr("동기화") + " "}
+          {latest ? ago(latest, now) : tr("대기")}
         </>
       )}
     </Link>
@@ -285,7 +292,7 @@ export function StatusBar({ link }: { link: LinkState }) {
           >
             {agentInfo(defaultAgent).name}
           </span>
-          <span>기본</span>
+          <span>{tr("기본")}</span>
         </span>
       )}
       {usage && (
@@ -293,7 +300,7 @@ export function StatusBar({ link }: { link: LinkState }) {
           {divider}
           <button
             type="button"
-            aria-label="사용량 자세히 보기"
+            aria-label={tr("사용량 자세히 보기")}
             aria-expanded={details}
             onClick={() => setDetails((v) => !v)}
             className="flex cursor-pointer items-center gap-4 text-text-3 hover:text-ink"
@@ -314,7 +321,8 @@ export function StatusBar({ link }: { link: LinkState }) {
       {approvals > 0 && (
         <>
           <Link to="/approvals" className="text-danger hover:underline">
-            승인 대기 {approvals}
+            {tr("승인 대기") + " "}
+            {approvals}
           </Link>
           <span className="h-3 w-px bg-line" />
         </>
@@ -324,7 +332,7 @@ export function StatusBar({ link }: { link: LinkState }) {
       <button
         type="button"
         onClick={cycle}
-        aria-label={`테마: ${THEME_TEXT[pref]} (눌러서 바꾸기)`}
+        aria-label={tt`테마: ${THEME_TEXT[pref]} (눌러서 바꾸기)`}
         className="flex cursor-pointer items-center gap-1.5 text-text-3 hover:text-ink"
       >
         {document.documentElement.dataset.theme === "dark" ? (

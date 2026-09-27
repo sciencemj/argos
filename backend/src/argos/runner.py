@@ -75,18 +75,34 @@ async def build_context(
     (PLAN Phase 5 "컨텍스트 주입", capped at settings.context_limit characters)."""
     tz: ZoneInfo = settings.zoneinfo
     now = datetime.now(UTC).astimezone(tz)
-    kind = {"course": "과목", "project": "프로젝트", "personal": "일상", "dm": "1:1 대화"}.get(
-        channel.kind, "공용"
-    )
-    lines = [
-        f"너는 개인 일정·학업 관리 앱 Argos 안에서 사용자와 대화하는 에이전트 "
-        f'"{agent.display_name}"다.',
-        f"현재 시각: {now:%Y-%m-%d} ({WEEKDAY_KO[now.weekday()]}) {now:%H:%M} {tz.key}",
-        f"대화 위치: #{channel.name} ({kind})",
-        "일정·할 일을 기록하거나 바꿀 때는 가능하면 Argos 도구를 써라. "
-        "삭제는 사용자 승인이 필요하다.",
-        "한국어로 짧고 분명하게 답한다.",
-    ]
+    if settings.language == "en":
+        kind = {
+            "course": "course",
+            "project": "project",
+            "personal": "personal",
+            "dm": "direct message",
+        }.get(channel.kind, "shared")
+        lines = [
+            f'You are "{agent.display_name}", an agent in Argos, a personal productivity app.',
+            f"Current time: {now:%Y-%m-%d %H:%M} {tz.key}",
+            f"Conversation: #{channel.name} ({kind})",
+            "Use Argos tools to create or change tasks and events when possible. "
+            "Deletion requires user approval.",
+            "Reply briefly and clearly in English.",
+        ]
+    else:
+        kind = {"course": "과목", "project": "프로젝트", "personal": "일상", "dm": "1:1 대화"}.get(
+            channel.kind, "공용"
+        )
+        lines = [
+            f"너는 개인 일정·학업 관리 앱 Argos 안에서 사용자와 대화하는 에이전트 "
+            f'"{agent.display_name}"다.',
+            f"현재 시각: {now:%Y-%m-%d} ({WEEKDAY_KO[now.weekday()]}) {now:%H:%M} {tz.key}",
+            f"대화 위치: #{channel.name} ({kind})",
+            "일정·할 일을 기록하거나 바꿀 때는 가능하면 Argos 도구를 써라. "
+            "삭제는 사용자 승인이 필요하다.",
+            "한국어로 짧고 분명하게 답한다.",
+        ]
     if channel.kind not in (ChannelKind.DM, ChannelKind.SYSTEM):
         tasks = (
             await session.scalars(
@@ -97,9 +113,16 @@ async def build_context(
             )
         ).all()
         if tasks:
-            lines.append("이 채널의 열린 할 일:")
+            lines.append(
+                "Open tasks in this channel:"
+                if settings.language == "en"
+                else "이 채널의 열린 할 일:"
+            )
             for t in tasks:
-                due = f", 마감 {t.due_at.astimezone(tz):%m/%d %H:%M}" if t.due_at else ""
+                due = ""
+                if t.due_at:
+                    prefix = "due" if settings.language == "en" else "마감"
+                    due = f", {prefix} {t.due_at.astimezone(tz):%m/%d %H:%M}"
                 lines.append(f"- {t.title} ({t.status}{due})")
         events = (
             await session.scalars(
@@ -110,7 +133,7 @@ async def build_context(
             )
         ).all()
         if events:
-            lines.append("다가오는 일정:")
+            lines.append("Upcoming events:" if settings.language == "en" else "다가오는 일정:")
             lines += [
                 f"- {e.title} ({e.starts_at.astimezone(tz):%m/%d %H:%M})"
                 for e in events
@@ -163,7 +186,20 @@ async def _move(session: AsyncSession, task_id: str, status: TaskStatus, agent: 
         return
 
 
-def job_context(agent: Agent, channel: Channel, task: Task, workspace: Path) -> str:
+def job_context(
+    agent: Agent, channel: Channel, task: Task, workspace: Path, language: str = "ko"
+) -> str:
+    if language == "en":
+        return "\n".join(
+            [
+                f'You are "{agent.display_name}", a coding agent in Argos.',
+                f"Working directory: {workspace}",
+                "Do not change files outside this directory. Network access may be restricted.",
+                f"Related task: {task.title} (#{channel.name})",
+                "In your final response, summarize in English what you did, files changed, "
+                "tests and results, and remaining work.",
+            ]
+        )
     return "\n".join(
         [
             f"너는 개인 학업·프로젝트 관리 앱 Argos에서 코딩 작업(잡)을 맡은 에이전트 "
@@ -319,7 +355,7 @@ class Runner:
             actor="user",
             job=(task, instructions, workspace),
         )
-        context = job_context(agent, channel, task, workspace)
+        context = job_context(agent, channel, task, workspace, self.settings.language)
         job = _Job(task_id=task.id, workspace=workspace)
         coro = self._run(
             run.id, agent, reply.id, [Turn("user", instructions)], context, f"job-{run.id}", job

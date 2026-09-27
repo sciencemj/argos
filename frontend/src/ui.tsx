@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ddayLabel, ddayTone } from "./dates";
+import { tr } from "./i18n";
 
 // Shared class strings (Tokens: pill buttons, 24px cards, CTA orange only on actions).
 export const btn = {
@@ -122,7 +123,7 @@ export function ContextMenu({
     <div
       ref={ref}
       role="menu"
-      aria-label="삭제 메뉴"
+      aria-label={tr("삭제 메뉴")}
       className="fixed z-50 min-w-40 rounded-xl border border-line bg-card p-1 shadow-lift"
       style={{
         left: Math.max(8, Math.min(x, window.innerWidth - 168)),

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Demo areas/channels loaded into an empty database on first run (PLAN §9).
     seed_path: Path = Path("seed.example.toml")
     timezone: str = "Asia/Seoul"
+    language: Literal["ko", "en"] = "ko"
     # Address other devices use to reach Argos (e.g. the Tailscale serve URL); links such as
     # the calendar feed use it instead of whatever address the browser happened to open.
     public_url: str | None = None

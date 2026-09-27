@@ -21,6 +21,7 @@ import {
 } from "./api";
 import { CheckButton, useCompleteTask } from "./complete";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "./dates";
+import { t, tr, tt } from "./i18n";
 import { PawIcon, ShieldIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { PawTrail } from "./paws";
@@ -39,14 +40,14 @@ type Suggestion = {
 };
 
 const TYPE_LABEL: Record<string, string> = {
-  task: "할 일",
-  event: "일정",
-  idea: "아이디어",
-  study_note: "공부 노트",
+  task: tr("할 일"),
+  event: tr("일정"),
+  idea: tr("아이디어"),
+  study_note: tr("공부 노트"),
 };
 
 const channelLabel = (channel: Channel) =>
-  channel.kind === "personal" ? "내 공간" : `# ${channel.name}`;
+  channel.kind === "personal" ? tr("내 공간") : `# ${channel.name}`;
 
 // --- suggestion ("알아봤어요") -------------------------------------------------------
 
@@ -64,14 +65,14 @@ export function SuggestionCard({
   const s = (item.suggestion_json ?? {}) as Suggestion;
 
   if (item.status === "dismissed") {
-    return <Quiet>넘긴 입력이에요.</Quiet>;
+    return <Quiet>{tr("넘긴 입력이에요.")}</Quiet>;
   }
   if (item.status === "new") {
     if (s.error) {
       return (
         <Quiet>
           <span className="grow">
-            분류하지 못했어요 · 원문은 인박스에 보관됨
+            {tr("분류하지 못했어요 · 원문은 인박스에 보관됨")}
           </span>
           <button
             type="button"
@@ -79,21 +80,21 @@ export function SuggestionCard({
             disabled={reclassify.isPending}
             onClick={() => reclassify.mutate(item.id)}
           >
-            다시 시도
+            {tr("다시 시도")}
           </button>
         </Quiet>
       );
     }
     return config.data?.classifier_enabled ? (
       <Quiet>
-        <PawTrail label="알아보는 중" />
+        <PawTrail label={tr("알아보는 중")} />
       </Quiet>
     ) : (
-      <Quiet>인박스에 보관됨 · 분류 모델이 설정되지 않았어요</Quiet>
+      <Quiet>{tr("인박스에 보관됨 · 분류 모델이 설정되지 않았어요")}</Quiet>
     );
   }
   if (item.status === "accepted") {
-    return <Quiet>정리됨</Quiet>;
+    return <Quiet>{tr("정리됨")}</Quiet>;
   }
   return <Proposal item={item} suggestion={s} channel={channel} />;
 }
@@ -132,7 +133,7 @@ function Proposal({
       : undefined);
   const fromContext = target !== undefined && target.id === channel?.id;
 
-  if (hidden) return <Quiet>인박스에 두었어요</Quiet>;
+  if (hidden) return <Quiet>{tr("인박스에 두었어요")}</Quiet>;
 
   return (
     <div className={`${card} flex max-w-[580px] flex-col gap-4 px-[22px] py-5`}>
@@ -140,12 +141,18 @@ function Proposal({
         <span className="flex text-ink">
           <PawIcon />
         </span>
-        <span className="text-[13.5px] font-medium text-ink">알아봤어요</span>
+        <span className="text-[13.5px] font-medium text-ink">
+          {tr("알아봤어요")}
+        </span>
         <span className="grow text-[13.5px] text-text-3">
-          {TYPE_LABEL[type]}(으)로 정리할까요?
+          {t(
+            `${TYPE_LABEL[type]}(으)로 정리할까요?`,
+            `Organize as ${type === "event" || type === "idea" ? "an" : "a"} ${TYPE_LABEL[type].toLowerCase()}?`,
+          )}
         </span>
         <span className="font-mono text-[11px] text-meta">
-          확신도 {confidence.toFixed(2)}
+          {tr("확신도") + " "}
+          {confidence.toFixed(2)}
         </span>
         <span className="flex h-[3px] w-14 overflow-hidden rounded-sm bg-line-soft">
           <span
@@ -166,16 +173,16 @@ function Proposal({
       ) : (
         <>
           <div className="grid grid-cols-[56px_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2.5 text-[13.5px]">
-            <span className="text-meta">유형</span>
+            <span className="text-meta">{tr("유형")}</span>
             <span>
               <Chip>{TYPE_LABEL[type]}</Chip>
             </span>
-            <span className="text-meta">제목</span>
+            <span className="text-meta">{tr("제목")}</span>
             <span className="text-[18px] font-light tracking-[-0.02em] text-ink">
               {s.title ?? item.raw_text}
             </span>
             <When suggestion={s} />
-            <span className="text-meta">채널</span>
+            <span className="text-meta">{tr("채널")}</span>
             <span>
               {target ? (
                 <>
@@ -183,13 +190,13 @@ function Proposal({
                   {fromContext && (
                     <span className="text-[12px] text-meta">
                       {" "}
-                      · 채널 맥락으로 확정
+                      {tr("· 채널 맥락으로 확정")}
                     </span>
                   )}
                 </>
               ) : (
                 <span className="text-text-3">
-                  정해지지 않음 · 고치기에서 골라 주세요
+                  {tr("정해지지 않음 · 고치기에서 골라 주세요")}
                 </span>
               )}
             </span>
@@ -204,7 +211,7 @@ function Proposal({
                 accept.mutate({ id: item.id, channel_id: target?.id })
               }
             >
-              {type === "study_note" ? "노트로 저장" : "추가하기"}
+              {type === "study_note" ? tr("노트로 저장") : tr("추가하기")}
             </button>
             {type !== "study_note" && (
               <button
@@ -212,7 +219,7 @@ function Proposal({
                 className={btn.outline}
                 onClick={() => setEditing(true)}
               >
-                고치기
+                {tr("고치기")}
               </button>
             )}
             <button
@@ -220,11 +227,11 @@ function Proposal({
               className={btn.ghost}
               onClick={() => setHidden(true)}
             >
-              인박스에 두기
+              {tr("인박스에 두기")}
             </button>
             <span className="grow" />
             <span className="text-[11.5px] text-meta">
-              원문은 인박스에 보관됨
+              {tr("원문은 인박스에 보관됨")}
             </span>
           </div>
         </>
@@ -237,11 +244,11 @@ function When({ suggestion: s }: { suggestion: Suggestion }) {
   if (s.type === "event" && (s.starts_at || s.all_day_date)) {
     return (
       <>
-        <span className="text-meta">일시</span>
+        <span className="text-meta">{tr("일시")}</span>
         <span className="flex items-center gap-2">
           {s.starts_at
-            ? `${fmt(s.starts_at, "M월 d일 (EEE) HH:mm")}${s.ends_at ? `–${fmt(s.ends_at, "HH:mm")}` : ""}`
-            : `${fmt(`${s.all_day_date}T12:00:00`, "M월 d일 (EEE)")} 종일`}
+            ? `${fmt(s.starts_at, tr("M월 d일 (EEE) HH:mm"))}${s.ends_at ? `–${fmt(s.ends_at, "HH:mm")}` : ""}`
+            : tt`${fmt(`${s.all_day_date}T12:00:00`, tr("M월 d일 (EEE)"))} 종일`}
         </span>
       </>
     );
@@ -249,9 +256,9 @@ function When({ suggestion: s }: { suggestion: Suggestion }) {
   if (s.due_at) {
     return (
       <>
-        <span className="text-meta">마감</span>
+        <span className="text-meta">{tr("마감")}</span>
         <span className="flex items-center gap-2">
-          {fmt(s.due_at, "M월 d일 (EEE) HH:mm")}{" "}
+          {fmt(s.due_at, tr("M월 d일 (EEE) HH:mm"))}{" "}
           <DdayBadge days={dday(s.due_at)} />
         </span>
       </>
@@ -312,26 +319,26 @@ function FixForm({
     <form onSubmit={submit} className="flex flex-col gap-3.5">
       <div className="grid grid-cols-2 gap-3.5">
         <label className="flex flex-col gap-1">
-          <span className={label}>유형</span>
+          <span className={label}>{tr("유형")}</span>
           <select
             className={field}
             value={type}
             onChange={(e) => setType(e.target.value as typeof type)}
           >
-            <option value="task">할 일</option>
-            <option value="event">일정</option>
-            <option value="idea">아이디어 (백로그)</option>
+            <option value="task">{tr("할 일")}</option>
+            <option value="event">{tr("일정")}</option>
+            <option value="idea">{tr("아이디어 (백로그)")}</option>
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className={label}>채널</span>
+          <span className={label}>{tr("채널")}</span>
           <select
             className={field}
             value={channelId}
             onChange={(e) => setChannelId(e.target.value)}
             required
           >
-            <option value="">골라 주세요</option>
+            <option value="">{tr("골라 주세요")}</option>
             {channels.map((c) => (
               <option key={c.id} value={c.id}>
                 {channelLabel(c)}
@@ -341,7 +348,7 @@ function FixForm({
         </label>
       </div>
       <label className="flex flex-col gap-1">
-        <span className={label}>제목</span>
+        <span className={label}>{tr("제목")}</span>
         <input
           className={field}
           value={title}
@@ -352,7 +359,7 @@ function FixForm({
       {type === "event" ? (
         <div className="grid grid-cols-3 gap-3.5">
           <label className="flex flex-col gap-1">
-            <span className={label}>시작</span>
+            <span className={label}>{tr("시작")}</span>
             <input
               type="datetime-local"
               className={field}
@@ -361,7 +368,7 @@ function FixForm({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>끝</span>
+            <span className={label}>{tr("끝")}</span>
             <input
               type="datetime-local"
               className={field}
@@ -370,7 +377,7 @@ function FixForm({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className={label}>또는 종일</span>
+            <span className={label}>{tr("또는 종일")}</span>
             <input
               type="date"
               className={field}
@@ -381,7 +388,7 @@ function FixForm({
         </div>
       ) : (
         <label className="flex flex-col gap-1">
-          <span className={label}>마감 (선택)</span>
+          <span className={label}>{tr("마감 (선택)")}</span>
           <input
             type="datetime-local"
             className={field}
@@ -393,10 +400,10 @@ function FixForm({
       <ErrorText error={accept.error} />
       <div className="flex gap-2">
         <button type="submit" className={btn.cta} disabled={accept.isPending}>
-          추가하기
+          {tr("추가하기")}
         </button>
         <button type="button" className={btn.ghost} onClick={onDone}>
-          취소
+          {tr("취소")}
         </button>
       </div>
     </form>
@@ -427,7 +434,7 @@ export function TaskRefCard({ task }: { task: Task }) {
     >
       <CheckButton
         checked={done || completion.pending.has(task.id)}
-        label={done ? `${task.title} 다시 열기` : `${task.title} 완료 처리`}
+        label={done ? tt`${task.title} 다시 열기` : tt`${task.title} 완료 처리`}
         size={24}
         onClick={() =>
           done
@@ -442,7 +449,8 @@ export function TaskRefCard({ task }: { task: Task }) {
           {task.title}
         </span>
         <span className="text-[12px] text-text-3">
-          할 일{task.due_at ? ` · ${fmt(task.due_at, "M/d (EEE) HH:mm")}` : ""}
+          {tr("할 일")}
+          {task.due_at ? ` · ${fmt(task.due_at, "M/d (EEE) HH:mm")}` : ""}
         </span>
       </span>
       {task.due_at && !done && <DdayBadge days={dday(task.due_at)} />}
@@ -457,7 +465,9 @@ export function EventRefCard({ event }: { event: CalEvent }) {
       className={`${card} flex max-w-[520px] items-center gap-4 py-3.5 pr-[18px] pl-3.5`}
     >
       <div className="flex size-[52px] flex-col items-center justify-center rounded-xl bg-inset">
-        <span className="text-[10.5px] text-meta">{fmt(at, "M월 · EEE")}</span>
+        <span className="text-[10.5px] text-meta">
+          {fmt(at, tr("M월 · EEE"))}
+        </span>
         <span className="text-[22px] leading-tight font-light text-ink">
           {fmt(at, "d")}
         </span>
@@ -466,7 +476,7 @@ export function EventRefCard({ event }: { event: CalEvent }) {
         <div className="font-medium text-ink">{event.title}</div>
         <div className="font-mono text-[12px] text-text-3">
           {event.all_day
-            ? "종일"
+            ? tr("종일")
             : `${fmt(event.starts_at ?? "", "HH:mm")}${event.ends_at ? ` – ${fmt(event.ends_at, "HH:mm")}` : ""}`}
         </div>
       </div>
@@ -493,13 +503,13 @@ export function InboxRow({ item }: { item: InboxItem }) {
   if (item.status === "new") {
     return s.error ? (
       <div className="flex items-center gap-2 text-[12px] text-text-3">
-        <span className="grow">분류하지 못했어요</span>
+        <span className="grow">{tr("분류하지 못했어요")}</span>
         <button
           type="button"
           className={`${btn.ghost} h-8 text-[12.5px]`}
           onClick={() => reclassify.mutate(item.id)}
         >
-          다시 시도
+          {tr("다시 시도")}
         </button>
       </div>
     ) : null;
@@ -516,7 +526,7 @@ export function InboxRow({ item }: { item: InboxItem }) {
   const parts = [
     TYPE_LABEL[s.type ?? "task"],
     when,
-    target ? channelLabel(target) : "채널 미정",
+    target ? channelLabel(target) : tr("채널 미정"),
   ];
   const note = s.type === "study_note";
 
@@ -534,12 +544,12 @@ export function InboxRow({ item }: { item: InboxItem }) {
       <div className="flex items-center gap-1.5">
         {!target && (
           <select
-            aria-label="채널 고르기"
+            aria-label={tr("채널 고르기")}
             className={`${field} h-8 w-auto min-w-0 grow text-[12.5px]`}
             value={picked}
             onChange={(e) => setPicked(e.target.value)}
           >
-            <option value="">채널 고르기</option>
+            <option value="">{tr("채널 고르기")}</option>
             {pickable.map((c) => (
               <option key={c.id} value={c.id}>
                 {channelLabel(c)}
@@ -557,11 +567,11 @@ export function InboxRow({ item }: { item: InboxItem }) {
         >
           {note
             ? target
-              ? "노트로 저장"
-              : "채널 골라 저장"
+              ? tr("노트로 저장")
+              : tr("채널 골라 저장")
             : target
-              ? "추가하기"
-              : "채널 골라 추가"}
+              ? tr("추가하기")
+              : tr("채널 골라 추가")}
         </button>
       </div>
       <ErrorText error={accept.error} />
@@ -572,8 +582,8 @@ export function InboxRow({ item }: { item: InboxItem }) {
 // --- approval (PLAN P5) -------------------------------------------------------------
 
 const ACTION_VERB: Record<string, string> = {
-  delete_task: "승인하고 삭제",
-  delete_event: "승인하고 삭제",
+  delete_task: tr("승인하고 삭제"),
+  delete_event: tr("승인하고 삭제"),
 };
 
 /** A destructive action an agent asked for. Nothing happens until the user decides. */
@@ -597,14 +607,14 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
       <div className="flex items-center gap-2 text-danger">
         <ShieldIcon />
         <span className="text-[13px] font-medium">
-          {pending ? "승인 필요" : STATUS_TEXT[approval.status]}
+          {pending ? tr("승인 필요") : STATUS_TEXT[approval.status]}
         </span>
         <span className="font-mono text-[12px] text-meta">
           {approval.action}
         </span>
         <span className="grow" />
         <span className="text-[12px] text-meta">
-          {agentInfo(approval.requested_by).name} 요청
+          {agentInfo(approval.requested_by).name} {tr("요청") + " "}
         </span>
       </div>
       <div className="flex items-center gap-2.5 rounded-xl bg-inset px-3.5 py-3">
@@ -628,7 +638,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
             onClick={() => resolve.mutate({ id: approval.id, approve: true })}
             className="inline-flex h-9 cursor-pointer items-center rounded-full bg-danger px-[18px] text-[13.5px] font-medium text-on-dark disabled:opacity-50"
           >
-            {ACTION_VERB[approval.action] ?? "승인"}
+            {ACTION_VERB[approval.action] ?? tr("승인")}
           </button>
           <button
             type="button"
@@ -636,7 +646,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
             onClick={() => resolve.mutate({ id: approval.id, approve: false })}
             className={btn.outline}
           >
-            거절
+            {tr("거절")}
           </button>
         </div>
       )}
@@ -646,25 +656,25 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
 }
 
 const STATUS_TEXT: Record<string, string> = {
-  approved: "승인됨",
-  rejected: "거절됨",
-  failed: "실행 실패",
-  pending: "승인 필요",
+  approved: tr("승인됨"),
+  rejected: tr("거절됨"),
+  failed: tr("실행 실패"),
+  pending: tr("승인 필요"),
 };
 
 // --- debate (PLAN Phase 10) ----------------------------------------------------------
 
 const MODE_TEXT: Record<Debate["mode"], string> = {
-  round_robin: "돌아가며",
-  pro_con: "찬반",
-  moderated: "사회자 진행",
+  round_robin: tr("돌아가며"),
+  pro_con: tr("찬반"),
+  moderated: tr("사회자 진행"),
 };
 
 const DEBATE_STATE: Record<Debate["status"], string> = {
-  running: "진행 중",
-  done: "끝남",
-  cancelled: "중단됨",
-  error: "오류로 멈춤",
+  running: tr("진행 중"),
+  done: tr("끝남"),
+  cancelled: tr("중단됨"),
+  error: tr("오류로 멈춤"),
 };
 
 /** The debate's card on its opening message: who, how far, and what came of it. */
@@ -686,9 +696,9 @@ export function DebateCard({
       ?.split(/^##\s/m)[0]
       ?.trim();
   const conclusion = debate.summary
-    ? (section("결론") ?? debate.summary.trim())
+    ? (section("결론") ?? section("Conclusion") ?? debate.summary.trim())
     : null;
-  const improved = section("개선안");
+  const improved = section("개선안") ?? section("Revised Proposal");
   return (
     <div className={`${card} flex max-w-[640px] flex-col gap-3 px-[18px] py-4`}>
       <div className="flex items-center gap-2">
@@ -700,30 +710,34 @@ export function DebateCard({
           ))}
         </div>
         <span className="shrink-0 text-[13.5px] font-medium text-ink">
-          토론
+          {tr("토론")}
         </span>
         <span
           className={`min-w-0 grow text-right text-[11.5px] ${debate.status === "error" ? "text-danger" : "text-meta"}`}
         >
-          {MODE_TEXT[debate.mode]} · {debate.rounds_done}/{debate.max_rounds}
-          라운드 · {DEBATE_STATE[debate.status]}
+          {t(
+            `${MODE_TEXT[debate.mode]} · ${debate.rounds_done}/${debate.max_rounds}라운드 · ${DEBATE_STATE[debate.status]}`,
+            `${MODE_TEXT[debate.mode]} · Round ${debate.rounds_done}/${debate.max_rounds} · ${DEBATE_STATE[debate.status]}`,
+          )}
         </span>
       </div>
       <div className="text-[14px] text-text">{debate.topic}</div>
       <div className="text-[12px] text-text-3">
-        {debate.participants.map((p) => agentInfo(p).name).join(" · ")} · 사회{" "}
-        {agentInfo(debate.moderator).name}
-        {debate.use_tools ? " · 도구 사용" : ""}
+        {debate.participants.map((p) => agentInfo(p).name).join(" · ")}{" "}
+        {tr("· 사회") + " "} {agentInfo(debate.moderator).name}
+        {debate.use_tools ? tr(" · 도구 사용") : ""}
       </div>
       {running && (
         <div className="flex items-center gap-2 text-[12.5px] text-text-3">
           <PawTrail />
-          발언이 스레드에 이어지고 있어요. 스레드에 쓰면 다음 차례부터 반영돼요.
+          {tr(
+            "발언이 스레드에 이어지고 있어요. 스레드에 쓰면 다음 차례부터 반영돼요.",
+          )}
         </div>
       )}
       {conclusion && (
         <div className="flex flex-col gap-1 rounded-xl bg-page px-3.5 py-2.5 text-[13px] leading-relaxed text-text-2">
-          <span className={label}>결론</span>
+          <span className={label}>{tr("결론")}</span>
           <div className="line-clamp-6">
             <Markdown text={conclusion} />
           </div>
@@ -732,7 +746,7 @@ export function DebateCard({
       {improved && (
         <details className="rounded-xl bg-page px-3.5 py-2.5 text-[13px] text-text-2">
           <summary className={`${label} cursor-pointer`}>
-            개선안 (최종본)
+            {tr("개선안 (최종본)")}
           </summary>
           <div className="mt-2 leading-relaxed">
             <Markdown text={improved} />
@@ -748,7 +762,7 @@ export function DebateCard({
       <div className="flex flex-wrap items-center gap-2">
         {onThread && (
           <button type="button" className={btn.outline} onClick={onThread}>
-            스레드 보기
+            {tr("스레드 보기")}
           </button>
         )}
         {running && (
@@ -758,7 +772,7 @@ export function DebateCard({
             disabled={cancel.isPending}
             onClick={() => cancel.mutate(debate.id)}
           >
-            중단
+            {tr("중단")}
           </button>
         )}
         {debate.summary && (
@@ -769,7 +783,7 @@ export function DebateCard({
               disabled={toTask.isPending || Boolean(debate.summary_task_id)}
               onClick={() => toTask.mutate(debate.id)}
             >
-              {debate.summary_task_id ? "할 일로 만듦" : "할 일로"}
+              {debate.summary_task_id ? tr("할 일로 만듦") : tr("할 일로")}
             </button>
             <button
               type="button"
@@ -777,7 +791,7 @@ export function DebateCard({
               disabled={toNote.isPending || Boolean(debate.summary_note_id)}
               onClick={() => toNote.mutate(debate.id)}
             >
-              {debate.summary_note_id ? "노트로 저장함" : "노트로"}
+              {debate.summary_note_id ? tr("노트로 저장함") : tr("노트로")}
             </button>
           </>
         )}

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
 import { type Area, useChannels, useCreateArea, useDeleteArea } from "../api";
+import { tr, tt } from "../i18n";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, ContextMenu, Dialog, ErrorText, field, label } from "../ui";
 
@@ -67,7 +68,8 @@ export function Rail({
   return (
     <nav
       ref={nav}
-      aria-label="영역"
+      data-area-rail
+      aria-label={tr("영역")}
       data-tauri-drag-region // the desktop app's window moves by its empty parts
       className="relative flex flex-col items-center gap-2.5 border-r border-line-soft bg-rail py-3.5"
     >
@@ -84,7 +86,7 @@ export function Rail({
       <div className="my-1 h-px w-6 bg-line" />
       <button
         type="button"
-        aria-label="홈 · 오늘"
+        aria-label={tr("홈 · 오늘")}
         data-active={activeKey === "home" || undefined}
         aria-current={activeKey === "home" ? "page" : undefined}
         className={`${railButton} ${activeKey === "home" ? active : idle}`}
@@ -93,14 +95,14 @@ export function Rail({
           navigate("/");
         }}
       >
-        홈
+        {tr("홈")}
       </button>
       {data?.areas.map((area) => (
         <button
           key={area.id}
           type="button"
           aria-label={area.name}
-          title={`${area.name} · 우클릭하여 삭제`}
+          title={tt`${area.name} · 우클릭하여 삭제`}
           data-active={activeKey === area.id || undefined}
           aria-current={activeKey === area.id ? "page" : undefined}
           className={`${railButton} ${activeKey === area.id ? active : idle}`}
@@ -115,7 +117,7 @@ export function Rail({
       ))}
       <button
         type="button"
-        aria-label="영역 추가"
+        aria-label={tr("영역 추가")}
         className={`${railButton} border-dashed !border-line text-meta hover:bg-card/60 hover:text-ink`}
         onClick={() => setAdding(true)}
       >
@@ -128,8 +130,8 @@ export function Rail({
         state={
           onSettings ? undefined : { from: location.pathname + location.search }
         }
-        aria-label={onSettings ? "설정 닫기" : "설정"}
-        title={onSettings ? "설정 닫기 (이전 화면으로)" : "설정"}
+        aria-label={onSettings ? tr("설정 닫기") : tr("설정")}
+        title={onSettings ? tr("설정 닫기 (이전 화면으로)") : tr("설정")}
         onClick={(e) => {
           if (!onSettings) return;
           e.preventDefault();
@@ -145,7 +147,7 @@ export function Rail({
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label="영역 삭제…"
+          label={tr("영역 삭제…")}
           onClose={() => setMenu(null)}
           onAction={() => {
             remove.reset();
@@ -157,12 +159,13 @@ export function Rail({
         <Dialog
           open
           onClose={() => setDeleting(null)}
-          title={`${deleting.name} 영역 삭제`}
+          title={tt`${deleting.name} 영역 삭제`}
         >
           <div className="flex flex-col gap-4 text-[13px] leading-relaxed text-text-2">
             <p className="m-0">
-              영역을 삭제할까요? 채널과 그 안의 내용은 삭제되지 않고 전체에
-              남아요.
+              {tr(
+                "영역을 삭제할까요? 채널과 그 안의 내용은 삭제되지 않고 전체에 남아요.",
+              )}
             </p>
             <ErrorText error={remove.error} />
             <div className="flex justify-end gap-2">
@@ -171,7 +174,7 @@ export function Rail({
                 className={btn.ghost}
                 onClick={() => setDeleting(null)}
               >
-                취소
+                {tr("취소")}
               </button>
               <button
                 type="button"
@@ -189,7 +192,7 @@ export function Rail({
                   })
                 }
               >
-                영역 삭제
+                {tr("영역 삭제")}
               </button>
             </div>
           </div>
@@ -225,21 +228,21 @@ function AddAreaDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="영역 추가">
+    <Dialog open={open} onClose={onClose} title={tr("영역 추가")}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
-          <span className={label}>이름</span>
+          <span className={label}>{tr("이름")}</span>
           <input
             className={field}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="예: 학업"
+            placeholder={tr("예: 학업")}
             required
           />
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>
-            레일 표시 (1~2글자, 비우면 이름 첫 글자)
+            {tr("레일 표시 (1~2글자, 비우면 이름 첫 글자)")}
           </span>
           <input
             className={field}
@@ -251,10 +254,10 @@ function AddAreaDialog({
         <ErrorText error={create.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
-            취소
+            {tr("취소")}
           </button>
           <button type="submit" className={btn.cta} disabled={create.isPending}>
-            추가하기
+            {tr("추가하기")}
           </button>
         </div>
       </form>
