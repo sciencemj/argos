@@ -47,6 +47,7 @@ from argos.models import (
     Task,
     TaskStatus,
 )
+from argos.skills import SkillCache, SkillLister, apply_skill, list_skills, parse_call
 from argos.usage import UsageMonitor, busy_note
 
 # Agents whose plan usage Argos reads (PLAN Phase 9).
@@ -145,7 +146,7 @@ async def build_context(
 
 
 async def build_transcript(session: AsyncSession, trigger: Message) -> list[Turn]:
-    """The thread the trigger is in; in a DM, the recent conversation."""
+    """The thread the trigger is in; in a DM, the recent turns of its conversation."""
     channel = await session.get(Channel, trigger.channel_id)
     if trigger.thread_root_id is not None:
         root, replies = await services.list_thread(session, trigger.thread_root_id)
@@ -153,7 +154,7 @@ async def build_transcript(session: AsyncSession, trigger: Message) -> list[Turn
     elif channel is not None and channel.kind == ChannelKind.DM:
         recent = await session.scalars(
             select(Message)
-            .where(Message.channel_id == channel.id)
+            .where(Message.channel_id == channel.id, Message.session_id == trigger.session_id)
             .order_by(Message.created_at.desc())
             .limit(TRANSCRIPT_LIMIT)
         )
@@ -241,6 +242,7 @@ class Runner:
         self._sessionmaker = sessionmaker
         self.settings = settings
         self.adapter_factory = adapter_factory  # tests swap in a fake (PLAN §8.6)
+        self.skill_lister: SkillLister = SkillCache(list_skills)  # tests swap this too
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._job_slots = asyncio.Semaphore(max(1, settings.job_concurrency))
         self.usage: UsageMonitor | None = None  # set by the app (PLAN Phase 9)
@@ -310,6 +312,16 @@ class Runner:
         channel = await services.get_channel(session, trigger.channel_id)
         in_dm = channel.kind == ChannelKind.DM and trigger.thread_root_id is None
         reply_root = None if in_dm else (trigger.thread_root_id or trigger.id)
+        root = (
+            await services.get_message(session, trigger.thread_root_id)
+            if trigger.thread_root_id
+            else trigger
+        )
+        coding = (
+            services.coding_workspace(self.settings.job_roots, channel.workspace_path)
+            if root.coding and channel.workspace_path
+            else None
+        )
         run_ids: list[str] = []
         for agent in agents:
             await self.warn_if_busy(session, agent, channel.id, reply_root)
@@ -323,10 +335,18 @@ class Runner:
             )
             context = await build_context(session, agent, channel, self.settings)
             transcript = await build_transcript(session, trigger)
-            # One backend conversation per Argos thread (or per DM), like Hermes keeps one
-            # session per Discord thread.
-            key = f"argos-dm-{channel.id}" if in_dm else f"argos-thread-{run.thread_root_id}"
-            task = asyncio.create_task(self._run(run.id, agent, reply.id, transcript, context, key))
+            if transcript and parse_call(transcript[-1].text) is not None:
+                transcript = apply_skill(transcript, await self.skill_lister(agent, self.settings))
+            # One backend conversation per Argos thread (or per DM conversation), like
+            # Hermes keeps one session per Discord thread.
+            key = (
+                f"argos-dm-{trigger.session_id or channel.id}"
+                if in_dm
+                else f"argos-thread-{run.thread_root_id}"
+            )
+            task = asyncio.create_task(
+                self._run(run.id, agent, reply.id, transcript, context, key, coding=coding)
+            )
             self._tasks[run.id] = task
             task.add_done_callback(lambda _t, rid=run.id: self._tasks.pop(rid, None))
             run_ids.append(run.id)
@@ -392,7 +412,9 @@ class Runner:
         session_key: str,
         job: "_Job | None" = None,
         no_tools: bool = False,
+        coding: Path | None = None,
     ) -> None:
+        """`coding`: the project folder of a coding-mode thread."""
         ids = {"run_id": run_id, "agent_id": agent.name, "message_id": message_id}
         parts: list[str] = []
         trace: list[str] = []  # job log: one line per tool step
@@ -409,11 +431,16 @@ class Runner:
                 adapter = self.adapter_factory(
                     agent, self.settings, sessions, job_workspace=job.workspace
                 )
+            elif coding is not None:
+                adapter = self.adapter_factory(
+                    agent, self.settings, sessions, job_workspace=coding, coding=True
+                )
             elif no_tools:
                 adapter = self.adapter_factory(agent, self.settings, sessions, no_tools=True)
             else:
                 adapter = self.adapter_factory(agent, self.settings, sessions)
-            limit = self.settings.job_timeout if job is not None else self.settings.agent_timeout
+            working = job is not None or coding is not None
+            limit = self.settings.job_timeout if working else self.settings.agent_timeout
             async with asyncio.timeout(limit):
                 async for event in adapter.stream(transcript, context, session_key):
                     match event:
@@ -446,7 +473,7 @@ class Runner:
                 text=text,
                 status=status,
                 error=error,
-                log="\n".join(trace) if job is not None else None,
+                log="\n".join(trace) if job is not None or coding is not None else None,
             )
             if job is not None and status == RunStatus.DONE:
                 await _move(session, job.task_id, TaskStatus.REVIEW, agent)

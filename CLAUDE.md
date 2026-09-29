@@ -70,9 +70,11 @@ vitest, build), api-types 최신 여부.
   취소. 서버 시작 시 남은 running/queued run은 error 처리.
 - **`agents.py`**: 어댑터 `stream(transcript, context, session)`가 `Token`/`Status`/`Failure`를 낸다.
   Hermes(게이트웨이 Responses API + `conversation`), Claude(claude-agent-sdk, uuid5 세션 +
-  `get_session_info`로 resume 판단), Codex(`codex app-server` JSON-RPC, 전용 `CODEX_HOME`에 auth.json만
-  링크, thread id는 `agent_session` 테이블), Ollama. 채팅은 Argos MCP 도구만, 잡만 파일·셸 도구 +
-  샌드박스 + 작업 디렉터리 허용 목록. `build_adapter`가 에이전트 → 어댑터를 고른다.
+  `get_session_info`로 resume 판단), Codex(`codex app-server` JSON-RPC, 전용 `CODEX_HOME`에 auth.json·skills·AGENTS.md만
+  링크, thread id는 `agent_session` 테이블), Ollama. 채팅은 Argos MCP 도구 + 사용자 스킬(Claude는 훅 끔),
+  잡은 파일·셸 도구 + 샌드박스 + 작업 디렉터리 허용 목록, 코딩 모드 스레드(`message.coding`)는 채널
+  작업 폴더(`channel.workspace_path`, 허용 목록 안)에서 사용자 설정·네트워크까지. `/이름`은 `skills.py`가
+  에이전트 스킬로 풀어 준다. `build_adapter`가 에이전트 → 어댑터를 고른다.
 - **`mcp_server.py`**: 같은 프로세스의 `/mcp`(Streamable HTTP). `?agent=` 또는 `X-Argos-Agent`로
   호출자 식별. 삭제 도구는 즉시 지우지 않고 approval을 만든다(사용자 승인 후 실행).
 - **데이터 경로**: `data_dir`(기본 `backend/data`, 앱은 Application Support) 기준 상대 경로. 새 경로 설정도

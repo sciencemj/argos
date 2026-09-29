@@ -23,18 +23,27 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  type FormEvent,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router";
 import {
   STATUSES,
   type Task,
   type TaskStatus,
+  useChannels,
   useConfig,
   useCreateTask,
   useMoveTask,
   useTasks,
   useUpdateTask,
 } from "../api";
+import { channelLabel } from "../cards";
 import { dday, localInputToIso } from "../dates";
 import { tr, tt } from "../i18n";
 import { CheckIcon, PlusIcon } from "../icons";
@@ -71,6 +80,11 @@ const dropAnimation: DropAnimation = {
   }),
 };
 
+/** On the combined board, the channel a card belongs to ("# 이름"). */
+const ChannelOf = createContext<(task: Task) => string | undefined>(
+  () => undefined,
+);
+
 const DOT: Record<TaskStatus, string> = {
   backlog: "bg-step-1",
   todo: "bg-step-2",
@@ -81,9 +95,17 @@ const DOT: Record<TaskStatus, string> = {
 
 export function KanbanTab() {
   const channel = useChannel();
-  const tasks = useTasks(channel.id);
+  // 내 공간 manages every task in one board; each card names its channel.
+  const all = channel.kind === "personal";
+  const tasks = useTasks(all ? undefined : channel.id);
+  const channels = useChannels();
   const config = useConfig();
-  const move = useMoveTask(channel.id);
+  const move = useMoveTask(all ? undefined : channel.id);
+  const channelOf = (task: Task) => {
+    if (!all) return undefined;
+    const c = channels.data?.channels.find((c) => c.id === task.channel_id);
+    return c ? channelLabel(c) : undefined;
+  };
   const undo = useUpdateTask();
   const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
@@ -201,47 +223,50 @@ export function KanbanTab() {
         </button>
       </div>
       <ErrorText error={move.error} />
-      <DndContext
-        sensors={sensors}
-        collisionDetection={collision}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => {
-          setActiveId(null);
-          setDragColumns(null);
-        }}
-        accessibility={{
-          screenReaderInstructions: {
-            draggable: tr(
-              "스페이스로 카드를 들고, 방향키로 옮긴 뒤 스페이스로 내려놓아요. Esc는 취소.",
-            ),
-          },
-        }}
-      >
-        <div className="grid min-h-0 grow grid-cols-[repeat(5,minmax(184px,1fr))] gap-3.5 overflow-x-auto px-8 pb-[22px]">
-          {STATUSES.map((s) => (
-            <Column
-              key={s.id}
-              status={s.id}
-              title={s.label}
-              ids={columns[s.id]}
-              byId={byId}
-              wipLimit={s.id === "in_progress" ? wipLimit : undefined}
-              onOpen={openTask}
-            />
-          ))}
-        </div>
-        <DragOverlay dropAnimation={dropAnimation}>
-          {active && (
-            <div className="rotate-[-2deg] rounded-2xl shadow-lift">
-              <CardBody task={active} />
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+      <ChannelOf.Provider value={channelOf}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={collision}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => {
+            setActiveId(null);
+            setDragColumns(null);
+          }}
+          accessibility={{
+            screenReaderInstructions: {
+              draggable: tr(
+                "스페이스로 카드를 들고, 방향키로 옮긴 뒤 스페이스로 내려놓아요. Esc는 취소.",
+              ),
+            },
+          }}
+        >
+          <div className="grid min-h-0 grow grid-cols-[repeat(5,minmax(184px,1fr))] gap-3.5 overflow-x-auto px-8 pb-[22px]">
+            {STATUSES.map((s) => (
+              <Column
+                key={s.id}
+                status={s.id}
+                title={s.label}
+                ids={columns[s.id]}
+                byId={byId}
+                wipLimit={s.id === "in_progress" ? wipLimit : undefined}
+                onOpen={openTask}
+              />
+            ))}
+          </div>
+          <DragOverlay dropAnimation={dropAnimation}>
+            {active && (
+              <div className="rotate-[-2deg] rounded-2xl shadow-lift">
+                <CardBody task={active} />
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      </ChannelOf.Provider>
       <NewTaskDialog
         channelId={channel.id}
+        chooseChannel={all}
         open={creating}
         onClose={() => setCreating(false)}
       />
@@ -363,11 +388,15 @@ function CardBody({
   task: Task;
   onOpen?: (id: string) => void;
 }) {
+  const channel = useContext(ChannelOf)(task);
   if (task.status === "done") {
     return (
       <article className="flex cursor-pointer items-center gap-2 rounded-2xl border border-line px-3.5 py-3 text-meta">
         <CheckIcon size={14} />
-        <span className="text-[13px] line-through">{task.title}</span>
+        <span className="flex min-w-0 flex-col">
+          <span className="text-[13px] line-through">{task.title}</span>
+          {channel && <span className="truncate text-[11.5px]">{channel}</span>}
+        </span>
       </article>
     );
   }
@@ -375,7 +404,12 @@ function CardBody({
     <article
       className={`flex cursor-grab flex-col gap-2.5 rounded-2xl border bg-card p-3.5 shadow-sm ${task.job?.status === "error" ? "border-danger-line" : "border-line-soft"}`}
     >
-      <div className="text-[13.5px] font-medium text-ink">{task.title}</div>
+      <div className="flex flex-col gap-0.5">
+        <div className="text-[13.5px] font-medium text-ink">{task.title}</div>
+        {channel && (
+          <div className="truncate text-[11.5px] text-meta">{channel}</div>
+        )}
+      </div>
       {task.job && <JobLine task={task} onOpen={onOpen ?? (() => {})} />}
       <div className="flex flex-wrap items-center gap-1.5">
         {task.due_at ? (
@@ -395,14 +429,19 @@ function CardBody({
 
 function NewTaskDialog({
   channelId,
+  chooseChannel = false,
   open,
   onClose,
 }: {
   channelId: string;
+  /** Combined board: the card can go to any channel. */
+  chooseChannel?: boolean;
   open: boolean;
   onClose: () => void;
 }) {
   const create = useCreateTask();
+  const channels = useChannels();
+  const [target, setTarget] = useState(channelId);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
   const [status, setStatus] = useState<TaskStatus>("todo");
@@ -411,7 +450,7 @@ function NewTaskDialog({
     e.preventDefault();
     create.mutate(
       {
-        channel_id: channelId,
+        channel_id: target,
         title: title.trim(),
         status,
         due_at: due ? localInputToIso(due) : null,
@@ -439,6 +478,24 @@ function NewTaskDialog({
             required
           />
         </label>
+        {chooseChannel && (
+          <label className="flex flex-col gap-1">
+            <span className={label}>{tr("채널")}</span>
+            <select
+              className={field}
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+            >
+              {channels.data?.channels
+                .filter((c) => c.kind !== "system" && c.kind !== "dm")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {channelLabel(c)}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("마감 (선택)")}</span>
           <input

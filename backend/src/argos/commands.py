@@ -182,6 +182,14 @@ def _debate(rest: str) -> DebateCommand:
     return DebateCommand(tuple(agents), topic, mode, int(rounds_text), tools)
 
 
+NAMES = ("/task", "/event", "/note", "/ask", "/job", "/debate")
+
+
+def is_command(text: str) -> bool:
+    """An Argos slash command; any other `/name` is left to agents (their skills)."""
+    return text.strip().partition(" ")[0] in NAMES
+
+
 def parse(text: str, now: datetime, tz: ZoneInfo) -> Command | None:
     """Returns None for plain text (it goes to the inbox classifier instead)."""
     text = text.strip()

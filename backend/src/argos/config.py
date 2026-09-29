@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     job_timeout: float = 1800.0
     job_max_budget_usd: float = 2.0  # Claude jobs stop past this API-cost estimate
     context_limit: int = 4000  # characters of channel context sent with each run
+    dm_session_idle_hours: float = 6.0  # a DM message after this long starts a new conversation
 
     @model_validator(mode="after")
     def _inside_data_dir(self) -> "Settings":

@@ -8,7 +8,7 @@ in the background.
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -69,6 +69,8 @@ async def post_message(
     now: datetime,
     settings: Settings,
     thread_root_id: str | None = None,
+    session_id: str | None = None,
+    coding: bool | None = None,
 ) -> Posted:
     """Stores the message and decides what happens next (see runner.py for routing):
     agents to answer, or an inbox item to classify, or neither."""
@@ -94,34 +96,61 @@ async def post_message(
         root = await services.get_message(session, thread_root_id)
         root = await services.get_message(session, root.thread_root_id or root.id)
 
-    # A reply is conversation, not capture; slash commands work in threads too (their
-    # cards and agent answers stay in the thread).
-    if root is not None and not body.startswith("/"):
+    # A reply is conversation, not capture; Argos slash commands work in threads too
+    # (their cards and agent answers stay in the thread), other `/name`s are skills.
+    if root is not None and not commands.is_command(body):
+        if root.ref_type == "debate" or await services.running_debate(session, root.id):
+            message = await services.create_message(
+                session, channel_id=channel.id, body=body, actor="user", thread_root_id=root.id
+            )
+            return Posted(message)  # the debate reads it at the next turn
+        if mentioned:
+            targets = mentioned
+        elif root.sticky_agent_id:
+            targets = [await services.get_agent(session, root.sticky_agent_id)]
+        else:
+            targets = [dm_agent] if dm_agent else []
+        if coding and targets:
+            _check_coding(channel, targets, settings)
         message = await services.create_message(
             session, channel_id=channel.id, body=body, actor="user", thread_root_id=root.id
         )
-        if root.ref_type == "debate" or await services.running_debate(session, root.id):
-            return Posted(message)  # the debate reads it at the next turn
+        changes: dict[str, object] = {}
         if len(mentioned) == 1:  # an @mention re-sticks the thread to that agent
-            await services.update_message(
-                session, root.id, {"sticky_agent_id": mentioned[0].id}, "user"
-            )
-        if mentioned:
-            return Posted(message, agents=mentioned)
-        if root.sticky_agent_id:
-            return Posted(message, agents=[await services.get_agent(session, root.sticky_agent_id)])
-        return Posted(message, agents=[dm_agent] if dm_agent else [])
+            changes["sticky_agent_id"] = mentioned[0].id
+        if coding is not None and coding != root.coding:
+            changes["coding"] = coding
+        if changes:
+            await services.update_message(session, root.id, changes, "user")
+        return Posted(message, agents=targets)
     in_thread = root.id if root is not None else None
+    if channel.kind == ChannelKind.DM:  # top-level DM messages join a conversation
+        await services.resolve_dm_session(
+            session,
+            channel.id,
+            session_id=session_id,
+            now=now,
+            idle=timedelta(hours=settings.dm_session_idle_hours),
+        )
 
     # /job and /debate name agents with @ too, but they are commands, not conversations.
     names_agents = body.lstrip().startswith(("/job", "/debate"))
-    if (mentioned or dm_agent) and not names_agents and root is None:  # a conversation
-        targets = mentioned or ([dm_agent] if dm_agent else [])
+    # Coding mode is a conversation too: with the channel's agent when none is named.
+    coding_agent = (
+        await services.default_agent(session, agent_channel, settings.default_agent)
+        if coding and not (mentioned or dm_agent) and not commands.is_command(body)
+        else None
+    )
+    if (mentioned or dm_agent or coding_agent) and not names_agents and root is None:
+        targets = mentioned or [a for a in (dm_agent or coding_agent,) if a is not None]
+        if coding:
+            _check_coding(channel, targets, settings)
         message = await _say(session, channel, body, None)
-        if len(targets) == 1:
-            await services.update_message(
-                session, message.id, {"sticky_agent_id": targets[0].id}, "user"
-            )
+        changes = {"sticky_agent_id": targets[0].id} if len(targets) == 1 else {}
+        if coding:
+            changes["coding"] = True
+        if changes:
+            await services.update_message(session, message.id, changes, "user")
         return Posted(message, agents=targets)
 
     try:
@@ -232,6 +261,18 @@ async def post_message(
                 session, in_thread or message.id, {"sticky_agent_id": agent.id}, "user"
             )
             return Posted(message, agents=[agent])
+
+
+def _check_coding(channel: Channel, agents: list[Agent], settings: Settings) -> None:
+    """Coding mode needs the channel's project folder (still inside the allowlist) and
+    agents that can code."""
+    if not channel.workspace_path:
+        raise services.InvalidError(
+            "코딩 모드는 채널 설정에서 작업 폴더를 정한 채널에서만 쓸 수 있어요"
+        )
+    services.coding_workspace(settings.job_roots, channel.workspace_path)
+    if any(a.backend not in (AgentBackend.CLAUDE_CODE, AgentBackend.CODEX) for a in agents):
+        raise services.InvalidError("코딩 모드는 @claude나 @codex만 할 수 있어요")
 
 
 async def _say(

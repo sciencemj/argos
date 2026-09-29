@@ -123,7 +123,8 @@ export function invalidateFor(
       ...feeds,
     ],
     inbox_item: [["inbox"], ["today"], ...feeds],
-    message: feeds,
+    message: [...feeds, ["dm-sessions"]], // a message makes its DM conversation current
+    dm_session: [["dm-sessions"]],
     routine: [["routines"]],
     approval: [["approvals"], ...feeds],
     agent_run: [["tasks"], ["task"], ...feeds], // job status lives on the card
@@ -229,9 +230,14 @@ export const useOpenInbox = () =>
   });
 
 /** Newest page first from the API; pages are rendered oldest → newest. */
-export const useMessages = (channelId: string, includePersonal = false) =>
+/** `sessionId` narrows a DM to one conversation. */
+export const useMessages = (
+  channelId: string,
+  includePersonal = false,
+  sessionId?: string,
+) =>
   useInfiniteQuery({
-    queryKey: ["messages", channelId, includePersonal],
+    queryKey: ["messages", channelId, includePersonal, sessionId ?? null],
     enabled: Boolean(channelId),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
@@ -242,6 +248,7 @@ export const useMessages = (channelId: string, includePersonal = false) =>
             query: {
               ...(pageParam ? { cursor: pageParam } : {}),
               ...(includePersonal ? { include_personal: true } : {}),
+              ...(sessionId ? { session_id: sessionId } : {}),
             },
           },
         }),
@@ -632,6 +639,45 @@ export const useOpenDM = () =>
   useWrite("channel", (name: string) =>
     call(
       client.POST("/api/v1/agents/{name}/dm", { params: { path: { name } } }),
+    ),
+  );
+
+export type Skill = Schemas["SkillOut"];
+
+/** An agent's `/name` skills; listing starts a CLI, so it is kept for a while. */
+export const useAgentSkills = (name: string | undefined) =>
+  useQuery({
+    queryKey: ["skills", name],
+    enabled: Boolean(name),
+    staleTime: 5 * 60_000,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/agents/{name}/skills", {
+          params: { path: { name: name ?? "" } },
+        }),
+      ),
+  });
+
+export type DmSession = Schemas["DmSessionOut"];
+
+/** A DM's conversations, the current (most recently active) one first. */
+export const useDmSessions = (channelId: string) =>
+  useQuery({
+    queryKey: ["dm-sessions", channelId],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/sessions", {
+          params: { path: { channel_id: channelId } },
+        }),
+      ),
+  });
+
+export const useStartDmSession = () =>
+  useWrite("dm_session", (channelId: string) =>
+    call(
+      client.POST("/api/v1/channels/{channel_id}/sessions", {
+        params: { path: { channel_id: channelId } },
+      }),
     ),
   );
 

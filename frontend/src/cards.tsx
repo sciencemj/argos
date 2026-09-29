@@ -46,7 +46,7 @@ const TYPE_LABEL: Record<string, string> = {
   study_note: tr("공부 노트"),
 };
 
-const channelLabel = (channel: Channel) =>
+export const channelLabel = (channel: Channel) =>
   channel.kind === "personal" ? tr("내 공간") : `# ${channel.name}`;
 
 // --- suggestion ("알아봤어요") -------------------------------------------------------

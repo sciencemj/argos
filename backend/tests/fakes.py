@@ -36,6 +36,7 @@ class FakeAgent:
         self.sessions: list[str] = []
         self.workspaces: list[Any] = []  # job_workspace per call (None for chat)
         self.no_tools: list[bool] = []  # per call: asked to answer without Argos tools
+        self.coding: list[bool] = []  # per call: coding mode in a project folder
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
@@ -60,12 +61,14 @@ def fake_agents(**agents: FakeAgent) -> Any:
         sessions: Any = None,
         job_workspace: Any = None,
         no_tools: bool = False,
+        coding: bool = False,
     ) -> FakeAgent:
         if agent.name not in agents:
             raise AgentUnavailable(f"{agent.name} unavailable in tests")
         fake = agents[agent.name]
         fake.workspaces.append(job_workspace)
         fake.no_tools.append(no_tools)
+        fake.coding.append(coding)
         return fake
 
     return factory

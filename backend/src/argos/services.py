@@ -32,6 +32,7 @@ from argos.models import (
     Debate,
     DebateMode,
     DebateStatus,
+    DmSession,
     Event,
     InboxItem,
     InboxStatus,
@@ -43,6 +44,7 @@ from argos.models import (
     SourceLink,
     Task,
     TaskStatus,
+    utcnow,
 )
 
 POSITION_STEP = 1024.0
@@ -323,19 +325,15 @@ async def delete_channel(
 # --- tasks --------------------------------------------------------------------
 
 
-async def _column(session: AsyncSession, channel_id: str, status: TaskStatus) -> list[Task]:
-    query = (
-        select(Task)
-        .where(Task.channel_id == channel_id, Task.status == status)
-        .order_by(Task.position, Task.id)
-    )
+# Card order is one sequence per status across all channels, so the combined board in
+# "내 공간" and each channel's board (a subsequence) agree.
+async def _column(session: AsyncSession, status: TaskStatus) -> list[Task]:
+    query = select(Task).where(Task.status == status).order_by(Task.position, Task.id)
     return list((await session.scalars(query)).all())
 
 
-async def _end_position(session: AsyncSession, channel_id: str, status: TaskStatus) -> float:
-    query = select(func.max(Task.position)).where(
-        Task.channel_id == channel_id, Task.status == status
-    )
+async def _end_position(session: AsyncSession, status: TaskStatus) -> float:
+    query = select(func.max(Task.position)).where(Task.status == status)
     last = (await session.execute(query)).scalar_one_or_none()
     return (last or 0.0) + POSITION_STEP
 
@@ -372,7 +370,7 @@ async def create_task(
         title=title,
         description=description,
         status=status,
-        position=await _end_position(session, channel_id, status),
+        position=await _end_position(session, status),
         due_at=due_at,
         priority=priority,
     )
@@ -382,18 +380,17 @@ async def create_task(
 async def update_task(
     session: AsyncSession, task_id: str, changes: dict[str, Any], actor: str
 ) -> Task:
-    """Field edits. A status or channel change appends the card to the end of its new
-    column; use move_task to place it precisely."""
+    """Field edits. A status change appends the card to the end of its new column; use
+    move_task to place it precisely. A channel change keeps its place."""
     task = await get_task(session, task_id)
     if "channel_id" in changes:
         changes = {
             **changes,
             "channel_id": await _personal_destination(session, changes["channel_id"]),
         }
-    new_channel = changes.get("channel_id", task.channel_id)
     new_status = changes.get("status", task.status)
-    if (new_channel, new_status) != (task.channel_id, task.status):
-        changes = {**changes, "position": await _end_position(session, new_channel, new_status)}
+    if new_status != task.status:
+        changes = {**changes, "position": await _end_position(session, new_status)}
     return await _update(session, task, changes, actor)
 
 
@@ -412,7 +409,7 @@ async def move_task(
     if after_id is not None and before_id is not None:
         raise InvalidError("give after_id or before_id, not both")
     task = await get_task(session, task_id)
-    column = [t for t in await _column(session, task.channel_id, status) if t.id != task.id]
+    column = [t for t in await _column(session, status) if t.id != task.id]
     ids = [t.id for t in column]
     anchor = after_id or before_id
     if anchor is not None and anchor not in ids:
@@ -875,15 +872,29 @@ async def create_message(
     author_id: str | None = None,
     thread_root_id: str | None = None,
     ref: Record | None = None,
+    session_id: str | None = None,
 ) -> Message:
-    await get_channel(session, channel_id)
+    """A top-level DM message joins `session_id`, else the current conversation."""
+    channel = await get_channel(session, channel_id)
     if thread_root_id is not None:
         root = await get_message(session, thread_root_id)
         if root.channel_id != channel_id:
             raise InvalidError("thread root is in another channel")
         thread_root_id = root.thread_root_id or root.id  # threads are one level deep
+    dm_session = None
+    if channel.kind == ChannelKind.DM and thread_root_id is None:
+        dm_session = (
+            await get_dm_session(session, channel_id, session_id)
+            if session_id is not None
+            else await current_dm_session(session, channel_id)
+        ) or await _new_dm_session(session, channel_id)
+        # Committed with the message; the message's event refreshes the session list.
+        dm_session.last_active_at = utcnow()
+        if dm_session.title is None and author_type == AuthorType.USER and body.strip():
+            dm_session.title = body.strip().splitlines()[0][:100]
     message = Message(
         channel_id=channel_id,
+        session_id=dm_session.id if dm_session is not None else None,
         body=body,
         author_type=author_type,
         author_id=author_id,
@@ -892,6 +903,78 @@ async def create_message(
         ref_id=ref.id if ref is not None else None,
     )
     return await _create(session, message, actor)
+
+
+# --- DM conversations -------------------------------------------------------------------
+
+
+async def list_dm_sessions(session: AsyncSession, channel_id: str) -> list[DmSession]:
+    """Newest activity first; the first one is the current conversation."""
+    query = (
+        select(DmSession)
+        .where(DmSession.channel_id == channel_id)
+        .order_by(DmSession.last_active_at.desc(), DmSession.id.desc())
+    )
+    return list((await session.scalars(query)).all())
+
+
+async def current_dm_session(session: AsyncSession, channel_id: str) -> DmSession | None:
+    sessions = await list_dm_sessions(session, channel_id)
+    return sessions[0] if sessions else None
+
+
+async def get_dm_session(session: AsyncSession, channel_id: str, session_id: str) -> DmSession:
+    dm_session = await _get(session, DmSession, session_id)
+    if dm_session.channel_id != channel_id:
+        raise InvalidError("conversation is in another channel")
+    return dm_session
+
+
+async def _new_dm_session(session: AsyncSession, channel_id: str) -> DmSession:
+    dm_session = DmSession(channel_id=channel_id, last_active_at=utcnow())
+    session.add(dm_session)
+    await session.flush()
+    return dm_session
+
+
+async def start_dm_session(session: AsyncSession, channel_id: str, actor: str) -> DmSession:
+    """ "새 대화": a fresh conversation, unless the current one is still empty."""
+    channel = await get_channel(session, channel_id)
+    if channel.kind != ChannelKind.DM:
+        raise InvalidError("only a DM has conversations")
+    current = await current_dm_session(session, channel_id)
+    if current is not None and current.title is None:
+        has_messages = await session.scalar(
+            select(Message.id).where(Message.session_id == current.id).limit(1)
+        )
+        if has_messages is None:
+            return current
+    return await _create(session, DmSession(channel_id=channel_id, last_active_at=utcnow()), actor)
+
+
+async def resolve_dm_session(
+    session: AsyncSession,
+    channel_id: str,
+    *,
+    session_id: str | None,
+    now: datetime,
+    idle: timedelta,
+) -> DmSession:
+    """The conversation a new DM message goes to: the one the user picked, else the
+    current one unless it has been quiet longer than `idle`. Becomes the current one."""
+    if session_id is not None:
+        dm_session = await get_dm_session(session, channel_id, session_id)
+    else:
+        current = await current_dm_session(session, channel_id)
+        if current is None or now - current.last_active_at > idle:
+            dm_session = await _create(
+                session, DmSession(channel_id=channel_id, last_active_at=now), "user"
+            )
+        else:
+            dm_session = current
+    dm_session.last_active_at = now
+    await session.flush()
+    return dm_session
 
 
 async def update_message(
@@ -907,14 +990,18 @@ async def list_messages(
     also_channel_id: str | None = None,
     cursor: str | None = None,
     limit: int = 50,
+    session_id: str | None = None,
 ) -> tuple[list[Message], str | None]:
-    """Top-level messages, oldest first; `next_cursor` fetches the page before this one."""
+    """Top-level messages, oldest first; `next_cursor` fetches the page before this one.
+    `session_id` narrows a DM to one conversation."""
     channels = [channel_id, also_channel_id] if also_channel_id else [channel_id]
     query = (
         select(Message)
         .where(Message.channel_id.in_(channels), Message.thread_root_id.is_(None))
         .order_by(Message.created_at.desc(), Message.id.desc())
     )
+    if session_id is not None:
+        query = query.where(Message.session_id == session_id)
     if cursor is not None:
         last_ts, last_id = _decode_cursor(cursor)
         query = query.where(
@@ -1360,6 +1447,7 @@ async def start_run(
         author_id=agent.name,
         thread_root_id=reply_thread_root_id,
         actor=f"agent:{agent.name}",
+        session_id=trigger.session_id if reply_thread_root_id is None else None,
     )
     await _update(session, reply, {"run_id": run.id}, "system")
     await _update(session, run, {"reply_message_id": reply.id}, "system")
@@ -1427,23 +1515,43 @@ def check_job_roots(
     return roots
 
 
-def job_workspace(roots: Sequence[Path], requested: str | None, title: str) -> Path:
-    """Where a job may write (PLAN §8.1: an allowlist). A requested path, relative to the
-    first root or absolute, must resolve inside one of the roots (symlinks resolved, so
-    they cannot point out); none requested → a new folder in the first root."""
+def _allowed_roots(roots: Sequence[Path]) -> list[Path]:
     allowed = [r.expanduser().resolve() for r in roots]
     if not allowed:
         raise InvalidError("허용된 작업 디렉터리가 없어요 (ARGOS_JOB_ROOTS)")
+    return allowed
+
+
+def _inside_roots(allowed: list[Path], requested: str) -> Path:
+    """`requested`, relative to the first root or absolute, resolved (symlinks too, so
+    they cannot point out); must be inside one of the roots."""
+    path = Path(requested).expanduser()
+    path = (path if path.is_absolute() else allowed[0] / path).resolve()
+    if not any(path == root or path.is_relative_to(root) for root in allowed):
+        roots_text = ", ".join(map(str, allowed))
+        raise InvalidError(f"허용된 작업 디렉터리 밖이에요: {requested} (허용: {roots_text})")
+    return path
+
+
+def job_workspace(roots: Sequence[Path], requested: str | None, title: str) -> Path:
+    """Where a job may write (PLAN §8.1: an allowlist): a requested path inside the
+    roots; none requested → a new folder in the first root."""
+    allowed = _allowed_roots(roots)
     if requested:
-        path = Path(requested).expanduser()
-        path = (path if path.is_absolute() else allowed[0] / path).resolve()
-        if not any(path == root or path.is_relative_to(root) for root in allowed):
-            roots_text = ", ".join(map(str, allowed))
-            raise InvalidError(f"허용된 작업 디렉터리 밖이에요: {requested} (허용: {roots_text})")
+        path = _inside_roots(allowed, requested)
     else:
         slug = re.sub(r"[^0-9A-Za-z가-힣]+", "-", title).strip("-")[:40] or "job"
         path = allowed[0] / f"{slug}-{uuid.uuid4().hex[:6]}"
     path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def coding_workspace(roots: Sequence[Path], requested: str) -> Path:
+    """A channel's project folder for coding mode: an existing folder inside the same
+    allowlist as jobs. Checked again at every run, in case the allowlist changed."""
+    path = _inside_roots(_allowed_roots(roots), requested)
+    if not path.is_dir():
+        raise InvalidError(f"작업 폴더가 없어요: {requested}")
     return path
 
 

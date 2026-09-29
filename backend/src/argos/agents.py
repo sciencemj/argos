@@ -63,6 +63,11 @@ AgentEvent = Token | Status | Failure
 class Turn:
     speaker: str  # "user" or an agent name
     text: str
+    # A `/name args` skill call (skills.apply_skill): `text` then says to use the skill,
+    # for backends that cannot invoke it natively.
+    skill: str | None = None
+    args: str = ""
+    skill_path: str | None = None  # Codex: the skill's SKILL.md
 
 
 class AgentAdapter(Protocol):
@@ -456,6 +461,19 @@ def claude_sdk_event(message: Any) -> AgentEvent | None:
 
 
 JOB_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+# Coding mode: what Claude Code uses day to day. WebFetch also opens the sandboxed
+# shell's network. Anything else (e.g. edits outside the folder) is refused.
+CODING_TOOLS = [
+    *JOB_TOOLS,
+    "WebFetch",
+    "WebSearch",
+    "TodoWrite",
+    "NotebookEdit",
+    "Agent",
+    "Skill",
+]
+# Chat reads the user's settings only to find their skills; their hooks stay off.
+CLAUDE_CHAT_SETTINGS = json.dumps({"disableAllHooks": True})
 
 
 class ClaudeSDKAdapter:
@@ -463,8 +481,11 @@ class ClaudeSDKAdapter:
 
     The SDK still runs the Claude Code engine with the user's login, but hands back
     typed messages, and `get_session_info` says whether the thread's session exists,
-    so there is no guessing between --session-id and --resume. Isolation is the same
-    as before: no built-in tools, no user settings/hooks, only the Argos MCP server."""
+    so there is no guessing between --session-id and --resume. Chat: no built-in tools
+    but the Skill tool, the user's skills without their hooks, only the Argos MCP
+    server. A job is confined to its workspace; coding mode (`coding`) works like
+    Claude Code itself in the project folder: the user's settings, hooks and skills,
+    sandboxed shell with network."""
 
     def __init__(
         self,
@@ -475,7 +496,9 @@ class ClaudeSDKAdapter:
         cli_path: str | None,
         job_budget_usd: float | None = None,
         tools: list[str] | None = None,
+        coding: bool = False,
     ) -> None:
+        self._coding = coding
         self._tools = tools  # Argos tools it may use; None = all, [] = none (PLAN Phase 10)
         self._name = name
         self._model = model
@@ -507,9 +530,42 @@ class ClaudeSDKAdapter:
             "session_id": None if exists else session_id,
             "cli_path": self._cli_path,
         }
-        if self._job_budget is None:  # chat: Argos tools only, Argos context as the prompt
+        # Chat reads the user's settings for their skills only; coding mode all of them.
+        chat_common: dict[str, Any] = {
+            **common,
+            "setting_sources": ["user"],
+            "settings": CLAUDE_CHAT_SETTINGS,
+        }
+        coding_common: dict[str, Any] = {
+            **common,
+            "setting_sources": ["user", "project", "local"],
+        }
+        if self._job_budget is None and self._tools == []:  # e.g. a debate turn: text only
             options = ClaudeAgentOptions(
                 system_prompt=context, tools=[], allowed_tools=allowed, **common
+            )
+        elif self._job_budget is None:  # chat: Argos tools and skills, Argos context
+            options = ClaudeAgentOptions(
+                system_prompt=context,
+                tools=["Skill"],
+                allowed_tools=allowed,
+                skills="all",
+                **chat_common,
+            )
+        elif self._coding:  # coding mode: like Claude Code itself, in the project folder
+            options = ClaudeAgentOptions(
+                system_prompt={"type": "preset", "preset": "claude_code", "append": context},
+                tools={"type": "preset", "preset": "claude_code"},
+                allowed_tools=[*CODING_TOOLS, "mcp__argos"],
+                skills="all",
+                permission_mode="dontAsk",
+                sandbox={
+                    "enabled": True,  # Bash is sandboxed to the folder, network allowed
+                    "autoAllowBashIfSandboxed": True,
+                    "allowUnsandboxedCommands": False,
+                },
+                max_budget_usd=self._job_budget,
+                **coding_common,
             )
         else:  # coding job: file and shell tools, confined to the job's workspace
             options = ClaudeAgentOptions(
@@ -526,11 +582,13 @@ class ClaudeSDKAdapter:
                 max_budget_usd=self._job_budget,
                 **common,
             )
-        prompt = (
-            render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
-            if exists
-            else render_transcript(transcript, self._name)
-        )
+        last = transcript[-1] if transcript else None
+        if last is not None and last.skill is not None and self._tools != []:
+            prompt = f"/{last.skill} {last.args}".strip()  # Claude Code expands it itself
+        elif exists:
+            prompt = render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+        else:
+            prompt = render_transcript(transcript, self._name)
         try:
             async for message in query(prompt=prompt, options=options):
                 if (event := claude_sdk_event(message)) is not None:
@@ -601,8 +659,10 @@ class CodexAppServerAdapter:
         home: Path,
         sessions: SessionIds,
         job: bool = False,
+        coding: bool = False,
     ) -> None:
-        self._job = job  # coding job: shell on, writes allowed inside the workspace
+        self._job = job or coding  # shell on, writes allowed inside the workspace
+        self._coding = coding  # coding mode: network too
         self._name = name
         self._model = model
         self._workspace = workspace
@@ -723,10 +783,14 @@ class CodexAppServerAdapter:
             if resumed
             else render_transcript(transcript, self._name)
         )
-        started = await call(
-            "turn/start",
-            {"threadId": thread_id, "input": [{"type": "text", "text": text}], "effort": "low"},
-        )
+        items: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        last = transcript[-1] if transcript else None
+        if last is not None and last.skill is not None and last.skill_path is not None:
+            items.insert(0, {"type": "skill", "name": last.skill, "path": last.skill_path})
+        turn: dict[str, Any] = {"threadId": thread_id, "input": items, "effort": "low"}
+        if self._coding:
+            turn["sandboxPolicy"] = {"type": "workspaceWrite", "networkAccess": True}
+        started = await call("turn/start", turn)
         if "error" in started:
             raise AgentUnavailable(f"codex turn: {_obj(started['error']).get('message')}")
 
@@ -751,14 +815,16 @@ class CodexAppServerAdapter:
 
 
 def prepare_codex_home(home: Path, auth: Path) -> Path:
-    """Argos' CODEX_HOME holds only a link to the user's login (auth.json)."""
+    """Argos' CODEX_HOME holds links to the user's login (auth.json), their skills and
+    their AGENTS.md; not their config, so sandbox and tools stay Argos' choice."""
     home = home.resolve()
     home.mkdir(parents=True, exist_ok=True)
-    link = home / "auth.json"
     if not auth.exists():
         raise AgentUnavailable("Codex 로그인 정보가 없어요 (터미널에서 codex login)")
-    if not link.exists():
-        link.symlink_to(auth)
+    for name in ("auth.json", "skills", "AGENTS.md"):
+        source, link = auth.parent / name, home / name
+        if source.exists() and not link.exists() and not link.is_symlink():
+            link.symlink_to(source)
     return home
 
 
@@ -863,8 +929,10 @@ def build_adapter(
     sessions: SessionIds | None = None,
     job_workspace: Path | None = None,
     no_tools: bool = False,
+    coding: bool = False,
 ) -> AgentAdapter:
-    """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only.
+    """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only;
+    with `coding`, a coding-mode thread in that project folder (network, user settings).
     `no_tools`: plain conversation without Argos tools (debate turns, PLAN Phase 10).
     Custom agents get only the Argos tools on their list."""
     if job_workspace is not None and agent.backend not in (
@@ -908,7 +976,13 @@ def build_adapter(
                 raise AgentUnavailable(f"{settings.claude_bin} 명령을 찾을 수 없어요")
             if job_workspace is not None:
                 return ClaudeSDKAdapter(
-                    agent.name, agent.model, job_workspace, mcp, cli, settings.job_max_budget_usd
+                    agent.name,
+                    agent.model,
+                    job_workspace,
+                    mcp,
+                    cli,
+                    settings.job_max_budget_usd,
+                    coding=coding,
                 )
             return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli, tools=tools)
         case AgentBackend.CODEX:
@@ -926,6 +1000,7 @@ def build_adapter(
                     home,
                     sessions or _NoSessions(),
                     job=job_workspace is not None,
+                    coding=coding and job_workspace is not None,
                 )
             if job_workspace is not None:
                 raise AgentUnavailable("코딩 잡은 codex app-server 모드에서만 실행돼요")

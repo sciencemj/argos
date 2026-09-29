@@ -32,6 +32,19 @@ export const en: Record<string, string> = {
   유형: "Type",
   제목: "Title",
   채널: "Channel",
+  "새 대화": "New chat",
+  코딩: "Coding",
+  "코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)":
+    "Coding mode — files and shell in the project folder (/ for skills)",
+  "작업 폴더 (코딩 모드, 선택)": "Project folder (coding mode, optional)",
+  "예: my-project (코딩 잡 허용 폴더 안)":
+    "e.g. my-project (inside the allowed job folders)",
+  "정하면 입력창의 코딩 토글로 Claude·Codex가 이 폴더에서 파일·셸·네트워크를 써요.":
+    "With a folder set, the Coding toggle lets Claude and Codex use files, shell and network in it.",
+  "대화 고르기": "Choose conversation",
+  "(현재)": "(current)",
+  "새 대화예요. 이전 대화는 위에서 고를 수 있어요.":
+    "A new conversation. Pick earlier ones above.",
   "· 채널 맥락으로 확정": "· Matched to this channel",
   "정해지지 않음 · 고치기에서 골라 주세요":
     "Not set · Choose a channel in Edit",

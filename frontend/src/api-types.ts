@@ -110,6 +110,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dm Sessions
+         * @description A DM's conversations, most recently active (the current one) first.
+         */
+        get: operations["list_dm_sessions_api_v1_channels__channel_id__sessions_get"];
+        put?: never;
+        /** Start Dm Session */
+        post: operations["start_dm_session_api_v1_channels__channel_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}/thread": {
         parameters: {
             query?: never;
@@ -394,6 +415,26 @@ export interface paths {
         put?: never;
         /** Open Dm */
         post: operations["open_dm_api_v1_agents__name__dm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{name}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Skills
+         * @description The agent's `/name` skills for the composer; empty when its backend is down.
+         */
+        get: operations["list_agent_skills_api_v1_agents__name__skills_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1717,6 +1758,8 @@ export interface components {
             vault_path: string | null;
             /** Sort Order */
             sort_order: number;
+            /** Workspace Path */
+            workspace_path: string | null;
         };
         /** ChannelUpdate */
         ChannelUpdate: {
@@ -1731,6 +1774,8 @@ export interface components {
             sort_order?: number | null;
             /** Default Agent Id */
             default_agent_id?: string | null;
+            /** Workspace Path */
+            workspace_path?: string | null;
         };
         /** ChannelsOut */
         ChannelsOut: {
@@ -1851,6 +1896,25 @@ export interface components {
              * @default true
              */
             skill: boolean;
+        };
+        /** DmSessionOut */
+        DmSessionOut: {
+            /** Id */
+            id: string;
+            /** Channel Id */
+            channel_id: string;
+            /** Title */
+            title: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Active At
+             * Format: date-time
+             */
+            last_active_at: string;
         };
         /** EventCreate */
         EventCreate: {
@@ -2151,6 +2215,10 @@ export interface components {
             body: string;
             /** Thread Root Id */
             thread_root_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Coding */
+            coding?: boolean | null;
         };
         /** MessageOut */
         MessageOut: {
@@ -2160,6 +2228,12 @@ export interface components {
             channel_id: string;
             /** Thread Root Id */
             thread_root_id: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Coding */
+            coding: boolean;
+            /** Sticky Agent Id */
+            sticky_agent_id: string | null;
             author_type: components["schemas"]["AuthorType"];
             /** Author Id */
             author_id: string | null;
@@ -2533,6 +2607,13 @@ export interface components {
             skill_conflict: boolean;
             /** Hint */
             hint: string;
+        };
+        /** SkillOut */
+        SkillOut: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
         };
         /** SyncStatusOut */
         SyncStatusOut: {
@@ -2982,6 +3063,7 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
                 include_personal?: boolean;
+                session_id?: string | null;
             };
             header?: never;
             path: {
@@ -3033,6 +3115,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dm_sessions_api_v1_channels__channel_id__sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmSessionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_dm_session_api_v1_channels__channel_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmSessionOut"];
                 };
             };
             /** @description Validation Error */
@@ -3589,6 +3733,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_skills_api_v1_agents__name__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillOut"][];
                 };
             };
             /** @description Validation Error */

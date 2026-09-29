@@ -159,3 +159,9 @@
 | 2026-09-26 | Argos 완전 삭제(설정, 앱 전용): 서버가 먼저 에이전트 MCP·스킬, 자동 실행, 키체인 암호를 지우고, 앱이 자신·캐시·(선택) 데이터를 휴지통으로 옮긴 뒤 종료. 영구 삭제 대신 휴지통 | 사용자 요청. 실수해도 되돌릴 수 있게 |
 | 2026-09-26 | 시작 화면: 강아지가 발자국을 남기며 뛰어와 시간대별 인사(좋은 아침이에요 등). 최소 2.6초 보여 줌, 움직임 줄이기 존중 | 사용자 제안 |
 | 2026-09-26 | 테스트는 launchctl·LaunchAgents를 항상 가짜로(conftest autouse) | 삭제 테스트가 개발자의 실제 dev LaunchAgent를 지운 사고(바로 같은 코드로 복구) |
+| 2026-09-28 | 에이전트 DM을 대화(세션) 단위로: `dm_session` 표 + `message.session_id`. 가장 최근에 활동한 대화가 현재 대화, `dm_session_idle_hours`(기본 6시간) 넘게 조용하면 다음 메시지부터 새 대화. 대화마다 transcript·백엔드 세션 키(`argos-dm-<session>`)가 따로. 기존 DM 기록은 대화 하나로 옮김. `message.session_id` FK는 ON DELETE 없이(SQLite에서 ADD COLUMN 인라인 FK의 ON DELETE를 alembic check가 못 읽음, 채널 삭제는 channel FK 연쇄로 정리) | 사용자 요청. 한 DM에 기록이 끝없이 쌓여 컨텍스트가 커짐 |
+| 2026-09-28 | 드래그 선택은 채팅 내용(메시지·에이전트 답·작업 로그·주간 리뷰)과 입력칸만. 나머지 UI는 `user-select: none` | 사용자 요청. 앱처럼 동작 |
+| 2026-09-28 | 칸반 순서는 채널이 아니라 상태별 전체 한 줄(`position`). 내 공간 칸반은 모든 할 일을 보여 주고 카드에 채널을 표시, 다른 채널 카드 옆으로도 끌어 놓을 수 있음. 채널만 바꾸면 자리 유지 | 사용자 요청(흩어진 할 일을 한곳에서 관리). 전체 순서의 부분열이라 채널별 칸반 순서와 모순 없음 |
+| 2026-09-28 | 에이전트 대화에서 `/이름` = 그 에이전트의 스킬. 목록: Claude SDK `get_server_info` 명령(스킬·명령), Codex `skills/list`, Hermes `GET /v1/skills`(5분 캐시). 호출: Claude는 `/이름 인자`를 그대로 프롬프트로, Codex는 `skill` 입력 항목, Hermes·기타는 "스킬을 불러 따르라"는 문장. Argos 명령(/task 등)이 아닌 `/이름`은 스레드에서도 에이전트로 | 사용자 요청 |
+| 2026-09-28 | Claude 채팅은 스킬을 위해 `setting_sources=["user"]` + `disableAllHooks`(사용자 CLAUDE.md는 읽힘), 도구는 `Skill`만. Codex 전용 CODEX_HOME에 사용자 skills·AGENTS.md도 링크(config는 여전히 안 읽음) | 스킬을 쓰려면 사용자 설정 경로가 필요. 훅(출력 스타일 등)이 Argos 대화에 끼어들지 않게 |
+| 2026-09-28 | 코딩 모드(PLAN §8 완화): 채널 작업 폴더(`workspace_path`, `job_roots` 안의 기존 폴더, 실행마다 재검사)가 있을 때 입력창 토글로 스레드 단위 on/off. Claude는 claude_code 프리셋 도구 + 사용자·프로젝트 설정/훅/스킬 + `dontAsk` 허용 목록(WebFetch 포함) + Bash 샌드박스(탈출 금지) + 잡 예산, Codex는 `workspaceWrite` + `networkAccess` + 셸. 로컬 모델·Hermes는 불가 | 사용자 요청: "Claude Code·Codex를 직접 부르는 수준". 전체 권한(샌드박스 없음) 대신 폴더 쓰기 + 네트워크를 사용자가 선택 |

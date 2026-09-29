@@ -109,6 +109,8 @@ class Channel(Record):
     default_agent_id: Mapped[str | None] = mapped_column(String(36))
     vault_path: Mapped[str | None] = mapped_column(String(500))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # The project folder coding-mode threads work in (inside ARGOS_JOB_ROOTS).
+    workspace_path: Mapped[str | None] = mapped_column(String(500))
 
 
 class Task(Record):
@@ -162,12 +164,28 @@ class InboxItem(Record):
     confidence: Mapped[float | None] = mapped_column(Float)
 
 
+class DmSession(Record):
+    """One conversation in an agent's DM channel. Each has its own transcript and
+    backend session, so an old conversation doesn't grow forever. The most recently
+    active one is the current conversation."""
+
+    __tablename__ = "dm_session"
+
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(100))
+    last_active_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class Message(Record):
     __tablename__ = "message"
 
     channel_id: Mapped[str] = mapped_column(
         ForeignKey("channel.id", ondelete="CASCADE"), index=True
     )
+    # Top-level DM messages: the conversation they belong to (DmSession).
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("dm_session.id"), index=True)
     thread_root_id: Mapped[str | None] = mapped_column(ForeignKey("message.id"), index=True)
     author_type: Mapped[AuthorType] = mapped_column(String(20))
     author_id: Mapped[str | None] = mapped_column(String(36))
@@ -178,6 +196,9 @@ class Message(Record):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # On a thread root: the agent the thread is stuck to after an @mention (PLAN Phase 5).
     sticky_agent_id: Mapped[str | None] = mapped_column(String(36))
+    # On a thread root: agents answer in coding mode (files, shell, network) in the
+    # channel's project folder.
+    coding: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class ActivityLog(Record):

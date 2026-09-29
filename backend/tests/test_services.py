@@ -213,6 +213,26 @@ async def test_move_renumbers_when_gap_is_exhausted(session: AsyncSession) -> No
     assert b.position - a.position > 1.0
 
 
+async def test_move_next_to_card_of_another_channel(session: AsyncSession) -> None:
+    """The combined board in 내 공간 places cards among every channel's cards; each
+    channel's own board keeps a consistent order."""
+    one = await make_channel(session, "one")
+    assert one.area_id is not None
+    two = await services.create_channel(session, name="two", area_id=one.area_id, actor="user")
+    a = await services.create_task(session, channel_id=one.id, title="a", actor="user")
+    x = await services.create_task(session, channel_id=two.id, title="x", actor="user")
+    b = await services.create_task(session, channel_id=one.id, title="b", actor="user")
+
+    await services.move_task(session, b.id, status=TaskStatus.TODO, before_id=x.id, actor="user")
+
+    order = [t.title for t in await services.list_tasks(session, status=TaskStatus.TODO)]
+    assert order == ["a", "b", "x"]
+    assert await column_titles(session, one.id, TaskStatus.TODO) == ["a", "b"]
+    await services.update_task(session, x.id, {"channel_id": one.id}, "user")
+    assert await column_titles(session, one.id, TaskStatus.TODO) == ["a", "b", "x"]
+    assert a.position < b.position
+
+
 async def test_move_with_anchor_from_other_column_fails(session: AsyncSession) -> None:
     channel = await make_channel(session)
     a = await services.create_task(session, channel_id=channel.id, title="a", actor="user")

@@ -14,14 +14,17 @@ import {
   type Channel,
   useAgents,
   useChannels,
+  useDmSessions,
+  useStartDmSession,
   useUpdateChannel,
   useVaultFolders,
   useVaultSettings,
 } from "../api";
 import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
+import { fmt } from "../dates";
 import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
-import { SettingsIcon } from "../icons";
+import { PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
 
 const tab =
@@ -240,9 +243,18 @@ export function ChannelPage() {
 }
 
 /** 1:1 conversation with an agent: no kanban/calendar, the whole page is the chat. */
+/** A DM is a list of conversations: the current one unless the user picks an older
+ * one to reread or continue. Long quiet gaps start a new one on the server. */
 function DMPage({ channel }: { channel: Channel }) {
   const agents = useAgents();
   const agent = agents.data?.find((a) => a.id === channel.default_agent_id);
+  const sessions = useDmSessions(channel.id);
+  const startSession = useStartDmSession();
+  const [picked, setPicked] = useState<string | null>(null);
+  const list = sessions.data ?? [];
+  const current = list[0];
+  const chosen = list.find((s) => s.id === picked);
+  const shown = chosen ?? current;
   return (
     <>
       <header
@@ -257,8 +269,46 @@ function DMPage({ channel }: { channel: Channel }) {
             <span className="text-[12.5px] text-danger">{agent.problem}</span>
           )}
         </div>
+        {list.length > 0 && (
+          <select
+            aria-label={tr("대화 고르기")}
+            className={`${field} w-auto max-w-[280px] truncate`}
+            value={shown?.id ?? ""}
+            onChange={(e) =>
+              setPicked(e.target.value === current?.id ? null : e.target.value)
+            }
+          >
+            {list.map((s, i) => (
+              <option key={s.id} value={s.id}>
+                {(s.title ?? tr("새 대화")) +
+                  ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
+                  (i === 0 ? ` ${tr("(현재)")}` : "")}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className={btn.outline}
+          disabled={startSession.isPending}
+          onClick={() =>
+            startSession.mutate(channel.id, {
+              onSuccess: () => setPicked(null),
+            })
+          }
+        >
+          <PlusIcon size={14} />
+          {tr("새 대화")}
+        </button>
       </header>
-      <Feed key={channel.id} channel={channel} />
+      {sessions.isSuccess && (
+        <Feed
+          key={`${channel.id}-${shown?.id ?? ""}`}
+          channel={channel}
+          sessionId={shown?.id}
+          pickedSession={chosen?.id}
+        />
+      )}
     </>
   );
 }
@@ -286,6 +336,7 @@ function ChannelSettings({
   const [areaId, setAreaId] = useState(channel.area_id ?? "");
   const [vaultPath, setVaultPath] = useState(channel.vault_path ?? "");
   const [agentId, setAgentId] = useState(channel.default_agent_id ?? "");
+  const [workspace, setWorkspace] = useState(channel.workspace_path ?? "");
   const [folderOpen, setFolderOpen] = useState(false);
   const [folderQuery, setFolderQuery] = useState("");
   const agents = useAgents();
@@ -298,7 +349,13 @@ function ChannelSettings({
     update.mutate(
       {
         id: channel.id,
-        ...(space ? {} : { name: name.trim(), area_id: areaId || null }),
+        ...(space
+          ? {}
+          : {
+              name: name.trim(),
+              area_id: areaId || null,
+              workspace_path: workspace.trim() || null,
+            }),
         vault_path: vaultPath.trim() || null,
         default_agent_id: agentId || null,
       },
@@ -360,6 +417,22 @@ function ChannelSettings({
             ))}
           </select>
         </label>
+        {!space && (
+          <label className="flex flex-col gap-1">
+            <span className={label}>{tr("작업 폴더 (코딩 모드, 선택)")}</span>
+            <input
+              className={`${field} font-mono`}
+              value={workspace}
+              onChange={(e) => setWorkspace(e.target.value)}
+              placeholder={tr("예: my-project (코딩 잡 허용 폴더 안)")}
+            />
+            <span className="text-[12px] text-meta">
+              {tr(
+                "정하면 입력창의 코딩 토글로 Claude·Codex가 이 폴더에서 파일·셸·네트워크를 써요.",
+              )}
+            </span>
+          </label>
+        )}
         <div className="flex flex-col gap-1">
           <label htmlFor={`vault-folder-${channel.id}`} className={label}>
             {tr("옵시디언 폴더 (선택)")}

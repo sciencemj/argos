@@ -13,6 +13,7 @@ import {
   cancelRun,
   type Message,
   useAgentSettings,
+  useAgentSkills,
   useAgents,
   useChannels,
   useConvertMessage,
@@ -65,12 +66,23 @@ export function useOpenThread() {
 /** The feed's reading column: centered on wide screens, header and input line up with it. */
 export const FEED_COLUMN = "mx-auto w-full max-w-[960px]";
 
-/** Channel feed: messages are the input layer, the cards show the objects (PLAN P4). */
-export function Feed({ channel }: { channel: Channel }) {
+/** Channel feed: messages are the input layer, the cards show the objects (PLAN P4).
+ * In a DM, `sessionId` is the conversation shown and `pickedSession` the one the user
+ * chose to continue (otherwise the server picks the current or a fresh one). */
+export function Feed({
+  channel,
+  sessionId,
+  pickedSession,
+}: {
+  channel: Channel;
+  sessionId?: string;
+  pickedSession?: string;
+}) {
   const channels = useChannels();
   const messages = useMessages(
     channel.id,
     channel.kind === "system" && channel.name === "inbox",
+    sessionId,
   );
   const scroller = useRef<HTMLDivElement>(null);
   const openThread = useOpenThread();
@@ -115,14 +127,20 @@ export function Feed({ channel }: { channel: Channel }) {
               {tr("이전 메시지 더 보기")}
             </button>
           )}
-          {messages.isSuccess && items.length === 0 && (
-            <div className="text-[13px] text-text-3">
-              {channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}
-              {tr(
-                "에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할 일·일정으로 정리해요.",
-              )}
-            </div>
-          )}
+          {messages.isSuccess &&
+            items.length === 0 &&
+            (channel.kind === "dm" ? (
+              <div className="text-[13px] text-text-3">
+                {tr("새 대화예요. 이전 대화는 위에서 고를 수 있어요.")}
+              </div>
+            ) : (
+              <div className="text-[13px] text-text-3">
+                {channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}
+                {tr(
+                  "에 첫 메시지를 적어 보세요. 그냥 쓰면 Argos가 할 일·일정으로 정리해요.",
+                )}
+              </div>
+            ))}
           {items.map((m) => (
             <MessageItem
               key={m.id}
@@ -136,7 +154,7 @@ export function Feed({ channel }: { channel: Channel }) {
           ))}
         </div>
       </section>
-      <Composer channel={channel} />
+      <Composer channel={channel} sessionId={pickedSession} />
     </>
   );
 }
@@ -198,6 +216,11 @@ export function MessageItem({
               <PinIcon size={12} />
             </span>
           )}
+          {message.coding && (
+            <span className="rounded-full bg-inset px-2 py-px text-[11px] font-medium text-text-2">
+              {tr("코딩")}
+            </span>
+          )}
         </div>
         {message.run ? (
           <AgentBody message={message} />
@@ -205,13 +228,13 @@ export function MessageItem({
           // Argos's own notes (the weekly review) and code or documents pasted for
           // review are Markdown.
           <div
-            className={`leading-[1.65] ${system ? "text-[14px] text-text-2" : "text-[15px] text-text"}`}
+            className={`select-text leading-[1.65] ${system ? "text-[14px] text-text-2" : "text-[15px] text-text"}`}
           >
             <Markdown text={message.body} />
           </div>
         ) : (
           <div
-            className={`whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
+            className={`select-text whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
           >
             {message.body}
           </div>
@@ -322,7 +345,7 @@ function AgentBody({
         </div>
       )}
       {(text || running) && (
-        <div className="text-[13.5px] leading-[1.65] text-text-2">
+        <div className="text-[13.5px] leading-[1.65] text-text-2 select-text">
           <Markdown text={text} />
           {running && (
             <span className="ml-[3px] inline-block h-[15px] w-[2px] animate-pulse bg-ink align-[-2px]" />
@@ -345,7 +368,7 @@ function AgentBody({
               <span className="ml-2 font-mono text-meta">{run.workspace}</span>
             )}
           </summary>
-          <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-inset p-2.5 font-mono text-[11px] leading-[1.6] whitespace-pre-wrap text-text-2">
+          <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-inset p-2.5 select-text font-mono text-[11px] leading-[1.6] whitespace-pre-wrap text-text-2">
             {run.log}
           </pre>
         </details>
@@ -586,18 +609,26 @@ function EventFromMessage({
 /** Enter sends, Shift+Enter breaks the line; Enter while a Korean syllable is still
  * being composed only commits the syllable. */
 const MENTION_AT_END = /(^|\s)@([\w가-힣-]*)$/;
+/** "/na" typed as the first word, or right after the @mentions that open a message. */
+const SLASH_AT_START = /^((?:@[\w가-힣-]+\s+)*)\/([\w:.-]*)$/;
+const LEADING_MENTION = /^\s*@([\w가-힣-]+)\s/;
 
-/** Message box of a channel feed, or of a thread (`threadRootId`): the same slash
- * commands and @mentions work in both. */
+/** Message box of a channel feed, or of a thread (`root`): the same slash commands,
+ * agent skills and @mentions work in both. */
 export function Composer({
   channel,
-  threadRootId,
+  root,
+  sessionId,
   narrow = false,
 }: {
   channel: Channel;
-  threadRootId?: string;
+  /** The thread replied to: its agent gets the skills, its coding mode the toggle. */
+  root?: Message;
+  /** DM: continue this conversation instead of the current one. */
+  sessionId?: string;
   narrow?: boolean;
 }) {
+  const threadRootId = root?.id;
   const post = usePostMessage();
   const agents = useAgents();
   const settings = useAgentSettings();
@@ -612,12 +643,43 @@ export function Composer({
     (a) => a.name === settings.data?.default_agent,
   );
   const askTarget = channelDefault ?? fallback;
+  // Coding mode (channels with a project folder): a thread keeps it until switched.
+  const codeable = !dm && Boolean(channel.workspace_path);
+  const [coding, setCoding] = useState(root?.coding ?? false);
+  useEffect(() => setCoding(root?.coding ?? false), [root?.coding]);
+
+  // The agent a "/name" goes to, for its skills: the DM's, the one named first, the
+  // thread's, or the channel's agent in coding mode.
+  const stickyAgent = agents.data?.find((a) => a.id === root?.sticky_agent_id);
+  const skillAgent = dm
+    ? dmAgent?.name
+    : (LEADING_MENTION.exec(text)?.[1] ??
+      stickyAgent?.name ??
+      (coding && codeable ? askTarget?.name : undefined));
+  const skills = useAgentSkills(skillAgent);
 
   // Completion (Tab or Enter, ↑↓ to choose, Esc to close): "@cl" at the caret →
   // agents whose handle or display name starts with it; "/de" as the first word →
-  // slash commands.
+  // Argos commands and the agent's skills.
   const typed = MENTION_AT_END.exec(text)?.[2];
-  const command = dm ? undefined : /^\/(\w*)$/.exec(text)?.[1];
+  const slash = SLASH_AT_START.exec(text);
+  const lead = slash?.[1] ?? "";
+  const typedSlash = slash?.[2];
+  const command = dm || lead ? undefined : typedSlash;
+  const skillOptions =
+    typedSlash !== undefined && skillAgent
+      ? (skills.data ?? [])
+          .filter((s) =>
+            s.name.toLowerCase().startsWith(typedSlash.toLowerCase()),
+          )
+          .slice(0, 50)
+          .map((s) => ({
+            key: `skill:${s.name}`,
+            main: `/${s.name}`,
+            side: s.description,
+            pick: () => complete(`${lead}/${s.name} `),
+          }))
+      : [];
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const options: {
@@ -629,15 +691,20 @@ export function Composer({
   }[] =
     dismissed === text
       ? []
-      : command !== undefined
-        ? COMMANDS.filter((c) =>
-            c.name.slice(1).startsWith(command.toLowerCase()),
-          ).map((c) => ({
-            key: c.name,
-            main: c.name,
-            side: c.usage,
-            pick: () => complete(`${c.name} `),
-          }))
+      : typedSlash !== undefined
+        ? [
+            ...(command === undefined
+              ? []
+              : COMMANDS.filter((c) =>
+                  c.name.slice(1).startsWith(command.toLowerCase()),
+                ).map((c) => ({
+                  key: c.name,
+                  main: c.name,
+                  side: c.usage,
+                  pick: () => complete(`${c.name} `),
+                }))),
+            ...skillOptions,
+          ]
         : typed !== undefined
           ? (agents.data ?? [])
               .filter((a) =>
@@ -659,7 +726,15 @@ export function Composer({
     const body = text.trim();
     if (!body || post.isPending) return;
     post.mutate(
-      { channelId: channel.id, body, thread_root_id: threadRootId },
+      {
+        channelId: channel.id,
+        body,
+        thread_root_id: threadRootId,
+        session_id: sessionId,
+        // A thread always says its mode (the toggle may switch it); a new message only
+        // turns coding on.
+        coding: codeable ? (threadRootId ? coding : coding || null) : null,
+      },
       { onSuccess: () => setText("") },
     );
   };
@@ -721,9 +796,9 @@ export function Composer({
         <div
           role="listbox"
           aria-label={
-            command !== undefined ? tr("명령 고르기") : tr("에이전트 부르기")
+            typedSlash !== undefined ? tr("명령 고르기") : tr("에이전트 부르기")
           }
-          className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex min-w-[260px] flex-col gap-0.5 rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
+          className={`absolute bottom-full ${narrow ? "left-5" : "left-8"} mb-2 flex max-h-80 max-w-[560px] min-w-[260px] flex-col gap-0.5 overflow-y-auto rounded-2xl border border-line-soft bg-card p-1.5 shadow-lift`}
         >
           {options.map((o, i) => (
             <button
@@ -731,12 +806,19 @@ export function Composer({
               type="button"
               role="option"
               aria-selected={i === current}
+              ref={
+                i === current
+                  ? (el) => el?.scrollIntoView({ block: "nearest" })
+                  : undefined
+              }
               onMouseEnter={() => setActive(i)}
               onClick={o.pick}
               className="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-2.5 text-left text-[13.5px] aria-selected:bg-inset"
             >
               {o.agent && <AgentAvatar id={o.agent} size={20} />}
-              <span className={`text-ink ${o.agent ? "grow" : "font-mono"}`}>
+              <span
+                className={`shrink-0 text-ink ${o.agent ? "grow" : "font-mono"}`}
+              >
                 {o.main}
               </span>
               <span
@@ -763,11 +845,13 @@ export function Composer({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            threadRootId
-              ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
-              : dm
-                ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
-                : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+            coding && codeable
+              ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
+              : threadRootId
+                ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
+                : dm
+                  ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
+                  : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
           }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
@@ -783,6 +867,17 @@ export function Composer({
                 {c}
               </button>
             ))}
+          {codeable && (
+            <button
+              type="button"
+              aria-pressed={coding}
+              title={channel.workspace_path ?? undefined}
+              onClick={() => setCoding((c) => !c)}
+              className="h-7 cursor-pointer rounded-full bg-inset px-[11px] text-[11.5px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
+            >
+              {tr("코딩")}
+            </button>
+          )}
           <span className="grow" />
           {post.error ? (
             <span role="alert" className="text-[12px] text-danger">
@@ -865,7 +960,7 @@ export function ThreadReplies({
         </div>
       </div>
       <div className={column}>
-        <Composer channel={channel} threadRootId={root.id} narrow={!wide} />
+        <Composer channel={channel} root={root} narrow={!wide} />
       </div>
     </>
   );

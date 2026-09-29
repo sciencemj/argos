@@ -121,6 +121,7 @@ class ChannelOut(Out):
     default_agent_id: str | None
     vault_path: str | None
     sort_order: int
+    workspace_path: str | None
 
 
 class AreaCreate(BaseModel):
@@ -148,6 +149,7 @@ class ChannelUpdate(BaseModel):
     vault_path: str | None = None
     sort_order: int | None = None
     default_agent_id: str | None = None  # null = use the app-wide default agent
+    workspace_path: str | None = None  # coding mode's project folder; "" or null clears
 
 
 class RoutineOut(BaseModel):
@@ -395,6 +397,9 @@ class MessageOut(Out):
     id: str
     channel_id: str
     thread_root_id: str | None
+    session_id: str | None
+    coding: bool
+    sticky_agent_id: str | None  # thread root: the agent replies go to
     author_type: AuthorType
     author_id: str | None
     body: str
@@ -487,6 +492,24 @@ class ThreadOut(BaseModel):
 class MessageCreate(BaseModel):
     body: str = Field(min_length=1, max_length=10_000)
     thread_root_id: str | None = None
+    # DM: continue this conversation; omitted, the current one (or a new one when idle).
+    session_id: str | None = None
+    # Coding mode (files, shell, network in the channel's project folder): on a new
+    # conversation it starts one; in a thread it switches the thread; null keeps it.
+    coding: bool | None = None
+
+
+class SkillOut(BaseModel):
+    name: str
+    description: str
+
+
+class DmSessionOut(Out):
+    id: str
+    channel_id: str
+    title: str | None
+    created_at: datetime
+    last_active_at: datetime
 
 
 class MessageUpdate(BaseModel):
@@ -603,6 +626,11 @@ async def update_channel(
     changes = _changes(body)
     if "vault_path" in changes:
         changes["vault_path"] = _vault_folder(config, changes["vault_path"])
+    if "workspace_path" in changes:
+        folder = (changes["workspace_path"] or "").strip()
+        changes["workspace_path"] = (
+            str(services.coding_workspace(config.job_roots, folder)) if folder else None
+        )
     channel = await services.update_channel(session, channel_id, changes, USER)
     if "vault_path" in changes:
         request.app.state.vault_sync.nudge()  # notes and tasks of the new folder
@@ -730,6 +758,7 @@ async def list_messages(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     include_personal: bool = False,
+    session_id: str | None = None,
 ) -> MessagePage:
     channel = await services.get_channel(session, channel_id)
     personal = (
@@ -743,8 +772,23 @@ async def list_messages(
         also_channel_id=personal.id if personal else None,
         cursor=cursor,
         limit=limit,
+        session_id=session_id,
     )
     return MessagePage(items=await _messages_out(session, messages), next_cursor=next_cursor)
+
+
+@router.get("/channels/{channel_id}/sessions")
+async def list_dm_sessions(session: Session, channel_id: str) -> list[DmSessionOut]:
+    """A DM's conversations, most recently active (the current one) first."""
+    await services.get_channel(session, channel_id)
+    return [
+        DmSessionOut.model_validate(s) for s in await services.list_dm_sessions(session, channel_id)
+    ]
+
+
+@router.post("/channels/{channel_id}/sessions", status_code=status.HTTP_201_CREATED)
+async def start_dm_session(session: Session, channel_id: str) -> DmSessionOut:
+    return DmSessionOut.model_validate(await services.start_dm_session(session, channel_id, "user"))
 
 
 @router.post("/channels/{channel_id}/messages", status_code=status.HTTP_201_CREATED)
@@ -761,6 +805,8 @@ async def post_message(
         channel_id=channel_id,
         body=body.body,
         thread_root_id=body.thread_root_id,
+        session_id=body.session_id,
+        coding=body.coding,
         now=datetime.now(UTC),
         settings=config,
     )
@@ -1170,6 +1216,19 @@ async def open_dm(session: Session, name: str) -> ChannelOut:
     if agent is None:
         raise services.NotFoundError("agent", name)
     return ChannelOut.model_validate(await services.ensure_dm_channel(session, agent))
+
+
+@router.get("/agents/{name}/skills")
+async def list_agent_skills(
+    request: Request, session: Session, config: Config, name: str
+) -> list[SkillOut]:
+    """The agent's `/name` skills for the composer; empty when its backend is down."""
+    agent = await services.find_agent(session, name)
+    if agent is None:
+        raise services.NotFoundError("agent", name)
+    runner: Runner = request.app.state.runner
+    skills = await runner.skill_lister(agent, config)
+    return [SkillOut(name=s.name, description=s.description) for s in skills]
 
 
 @router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)

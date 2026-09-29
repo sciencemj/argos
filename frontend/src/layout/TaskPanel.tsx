@@ -10,6 +10,7 @@ import {
   useTask,
   useUpdateTask,
 } from "../api";
+import { channelLabel } from "../cards";
 import { dday, fmt, isoToLocalInput, localInputToIso } from "../dates";
 import { tr, tt } from "../i18n";
 import { CloseIcon } from "../icons";
@@ -76,6 +77,10 @@ function TaskDetail({
   const remove = useDeleteTask();
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
+  const pickable =
+    channels.data?.channels.filter(
+      (c) => c.kind !== "system" && c.kind !== "dm",
+    ) ?? [];
   const channel = channels.data?.channels.find((c) => c.id === task.channel_id);
 
   const save = (changes: Parameters<typeof update.mutate>[0]) =>
@@ -101,13 +106,7 @@ function TaskDetail({
           <span className="rounded-full border border-line bg-inset px-2 py-px text-[11.5px] font-semibold text-text">
             ● {statusLabel.get(task.status)}
           </span>
-          {channel && (
-            <Chip>
-              {channel.kind === "personal"
-                ? tr("내 공간")
-                : `# ${channel.name}`}
-            </Chip>
-          )}
+          {channel && <Chip>{channelLabel(channel)}</Chip>}
           {task.due_at && <Chip>{fmt(task.due_at, "M/d (EEE) HH:mm")}</Chip>}
           {task.due_at && task.status !== "done" && (
             <DdayBadge days={dday(task.due_at)} />
@@ -128,6 +127,23 @@ function TaskDetail({
             {STATUSES.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={label}>{tr("채널")}</span>
+          <select
+            className={field}
+            value={task.channel_id}
+            onChange={(e) => save({ id: task.id, channel_id: e.target.value })}
+          >
+            {channel && !pickable.includes(channel) && (
+              <option value={channel.id}>{channelLabel(channel)}</option>
+            )}
+            {pickable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {channelLabel(c)}
               </option>
             ))}
           </select>

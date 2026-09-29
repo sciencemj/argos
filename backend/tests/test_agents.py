@@ -4,10 +4,11 @@ import json
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fakes import FakeAgent, FakeClassifier, fake_agents
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from argos.agents import Failure, Status, Token, parse_claude_line, parse_codex_line
@@ -178,6 +179,70 @@ def test_dm_conversation(app: TestClient, local: FakeAgent) -> None:
     assert app.get("/api/v1/inbox").json()["items"] == []
 
 
+def _dm_settled(client: TestClient, dm: str, count: int) -> list[dict[str, Any]]:
+    """Waits until the DM holds `count` top-level messages, every answer finished."""
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        items: list[dict[str, Any]] = client.get(f"/api/v1/channels/{dm}/messages").json()["items"]
+        if len(items) == count and all(m["run"]["status"] != "running" for m in items if m["run"]):
+            return items
+        time.sleep(0.02)
+    raise AssertionError("DM did not settle")
+
+
+def test_dm_conversations_are_separate_sessions(app: TestClient, local: FakeAgent) -> None:
+    dm = app.post("/api/v1/agents/local/dm").json()["id"]
+    first = send(app, dm, "첫 대화야")
+    _dm_settled(app, dm, 2)
+    send(app, dm, "이어서")
+    items = _dm_settled(app, dm, 4)
+    assert {m["session_id"] for m in items} == {first["session_id"]}
+    assert [t.text for t in local.transcripts[-1]][0] == "첫 대화야"  # same conversation
+
+    new = app.post(f"/api/v1/channels/{dm}/sessions").json()
+    # Pressing "새 대화" again reuses the still-empty conversation.
+    assert app.post(f"/api/v1/channels/{dm}/sessions").json()["id"] == new["id"]
+    second = send(app, dm, "새 주제")
+    assert second["session_id"] == new["id"]
+    _dm_settled(app, dm, 6)
+    assert [t.text for t in local.transcripts[-1]] == ["새 주제"]
+    assert local.sessions[-1] != local.sessions[0]  # a fresh backend session too
+
+    sessions = app.get(f"/api/v1/channels/{dm}/sessions").json()
+    assert [s["id"] for s in sessions] == [new["id"], first["session_id"]]
+    assert [s["title"] for s in sessions] == ["새 주제", "첫 대화야"]
+    page = app.get(f"/api/v1/channels/{dm}/messages", params={"session_id": new["id"]}).json()
+    assert [m["body"] for m in page["items"]][0] == "새 주제"
+    assert len(page["items"]) == 2
+
+    # Picking the old conversation continues it and makes it current again.
+    again = send(app, dm, "처음 얘기로", session_id=first["session_id"])
+    assert again["session_id"] == first["session_id"]
+    _dm_settled(app, dm, 8)
+    assert [t.text for t in local.transcripts[-1]][:2] == ["첫 대화야", "안녕하세요"]
+    assert local.sessions[-1] == local.sessions[0]
+    current = app.get(f"/api/v1/channels/{dm}/sessions").json()[0]
+    assert current["id"] == first["session_id"]
+
+
+def test_dm_starts_new_session_after_idle(app: TestClient) -> None:
+    state = cast(FastAPI, app.app).state
+    settings = cast(Settings, state.settings)
+    state.settings = settings.model_copy(update={"dm_session_idle_hours": 0})
+    dm = app.post("/api/v1/agents/local/dm").json()["id"]
+    first = send(app, dm, "하나")
+    _dm_settled(app, dm, 2)
+    second = send(app, dm, "둘")
+    assert second["session_id"] != first["session_id"]
+    _dm_settled(app, dm, 4)
+
+
+def test_sessions_only_in_dm(app: TestClient) -> None:
+    course = channel_id(app, "컴퓨터구조")
+    assert app.post(f"/api/v1/channels/{course}/sessions").status_code == 422
+    assert send(app, course, "금요일까지 과제2")["session_id"] is None
+
+
 def test_agent_list_and_default_setting(app: TestClient) -> None:
     agents = {a["name"]: a for a in app.get("/api/v1/agents").json()}
     assert set(agents) == {"hermes", "claude", "codex", "local"}
@@ -332,8 +397,11 @@ async def test_claude_sdk_session_new_then_resume(fake_sdk: Any) -> None:
     prompt, options = calls[0]
     assert options.session_id and options.resume is None
     assert "암호는 초록사과" in prompt
-    # Isolation: no built-in tools, no user settings/hooks, Argos MCP only, Argos context.
-    assert options.tools == [] and options.setting_sources == []
+    # Isolation: no built-in tools but Skill, the user's skills without their hooks,
+    # Argos MCP only, Argos context.
+    assert options.tools == ["Skill"] and options.skills == "all"
+    assert options.setting_sources == ["user"]
+    assert json.loads(options.settings) == {"disableAllHooks": True}
     assert options.allowed_tools == ["mcp__argos"] and options.strict_mcp_config
     assert options.mcp_servers == {
         "argos": {"type": "http", "url": "http://127.0.0.1:8000/mcp?agent=claude"}
@@ -349,6 +417,45 @@ async def test_claude_sdk_session_new_then_resume(fake_sdk: Any) -> None:
     prompt, options = calls[1]
     assert options.resume == calls[0][1].session_id and options.session_id is None
     assert prompt == "암호는?"  # only what Claude has not seen
+
+
+async def test_claude_sdk_skill_call_is_sent_as_slash_command(fake_sdk: Any) -> None:
+    from argos.agents import Turn
+
+    adapter, calls = fake_sdk
+    turn = Turn("user", "Use your `review` skill…", skill="review", args="PR 12")
+    [e async for e in adapter.stream([turn], "ctx", "argos-thread-1")]
+    assert calls[0][0] == "/review PR 12"
+
+
+async def test_claude_sdk_coding_mode_works_like_claude_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import argos.agents as agents_module
+    from argos.agents import ClaudeSDKAdapter, Turn
+
+    calls: list[Any] = []
+
+    async def fake_query(*, prompt: str, options: Any) -> Any:
+        calls.append(options)
+        for message in _sdk_messages("done"):
+            yield message
+
+    monkeypatch.setattr(agents_module, "query", fake_query)
+
+    def no_session(session_id: str, directory: str | None = None) -> None:
+        return None
+
+    monkeypatch.setattr(agents_module, "get_session_info", no_session)
+    adapter = ClaudeSDKAdapter("claude", None, tmp_path, "http://x/mcp", None, 2.0, coding=True)
+    [e async for e in adapter.stream([Turn("user", "테스트 고쳐줘")], "ctx", "argos-thread-1")]
+    options = calls[0]
+    assert options.cwd == str(tmp_path)
+    assert options.setting_sources == ["user", "project", "local"]  # CLAUDE.md, skills, hooks
+    assert options.tools == {"type": "preset", "preset": "claude_code"}
+    assert options.permission_mode == "dontAsk" and "WebFetch" in options.allowed_tools
+    assert options.sandbox["enabled"] and not options.sandbox["allowUnsandboxedCommands"]
+    assert options.max_budget_usd == 2.0
 
 
 def test_claude_sdk_error_result_becomes_failure() -> None:
@@ -468,6 +575,26 @@ async def test_codex_app_server_resumes_and_recovers(fake_codex: Any) -> None:
     ]
     assert ids.values["argos-thread-2"] == "thread-2"
     assert "첫 답" in seen()["requests"][-1]["params"]["input"][0]["text"]  # whole thread again
+
+
+async def test_codex_coding_mode_and_skill_input(fake_codex: Any, tmp_path: Path) -> None:
+    from argos.agents import CodexAppServerAdapter, Turn
+
+    _adapter, ids, seen = fake_codex
+    binary = str(tmp_path / "codex")  # the fake app-server script
+    coding = CodexAppServerAdapter(
+        "codex", None, tmp_path, None, binary, tmp_path, ids, coding=True
+    )
+    turn = Turn(
+        "user", "Use your `lint` skill…", skill="lint", args="", skill_path="/s/lint/SKILL.md"
+    )
+    [e async for e in coding.stream([turn], "ctx", "argos-thread-9")]
+    requests = seen()["requests"]
+    assert requests[-2]["params"]["sandbox"] == "workspace-write"
+    params = requests[-1]["params"]
+    assert params["sandboxPolicy"] == {"type": "workspaceWrite", "networkAccess": True}
+    assert params["input"][0] == {"type": "skill", "name": "lint", "path": "/s/lint/SKILL.md"}
+    assert "features.shell_tool=true" in coding._argv()  # pyright: ignore[reportPrivateUsage]
 
 
 def test_builtin_agent_models_are_set_in_settings(client: TestClient) -> None:

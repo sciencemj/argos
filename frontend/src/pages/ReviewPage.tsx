@@ -72,7 +72,7 @@ export function ReviewPage() {
                 {tr("주간 리뷰 ·") + " "}
                 {fmt(message.created_at, "yyyy.M.d")}
               </summary>
-              <div className="mt-4 text-[13px] leading-relaxed text-text-2">
+              <div className="mt-4 text-[13px] leading-relaxed text-text-2 select-text">
                 <Markdown text={message.body} />
               </div>
             </details>
