@@ -454,7 +454,11 @@ async def test_claude_sdk_coding_mode_works_like_claude_code(
     assert options.setting_sources == ["user", "project", "local"]  # CLAUDE.md, skills, hooks
     assert options.tools == {"type": "preset", "preset": "claude_code"}
     assert options.permission_mode == "dontAsk" and "WebFetch" in options.allowed_tools
+    # Edits only inside the folder: no bare Write/Edit rule.
+    assert f"Edit(/{tmp_path}/**)" in options.allowed_tools
+    assert not {"Write", "Edit", "NotebookEdit"} & set(options.allowed_tools)
     assert options.sandbox["enabled"] and not options.sandbox["allowUnsandboxedCommands"]
+    assert options.sandbox["network"] == {"allowedDomains": ["*"]}
     assert options.max_budget_usd == 2.0
 
 

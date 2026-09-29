@@ -74,9 +74,14 @@ class SkillCache:
         if hit is not None and time.monotonic() - hit[0] < CACHE_SECONDS:
             return hit[1]
         try:
-            skills = await self._lister(agent, settings)
+            listed = await self._lister(agent, settings)
         except (AgentUnavailable, OSError, httpx2.HTTPError, TimeoutError):
             return []  # unavailable backends have no skills; not cached, try again next time
+        # One entry per name (Codex can list a skill from two roots); the first wins.
+        unique: dict[str, Skill] = {}
+        for skill in listed:
+            unique.setdefault(skill.name, skill)
+        skills = list(unique.values())
         self._cache[key] = (time.monotonic(), skills)
         return skills
 

@@ -461,17 +461,20 @@ def claude_sdk_event(message: Any) -> AgentEvent | None:
 
 
 JOB_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
-# Coding mode: what Claude Code uses day to day. WebFetch also opens the sandboxed
-# shell's network. Anything else (e.g. edits outside the folder) is refused.
-CODING_TOOLS = [
-    *JOB_TOOLS,
-    "WebFetch",
-    "WebSearch",
-    "TodoWrite",
-    "NotebookEdit",
-    "Agent",
-    "Skill",
-]
+# Coding mode: what Claude Code uses day to day. The sandboxed shell's network is
+# opened by the sandbox settings.
+CODING_TOOLS = [*JOB_TOOLS, "WebFetch", "WebSearch", "TodoWrite", "NotebookEdit", "Agent", "Skill"]
+# File-editing tools are pre-approved only inside the workspace (`workspace_rules`);
+# with permission mode dontAsk every other edit is refused. Bash writes are held to
+# the workspace by the sandbox.
+EDITING_TOOLS = {"Write", "Edit", "NotebookEdit"}
+
+
+def workspace_rules(tools: list[str], workspace: Path) -> list[str]:
+    """Allow rules for `tools`, editing only under `workspace` ("//" = absolute path)."""
+    return [t for t in tools if t not in EDITING_TOOLS] + [f"Edit(/{workspace}/**)"]
+
+
 # Chat reads the user's settings only to find their skills; their hooks stay off.
 CLAUDE_CHAT_SETTINGS = json.dumps({"disableAllHooks": True})
 
@@ -556,13 +559,14 @@ class ClaudeSDKAdapter:
             options = ClaudeAgentOptions(
                 system_prompt={"type": "preset", "preset": "claude_code", "append": context},
                 tools={"type": "preset", "preset": "claude_code"},
-                allowed_tools=[*CODING_TOOLS, "mcp__argos"],
+                allowed_tools=[*workspace_rules(CODING_TOOLS, self._workspace), "mcp__argos"],
                 skills="all",
                 permission_mode="dontAsk",
                 sandbox={
                     "enabled": True,  # Bash is sandboxed to the folder, network allowed
                     "autoAllowBashIfSandboxed": True,
                     "allowUnsandboxedCommands": False,
+                    "network": {"allowedDomains": ["*"]},
                 },
                 max_budget_usd=self._job_budget,
                 **coding_common,
@@ -571,7 +575,7 @@ class ClaudeSDKAdapter:
             options = ClaudeAgentOptions(
                 system_prompt={"type": "preset", "preset": "claude_code", "append": context},
                 tools=JOB_TOOLS,
-                allowed_tools=[*JOB_TOOLS, "mcp__argos"],
+                allowed_tools=[*workspace_rules(JOB_TOOLS, self._workspace), "mcp__argos"],
                 # Anything not pre-approved is refused: no edits outside the workspace.
                 permission_mode="dontAsk",
                 sandbox={

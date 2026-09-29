@@ -142,3 +142,14 @@ def test_apply_skill_only_for_known_skills() -> None:
     assert apply_skill([Turn("user", "/unknown x")], skills)[-1].skill is None
     marked = apply_skill([Turn("user", "/review x")], skills)[-1]
     assert marked.skill == "review" and "review" in marked.text
+
+
+async def test_skill_cache_drops_duplicate_names(settings: Settings) -> None:
+    from argos.skills import SkillCache
+
+    async def lister(_agent: Agent, _settings: Settings) -> list[Skill]:
+        return [Skill("a", "first"), Skill("b"), Skill("a", "second")]
+
+    agent = Agent(name="codex", display_name="Codex", backend="codex")
+    skills = await SkillCache(lister)(agent, settings)
+    assert [(s.name, s.description) for s in skills] == [("a", "first"), ("b", "")]
