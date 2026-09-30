@@ -23,6 +23,8 @@
 
 </div>
 
+https://github.com/user-attachments/assets/be817be5-32c7-442e-8ed3-124973faf8ec
+
 Argos gives every course and project its own channel with a chat-style feed, a kanban board and a
 calendar. Write things down the way you would text a friend — *"quiz on Friday"*, *"send the API draft
 before the meeting"* — and Argos files them as tasks, events or notes. Your AI agents (Hermes, Claude

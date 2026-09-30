@@ -23,6 +23,8 @@
 
 </div>
 
+https://github.com/user-attachments/assets/ad35eda4-b87a-409b-872d-1024cefb6cea
+
 과목과 프로젝트마다 채널이 하나씩 생기고, 채널에는 채팅처럼 쓰는 피드와 칸반, 캘린더가 붙어 있어요.
 친구에게 메시지 보내듯 "금요일에 퀴즈", "회의 전에 API 초안 공유하기"라고 적으면 Argos가 할 일·일정·노트로
 나눠 정리해요. Hermes, Claude Code, Codex, 로컬 모델 같은 AI 에이전트도 같은 공간에서 일해요. 스레드에서
