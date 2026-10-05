@@ -14,6 +14,7 @@ from argos.main import create_app
 INSTALLED = [
     OllamaModel("qwen3.5:9b-mlx", remote=False, parameter_size=None),
     OllamaModel("gpt-oss:20b-cloud", remote=True, parameter_size="20.9B"),
+    OllamaModel("tev1:4b", remote=False, parameter_size="4.2B", decision=True),
 ]
 
 
@@ -36,9 +37,10 @@ def app_client(settings: Settings) -> Iterator[TestClient]:
 def test_lists_installed_models(client: TestClient, ollama: list[OllamaModel]) -> None:
     body = client.get("/api/v1/settings/classifier/models").json()
     assert body["reachable"] is True
-    assert [(m["name"], m["remote"]) for m in body["models"]] == [
-        ("qwen3.5:9b-mlx", False),
-        ("gpt-oss:20b-cloud", True),
+    assert [(m["name"], m["remote"], m["decision"]) for m in body["models"]] == [
+        ("qwen3.5:9b-mlx", False, False),
+        ("gpt-oss:20b-cloud", True, False),
+        ("tev1:4b", False, True),
     ]
 
 
@@ -61,6 +63,8 @@ def test_pick_model_persists_across_restart(settings: Settings, ollama: Any) -> 
             "model": "qwen3.5:9b-mlx",
             "source": "app",
             "enabled": True,
+            "title_model": "",
+            "title_mode": "parallel",
         }
         assert client.get("/api/v1/config").json()["classifier_enabled"] is True
 
@@ -138,3 +142,37 @@ async def test_list_ollama_models_filters_embedding_models(
         Settings(classifier_base_url="http://ollama.test/v1"), decision=True
     )
     assert [m.name for m in with_decision if m.decision] == ["nimble:9b"]
+
+
+def test_title_model_for_a_decision_classifier(settings: Settings, ollama: Any) -> None:
+    for client in app_client(settings):
+        picked = client.put(
+            "/api/v1/settings/classifier",
+            json={"model": "tev1:4b", "title_model": "qwen3.5:9b-mlx"},
+        ).json()
+        assert (picked["model"], picked["title_model"]) == ("tev1:4b", "qwen3.5:9b-mlx")
+        assert picked["title_mode"] == "parallel"
+        sequential = client.put(
+            "/api/v1/settings/classifier", json={"model": "tev1:4b", "title_mode": "sequential"}
+        ).json()
+        assert (sequential["title_model"], sequential["title_mode"]) == (
+            "qwen3.5:9b-mlx",
+            "sequential",
+        )
+        app = cast(FastAPI, client.app)
+        assert cast(Settings, app.state.settings).classifier_title_model == "qwen3.5:9b-mlx"
+        # Changing only the classifier keeps the saved title model.
+        kept = client.put("/api/v1/settings/classifier", json={"model": "tev1:4b"}).json()
+        assert kept["title_model"] == "qwen3.5:9b-mlx"
+        decision = client.put(
+            "/api/v1/settings/classifier", json={"model": "tev1:4b", "title_model": "tev1:4b"}
+        )
+        assert decision.status_code == 422  # a decision model cannot write titles
+
+    for client in app_client(settings):  # restart: comes back from the DB
+        current = client.get("/api/v1/settings/classifier").json()
+        assert (current["title_model"], current["title_mode"]) == ("qwen3.5:9b-mlx", "sequential")
+        cleared = client.put(
+            "/api/v1/settings/classifier", json={"model": "tev1:4b", "title_model": ""}
+        ).json()
+        assert cleared["title_model"] == ""

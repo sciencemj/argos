@@ -189,10 +189,16 @@ class ClassifierSettingsOut(BaseModel):
     # "app": picked in the settings screen, "env": from .env, "none": classification off
     source: Literal["app", "env", "none"]
     enabled: bool
+    title_model: str = ""  # chat model naming tasks/events for a decision model
+    title_mode: Literal["parallel", "sequential"] = "parallel"
 
 
 class ClassifierSettingsIn(BaseModel):
     model: str | None = Field(default=None, max_length=200)  # null or "" turns it off
+    # null keeps the saved one, "" makes titles from the text itself
+    title_model: str | None = Field(default=None, max_length=200)
+    # parallel: both models fit in memory; sequential: title written after the suggestion
+    title_mode: Literal["parallel", "sequential"] | None = None
 
 
 class OllamaModelOut(BaseModel):
@@ -917,6 +923,8 @@ async def _classifier_settings(request: Request, session: AsyncSession) -> Class
         model=config.classifier_model,
         source=source,
         enabled=request.app.state.classifier is not None,
+        title_model=config.classifier_title_model,
+        title_mode=config.classifier_title_mode,
     )
 
 
@@ -2203,15 +2211,25 @@ async def put_classifier_settings(
 ) -> ClassifierSettingsOut:
     """Saves the model choice and swaps the classifier without a restart."""
     model = (body.model or "").strip()
+    title = body.title_model.strip() if body.title_model is not None else None
     base: Settings = request.app.state.base_settings
-    if model and base.classifier_provider == "ollama":
+    if (model or title) and base.classifier_provider == "ollama":
         try:
-            installed = {m.name for m in await classifier.list_ollama_models(base, decision=True)}
+            installed = {
+                m.name: m for m in await classifier.list_ollama_models(base, decision=True)
+            }
         except classifier.ClassifierError as exc:
             raise services.InvalidError("Ollama에 연결할 수 없어요") from exc
-        if model not in installed:
-            raise services.InvalidError(f"Ollama에 설치되지 않은 모델이에요: {model}")
+        for name in (model, title):
+            if name and name not in installed:
+                raise services.InvalidError(f"Ollama에 설치되지 않은 모델이에요: {name}")
+        if title and installed[title].decision:
+            raise services.InvalidError("제목 모델은 글을 쓸 수 있는 모델이어야 해요")
     await services.set_setting(session, "classifier_model", model, USER)
+    if title is not None:
+        await services.set_setting(session, "classifier_title_model", title, USER)
+    if body.title_mode is not None:
+        await services.set_setting(session, "classifier_title_mode", body.title_mode, USER)
     overrides = await services.get_settings_overrides(session)
     request.app.state.settings = classifier.apply_overrides(base, overrides)
     request.app.state.classifier = classifier.build_classifier(request.app.state.settings)

@@ -5,6 +5,7 @@ A plain client on purpose; Phase 5 swaps it for the default agent behind the sam
 implementation covers them; a direct cloud provider is intentionally not built yet.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -416,34 +417,122 @@ def read_decision(answers: dict[str, Any], text: str, ctx: ClassifyContext) -> S
     )
 
 
+TITLE_PROMPT = {
+    "ko": "너는 할 일·일정 앱의 제목을 짓는다. 사용자가 적은 메시지를 짧은 제목으로 다듬어 "
+    "제목만 한 줄로 답한다. 날짜·시각 표현(오늘, 내일, 모레, 요일, 다음주, 날짜, 시각, ~까지)만 "
+    "빼고, 과목·프로젝트 이름, 번호, 사람, 물건 같은 핵심 낱말은 그대로 남긴다. 메시지에 없는 "
+    "낱말이나 숫자를 넣지 않는다. 따옴표나 설명을 붙이지 않는다.\n"
+    "예: 동아리 회의록 금요일 저녁까지 정리해서 올리기 → 동아리 회의록 정리해서 올리기",
+    "en": "You write titles for a task and calendar app. Rewrite the user's message as a "
+    "short title and reply with the title only, on one line. Drop only dates, times and "
+    "deadline words; keep key words such as course or project names, numbers, people and "
+    "things. Never add words or numbers that are not in the message. No quotes or "
+    "explanation.\nExample: tidy up the club minutes by Friday evening -> Tidy up the club "
+    "minutes",
+}
+
+
+class TitleWriter:
+    """A chat model that names tasks and events for a decision classifier.
+
+    `sequential`: the two models do not fit in memory together, so the suggestion is
+    saved first and the title written afterwards, one at a time (chat.classify_item);
+    otherwise the title is asked for alongside the decision."""
+
+    def __init__(self, client: AsyncOpenAI, model: str, *, sequential: bool = False) -> None:
+        self._client = client
+        self._model = model
+        self.sequential = sequential
+        self.lock = asyncio.Lock()
+
+    async def title(self, text: str, language: str) -> str | None:
+        """None when the model fails or answers nothing usable: the caller keeps its own."""
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": TITLE_PROMPT[language]},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0,
+                extra_body={"reasoning_effort": "none"},
+            )
+            content = response.choices[0].message.content or ""
+        except Exception as exc:
+            log.warning("title model failed: %s", type(exc).__name__)
+            return None
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
+        line = content.splitlines()[0].strip() if content else ""
+        line = re.sub(r"^(제목|title)\s*[:：]\s*", "", line, flags=re.I)
+        line = line.strip("\"'“”‘’`*").strip()
+        return line[:200] or None
+
+
 class DecisionClassifier:
     """Ollama decision models (Nimble, Tev1, Clef …) through /v1/systemone: one forward
     pass, no generated text, so it is fast and returns real probabilities."""
 
-    def __init__(self, http: httpx2.AsyncClient, root: str, model: str) -> None:
+    def __init__(
+        self,
+        http: httpx2.AsyncClient,
+        root: str,
+        model: str,
+        titles: TitleWriter | None = None,
+    ) -> None:
         self._http = http
         self._root = root
         self._model = model
+        self._titles = titles
+
+    @property
+    def later_titles(self) -> TitleWriter | None:
+        return self._titles if self._titles and self._titles.sequential else None
 
     async def classify(self, text: str, context: ClassifyContext) -> Suggestion:
         body = decision_request(self._model, text, context)
+        # Both models in memory: ask for the title while the decision runs.
+        writing = (
+            asyncio.create_task(self._titles.title(text, context.language))
+            if self._titles and not self._titles.sequential
+            else None
+        )
         try:
             response = await self._http.post(f"{self._root}/v1/systemone", json=body)
             response.raise_for_status()
             answers: dict[str, Any] = response.json()["answers"]
-            return read_decision(answers, text, context)
+            suggestion = read_decision(answers, text, context)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
+            if writing:
+                writing.cancel()
             raise ClassifierError(f"unusable decision output: {exc}") from exc
         except Exception as exc:
+            if writing:
+                writing.cancel()
             raise ClassifierError(f"classifier request failed: {type(exc).__name__}") from exc
+        if writing is None:
+            return suggestion
+        if suggestion.type not in ("task", "event"):
+            writing.cancel()
+            return suggestion
+        if title := await writing:
+            suggestion = suggestion.model_copy(update={"title": title})
+        return suggestion
 
 
 class OllamaClassifier:
     """Asks Ollama once what the model is: a decision model goes through /v1/systemone,
     anything else through the chat endpoint."""
 
-    def __init__(self, chat: "OpenAICompatClassifier", root: str, model: str, timeout: float):
+    def __init__(
+        self,
+        chat: "OpenAICompatClassifier",
+        root: str,
+        model: str,
+        timeout: float,
+        titles: TitleWriter | None = None,
+    ):
         self._chat = chat
+        self._titles = titles
         self._root = root
         self._model = model
         self._http = httpx2.AsyncClient(timeout=timeout)
@@ -467,7 +556,7 @@ class OllamaClassifier:
                     f"cannot reach Ollama at {self._root}: {type(exc).__name__}"
                 ) from exc
             self._picked = (
-                DecisionClassifier(self._http, self._root, self._model)
+                DecisionClassifier(self._http, self._root, self._model, self._titles)
                 if "decision" in capabilities
                 else self._chat
             )
@@ -475,6 +564,18 @@ class OllamaClassifier:
 
     async def classify(self, text: str, context: ClassifyContext) -> Suggestion:
         return await (await self._pick()).classify(text, context)
+
+    @property
+    def later_titles(self) -> TitleWriter | None:
+        """The title writer to run after the suggestion is saved (sequential mode)."""
+        picked = self._picked
+        return picked.later_titles if isinstance(picked, DecisionClassifier) else None
+
+
+def later_titles(classifier: Classifier) -> TitleWriter | None:
+    """The writer chat.classify_item runs after saving the suggestion, if any."""
+    writer = getattr(classifier, "later_titles", None)
+    return writer if isinstance(writer, TitleWriter) else None
 
 
 def anchor_dates(suggestion: Suggestion, text: str, ctx: ClassifyContext) -> Suggestion:
@@ -530,7 +631,18 @@ def build_classifier(settings: Settings) -> Classifier | None:
     if settings.classifier_provider != "ollama":
         return chat
     root = base_url.removesuffix("/").removesuffix("/v1")
-    return OllamaClassifier(chat, root, settings.classifier_model, settings.classifier_timeout)
+    titles = (
+        TitleWriter(
+            client,
+            settings.classifier_title_model,
+            sequential=settings.classifier_title_mode == "sequential",
+        )
+        if settings.classifier_title_model
+        else None
+    )
+    return OllamaClassifier(
+        chat, root, settings.classifier_model, settings.classifier_timeout, titles
+    )
 
 
 # --- runtime settings ------------------------------------------------------------
@@ -539,6 +651,8 @@ def build_classifier(settings: Settings) -> Classifier | None:
 OVERRIDABLE = (
     "language",
     "classifier_model",
+    "classifier_title_model",
+    "classifier_title_mode",
     "default_agent",
     "job_roots",
     "vault_path",

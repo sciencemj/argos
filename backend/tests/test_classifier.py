@@ -10,8 +10,10 @@ from openai import AsyncOpenAI
 from argos.classifier import (
     ClassifierError,
     ClassifyContext,
+    DecisionClassifier,
     OpenAICompatClassifier,
     Suggestion,
+    TitleWriter,
     _parse_json,  # pyright: ignore[reportPrivateUsage]
     anchor_dates,
     build_classifier,
@@ -312,3 +314,56 @@ async def test_missing_model_is_named_in_the_error() -> None:
     assert classifier is not None
     with pytest.raises(ClassifierError, match="not installed"):
         await classifier.classify("x", FROM_INBOX)
+
+
+def decision_with_titles(kind: str, title_reply: int | str) -> DecisionClassifier:
+    """A decision classifier answering `kind`, with a title model that replies
+    `title_reply` (text, or an HTTP status for a failure)."""
+
+    def systemone(request: httpx.Request) -> httpx.Response:
+        answers = {"type": choice(kind, {kind: 0.9, "task": 0.05, "idea": 0.05})}
+        return httpx.Response(200, json={"model": "tev1", "answers": answers, "usage": {}})
+
+    def chat(request: httpx.Request) -> httpx.Response:
+        if isinstance(title_reply, int):
+            return httpx.Response(title_reply, json={"error": "boom"})
+        sent = json.loads(request.content)
+        assert sent["model"] == "gemma"
+        assert sent["messages"][1]["content"] == "운영체제 과제3 다음주 수요일까지 제출"
+        return httpx.Response(200, json=completion(title_reply))
+
+    openai = AsyncOpenAI(
+        base_url="http://llm.test/v1",
+        api_key="k",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(chat)),
+        max_retries=0,
+    )
+    return DecisionClassifier(
+        httpx.AsyncClient(transport=httpx.MockTransport(systemone)),
+        "http://ollama.test",
+        "tev1",
+        TitleWriter(openai, "gemma"),
+    )
+
+
+async def test_title_model_names_tasks_for_a_decision_model() -> None:
+    text = "운영체제 과제3 다음주 수요일까지 제출"
+    got = await decision_with_titles("task", '제목: "운영체제 과제3 제출"\n').classify(
+        text, CONTEXT
+    )
+    assert got.title == "운영체제 과제3 제출"
+    assert got.due_at == datetime(2026, 9, 30, 23, 59, tzinfo=SEOUL)
+
+    failed = await decision_with_titles("task", 500).classify(text, CONTEXT)
+    assert failed.title == "운영체제 과제3 제출"  # from the text: dates dropped
+
+    note = await decision_with_titles("study_note", "쓰이면 안 됨").classify(text, CONTEXT)
+    assert note.title == "운영체제 과제3 제출"  # only tasks and events get a written title
+
+
+async def test_sequential_mode_leaves_the_title_for_later() -> None:
+    classifier = decision_with_titles("task", 500)
+    classifier._titles.sequential = True  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+    got = await classifier.classify("운영체제 과제3 다음주 수요일까지 제출", CONTEXT)
+    assert got.title == "운영체제 과제3 제출"
+    assert classifier.later_titles is not None

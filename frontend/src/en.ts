@@ -457,6 +457,18 @@ export const en: Record<string, string> = {
   "입력한 내용이 ollama.com으로 전송돼요": "Your input is sent to ollama.com",
   "이 컴퓨터에서만 실행돼요": "Runs only on this computer",
   "판단 모델 · 빠르게 고르기만 해요": "Decision model · fast, picks only",
+  "제목 모델": "Title model",
+  "판단 모델은 유형과 채널만 골라요. 할 일·일정의 제목은 여기서 고른 모델이 다듬어요. 고르지 않으면 원문에서 날짜만 뺀 글이 제목이 돼요.":
+    "Decision models only pick the type and channel. The model chosen here writes task and event titles. Without one, the title is your text minus its dates.",
+  "원문에서 만들기 (모델 없이)": "From the text (no model)",
+  "두 모델을 함께 쓰는 방식": "How the two models work together",
+  "동시 처리": "At the same time",
+  "두 모델이 메모리에 함께 올라갈 때 (예: tev1:0.8b + gemma4:e2b). 분류와 제목을 한꺼번에 받아 가장 빨라요.":
+    "When both models fit in memory (e.g. tev1:0.8b + gemma4:e2b). Classification and title arrive together, fastest.",
+  "순차 처리": "One after the other",
+  "메모리가 부족할 때 (예: tev1:4b + gemma4:e2b). 분류 결과를 먼저 보여 주고, 제목은 하나씩 나중에 다듬어요. 자동 적용은 제목이 나온 뒤에 해요.":
+    "When memory is short (e.g. tev1:4b + gemma4:e2b). The suggestion shows first and titles are polished one at a time afterwards. Auto-apply waits for the title.",
+  "Ollama에서 찾을 수 없어요": "Not found in Ollama",
   "Ollama에서 찾을 수 없어요 · 다른 모델을 골라 주세요":
     "Not found in Ollama · Please choose another model",
   "분류 끄기": "Turn off categorization",

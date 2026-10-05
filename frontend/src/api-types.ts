@@ -1788,6 +1788,10 @@ export interface components {
         ClassifierSettingsIn: {
             /** Model */
             model?: string | null;
+            /** Title Model */
+            title_model?: string | null;
+            /** Title Mode */
+            title_mode?: ("parallel" | "sequential") | null;
         };
         /** ClassifierSettingsOut */
         ClassifierSettingsOut: {
@@ -1805,6 +1809,17 @@ export interface components {
             source: "app" | "env" | "none";
             /** Enabled */
             enabled: boolean;
+            /**
+             * Title Model
+             * @default
+             */
+            title_model: string;
+            /**
+             * Title Mode
+             * @default parallel
+             * @enum {string}
+             */
+            title_mode: "parallel" | "sequential";
         };
         /** ConfigOut */
         ConfigOut: {

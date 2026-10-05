@@ -145,7 +145,7 @@ export function SettingsPage() {
           ))}
         </nav>
         <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-10">
-          <div className="flex justify-end">
+          <div data-tauri-drag-region="deep" className="flex justify-end">
             <LanguagePicker />
           </div>
           <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink lg:hidden">
@@ -197,17 +197,49 @@ const SOURCE_TEXT = {
   none: "",
 } as const;
 
+type TitleMode = "parallel" | "sequential";
+
+const TITLE_MODES: { value: TitleMode; title: string; meta: string }[] = [
+  {
+    value: "parallel",
+    title: tr("동시 처리"),
+    meta: tr(
+      "두 모델이 메모리에 함께 올라갈 때 (예: tev1:0.8b + gemma4:e2b). 분류와 제목을 한꺼번에 받아 가장 빨라요.",
+    ),
+  },
+  {
+    value: "sequential",
+    title: tr("순차 처리"),
+    meta: tr(
+      "메모리가 부족할 때 (예: tev1:4b + gemma4:e2b). 분류 결과를 먼저 보여 주고, 제목은 하나씩 나중에 다듬어요. 자동 적용은 제목이 나온 뒤에 해요.",
+    ),
+  },
+];
+
 /** Picks which installed Ollama model classifies inbox text (PLAN §9). */
 export function ClassifierSection() {
   const current = useClassifierSettings();
   const models = useOllamaModels();
   const save = useSaveClassifier();
   const [choice, setChoice] = useState<string | null>(null);
+  const [titleChoice, setTitleChoice] = useState<string | null>(null);
 
   const active = current.data?.enabled ? (current.data.model ?? OFF) : OFF;
   const selected = choice ?? active;
   const list = models.data?.models ?? [];
   const selectedModel = list.find((m) => m.name === selected);
+  // Decision models only pick answers: a chat model names tasks and events for them.
+  const activeTitle = current.data?.title_model ?? "";
+  const selectedTitle = titleChoice ?? activeTitle;
+  const chatModels = list.filter((m) => !m.decision);
+  const titleModel = chatModels.find((m) => m.name === selectedTitle);
+  const [modeChoice, setModeChoice] = useState<TitleMode | null>(null);
+  const activeMode: TitleMode = current.data?.title_mode ?? "parallel";
+  const selectedMode = modeChoice ?? activeMode;
+  const changed =
+    selected !== active ||
+    selectedTitle !== activeTitle ||
+    selectedMode !== activeMode;
   // The active model may be missing from the list (uninstalled since); still show it.
   const missing =
     active !== OFF &&
@@ -337,7 +369,71 @@ export function ClassifierSection() {
         </div>
       )}
 
-      {selectedModel?.remote && selected !== active && (
+      {selectedModel?.decision && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-line-soft px-4 py-3.5">
+          <label
+            htmlFor="classifier-title-model"
+            className="text-[13.5px] text-ink"
+          >
+            {tr("제목 모델")}
+          </label>
+          <p className="m-0 text-[12.5px] leading-relaxed text-text-3">
+            {tr(
+              "판단 모델은 유형과 채널만 골라요. 할 일·일정의 제목은 여기서 고른 모델이 다듬어요. 고르지 않으면 원문에서 날짜만 뺀 글이 제목이 돼요.",
+            )}
+          </p>
+          <select
+            id="classifier-title-model"
+            className={`${field} font-mono text-[13px]`}
+            value={selectedTitle}
+            onChange={(e) => setTitleChoice(e.target.value)}
+          >
+            <option value="">{tr("원문에서 만들기 (모델 없이)")}</option>
+            {chatModels.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name}
+                {m.remote ? ` · ${tr("클라우드")}` : ""}
+              </option>
+            ))}
+            {selectedTitle && !titleModel && models.data?.reachable && (
+              <option value={selectedTitle}>
+                {selectedTitle} · {tr("Ollama에서 찾을 수 없어요")}
+              </option>
+            )}
+          </select>
+          {selectedTitle && (
+            <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0 pt-1">
+              <legend className="mb-1.5 p-0 text-[12.5px] text-text-2">
+                {tr("두 모델을 함께 쓰는 방식")}
+              </legend>
+              {TITLE_MODES.map((m) => (
+                <label
+                  key={m.value}
+                  className="flex cursor-pointer items-start gap-2.5 text-[13px]"
+                >
+                  <input
+                    type="radio"
+                    name="classifier-title-mode"
+                    value={m.value}
+                    checked={selectedMode === m.value}
+                    onChange={() => setModeChoice(m.value)}
+                    className="mt-[3px] accent-[var(--ink)]"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-ink">{m.title}</span>
+                    <span className="text-[12px] text-text-3">{m.meta}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+        </div>
+      )}
+
+      {(titleModel?.remote &&
+        selectedTitle !== activeTitle &&
+        selectedModel?.decision) ||
+      (selectedModel?.remote && selected !== active) ? (
         <p
           role="alert"
           className="m-0 rounded-xl bg-danger-bg px-3.5 py-2.5 text-[12.5px] text-danger"
@@ -346,24 +442,37 @@ export function ClassifierSection() {
             "클라우드 모델은 메시지 내용을 ollama.com 서버로 보내요. 개인 일정이 밖으로 나가도 괜찮을 때만 고르세요.",
           )}
         </p>
-      )}
+      ) : null}
       <ErrorText error={save.error} />
       <div className="flex items-center gap-3">
         <button
           type="button"
           className={btn.cta}
           disabled={
-            save.isPending ||
-            selected === active ||
-            current.data?.provider === "hermes"
+            save.isPending || !changed || current.data?.provider === "hermes"
           }
           onClick={() =>
-            save.mutate(selected || null, { onSuccess: () => setChoice(null) })
+            save.mutate(
+              {
+                model: selected || null,
+                title_model: selectedModel?.decision
+                  ? selectedTitle
+                  : undefined,
+                title_mode: selectedModel?.decision ? selectedMode : undefined,
+              },
+              {
+                onSuccess: () => {
+                  setChoice(null);
+                  setTitleChoice(null);
+                  setModeChoice(null);
+                },
+              },
+            )
           }
         >
           {tr("저장")}
         </button>
-        {save.isSuccess && selected === active && (
+        {save.isSuccess && !changed && (
           <span className="text-[12.5px] text-text-3">
             {tr("저장했어요. 다음 메시지부터 적용돼요.")}
           </span>

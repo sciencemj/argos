@@ -495,8 +495,11 @@ export const useOllamaModels = () =>
 export function useSaveClassifier() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (model: string | null) =>
-      call(client.PUT("/api/v1/settings/classifier", { body: { model } })),
+    mutationFn: (body: {
+      model: string | null;
+      title_model?: string;
+      title_mode?: "parallel" | "sequential";
+    }) => call(client.PUT("/api/v1/settings/classifier", { body })),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["settings"] });
       void qc.invalidateQueries({ queryKey: ["config"] });

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Inbox classifier (PLAN §9: model is the user's choice; empty = classification off).
     classifier_provider: Literal["ollama", "hermes"] = "ollama"
     classifier_model: str = ""
+    # A chat model that writes task/event titles when classifier_model is a decision
+    # model (those only pick answers). Empty = the title is the text minus its dates.
+    classifier_title_model: str = ""
+    # "parallel": both models fit in memory, the title is written alongside the decision.
+    # "sequential": they do not; the suggestion comes first, the title after it.
+    classifier_title_mode: Literal["parallel", "sequential"] = "parallel"
     classifier_base_url: str | None = None  # default per provider, see classifier.py
     classifier_api_key: SecretStr | None = None  # Hermes needs one; never logged
     classifier_timeout: float = 60.0

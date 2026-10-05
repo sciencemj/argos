@@ -962,7 +962,8 @@ def build_adapter(
             )
             return HermesResponsesAdapter(client, agent.model or settings.hermes_model, agent.name)
         case AgentBackend.OLLAMA:
-            model = agent.model or settings.classifier_model
+            # The title model is a chat model; the classifier may be a decision model.
+            model = agent.model or settings.classifier_title_model or settings.classifier_model
             if not model:
                 raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
             base = settings.classifier_base_url or "http://127.0.0.1:11434/v1"

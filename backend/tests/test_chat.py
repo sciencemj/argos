@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from argos import commands, services
-from argos.classifier import ClassifyContext, Suggestion
+from argos.classifier import ClassifyContext, Suggestion, TitleWriter
 from argos.config import Settings
 from argos.main import create_app
 from argos.models import InboxItem
@@ -256,3 +256,51 @@ def test_late_classification_does_not_reopen_a_handled_item(settings: Settings) 
         assert item["suggestion_json"]["result"]["object_type"] == "task"
         [message] = feed(client, course)
         assert message["ref"]["task"]["title"] == "직접 정리"
+
+
+class FakeTitles(TitleWriter):
+    def __init__(self, title: str | None) -> None:
+        super().__init__(cast(Any, None), "chat", sequential=True)
+        self.reply = title
+        self.asked: list[str] = []
+
+    async def title(self, text: str, language: str) -> str | None:
+        self.asked.append(text)
+        return self.reply
+
+
+class SequentialClassifier(FakeClassifier):
+    """A decision classifier in sequential mode: its title comes after the suggestion."""
+
+    def __init__(self, suggestion: Suggestion, titles: FakeTitles) -> None:
+        super().__init__(suggestion)
+        self.later_titles = titles
+
+
+def test_sequential_title_lands_before_auto_apply(settings: Settings) -> None:
+    auto = settings.model_copy(
+        update={"classifier_auto_apply": ["task"], "classifier_threshold": 0.8}
+    )
+    titles = FakeTitles("과제2 제출하기")
+    for client in make_client(auto, SequentialClassifier(HOMEWORK, titles)):
+        course = channel_id(client, "컴퓨터구조")
+        send(client, course, "금요일까지 과제2")
+        assert titles.asked == ["금요일까지 과제2"]
+        [task] = client.get("/api/v1/tasks", params={"channel_id": course}).json()
+        assert task["title"] == "과제2 제출하기"
+
+    idea = HOMEWORK.model_copy(update={"type": "idea", "due_at": None})
+    quiet = FakeTitles("쓰이면 안 됨")
+    for client in make_client(settings, SequentialClassifier(idea, quiet)):
+        course = channel_id(client, "운영체제")
+        send(client, course, "과제2 미리 해볼까")
+        [message] = feed(client, course)
+        assert message["ref"]["inbox_item"]["suggestion_json"]["title"] == "과제2 제출"
+        assert quiet.asked == []  # only tasks and events get a written title
+
+    failed = FakeTitles(None)
+    for client in make_client(settings, SequentialClassifier(HOMEWORK, failed)):
+        course = channel_id(client, "운영체제")
+        send(client, course, "금요일까지 과제3")
+        item = feed(client, course)[-1]["ref"]["inbox_item"]
+        assert item["suggestion_json"]["title"] == "과제2 제출"  # kept the first title

@@ -15,7 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import commands, services
-from argos.classifier import Classifier, ClassifierError, ClassifyContext, anchor_dates
+from argos.classifier import (
+    Classifier,
+    ClassifierError,
+    ClassifyContext,
+    anchor_dates,
+    later_titles,
+)
 from argos.config import Settings
 from argos.models import (
     Agent,
@@ -350,6 +356,23 @@ async def classify_item(
             },
             "classifier",
         )
+        writer = later_titles(classifier)
+        if writer and suggestion.type in ("task", "event"):
+            # Sequential mode: the suggestion is already on screen with a title from the
+            # text; the title model, which cannot sit in memory beside the decision model,
+            # rewrites it one item at a time. Auto-apply waits for the better title.
+            async with writer.lock:
+                title = await writer.title(item.raw_text, settings.language)
+            if await _status(session, item) != InboxStatus.SUGGESTED:
+                return  # handled while the title was being written
+            if title:
+                suggestion = suggestion.model_copy(update={"title": title})
+                await services.update_inbox_item(
+                    session,
+                    item_id,
+                    {"suggestion_json": suggestion.model_dump(mode="json")},
+                    "classifier",
+                )
         if (
             suggestion.type in settings.classifier_auto_apply
             and suggestion.confidence >= settings.classifier_threshold
@@ -358,6 +381,11 @@ async def classify_item(
                 await services.accept_inbox_item(session, item_id, actor="classifier")
             except services.InvalidError:
                 pass  # e.g. no channel could be resolved: leave it for the user to confirm
+
+
+async def _status(session: AsyncSession, item: InboxItem) -> InboxStatus:
+    await session.refresh(item)
+    return item.status
 
 
 async def _still_new(session: AsyncSession, item: InboxItem) -> bool:
