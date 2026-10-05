@@ -312,6 +312,7 @@ export function ClassifierSection() {
               m.name,
               m.name,
               [
+                m.decision ? tr("판단 모델 · 빠르게 고르기만 해요") : null,
                 m.parameter_size,
                 m.remote
                   ? tr("입력한 내용이 ollama.com으로 전송돼요")

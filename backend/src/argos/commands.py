@@ -279,6 +279,23 @@ def find_date(text: str, today: date) -> date | None:
     return None
 
 
+def strip_when(text: str, today: date) -> str:
+    """The text without its date and clock expressions ("과제2 제출 금요일까지 3시" →
+    "과제2 제출"): a title for classifiers that cannot write one."""
+    text = _CLOCK.sub(" ", text)
+    words = text.split()
+    kept: list[str] = []
+    for word in words:
+        bare = _bare(word)
+        try:
+            is_date = bare == "다음주" or _date(bare, today, False) is not None
+        except CommandError:
+            is_date = True
+        if not is_date:
+            kept.append(word)
+    return " ".join(kept).strip(" ,.~")
+
+
 def find_time(text: str) -> time | None:
     """First clock time in free text: 15:00, 3시, 오후 3시 30분, 오전 10시 반."""
     m = _CLOCK.search(text)

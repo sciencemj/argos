@@ -16,6 +16,7 @@ from argos.classifier import (
     anchor_dates,
     build_classifier,
     build_prompt,
+    decision_request,
 )
 from argos.config import Settings
 
@@ -185,3 +186,129 @@ def test_prompt_suggests_personal_channel_from_inbox() -> None:
         personal_channel="일상",
     )
     assert 'channel_hint는 "일상"' in build_prompt("치과 예약", from_inbox)[0]["content"]
+
+
+FROM_INBOX = ClassifyContext(
+    now=CONTEXT.now,
+    tz=SEOUL,
+    channel_name="inbox",
+    channel_kind="system",
+    channel_names=["컴퓨터구조", "일상"],
+    personal_channel="일상",
+)
+
+
+def choice(picked: str, probabilities: dict[str, float]) -> dict[str, Any]:
+    return {"type": "choice", "choice": picked, "probabilities": probabilities, "confidence": 0.9}
+
+
+def ollama(handler: Any, model: str = "nimble") -> Any:
+    """build_classifier with Ollama's HTTP calls answered by `handler`."""
+    real = httpx.AsyncClient
+
+    def client(**kw: Any) -> httpx.AsyncClient:
+        return real(transport=httpx.MockTransport(handler), **kw)
+
+    import argos.classifier as module
+
+    original = module.httpx2.AsyncClient
+    module.httpx2.AsyncClient = client  # pyright: ignore[reportAttributeAccessIssue]
+    try:
+        return build_classifier(Settings(classifier_model=model))
+    finally:
+        module.httpx2.AsyncClient = original  # pyright: ignore[reportAttributeAccessIssue]
+
+
+async def test_decision_model_picks_type_and_channel() -> None:
+    sent: list[dict[str, Any]] = []
+    shown: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/show":
+            shown.append(json.loads(request.content)["model"])
+            return httpx.Response(200, json={"capabilities": ["decision"]})
+        assert request.url.path == "/v1/systemone"
+        sent.append(json.loads(request.content))
+        answers = {
+            "type": choice("task", {"task": 0.9, "event": 0.05, "idea": 0.03, "study_note": 0.02}),
+            "channel": choice("컴퓨터구조", {"컴퓨터구조": 0.8, "일상": 0.1, "-": 0.1}),
+        }
+        return httpx.Response(200, json={"model": "nimble", "answers": answers, "usage": {}})
+
+    classifier = ollama(handler)
+    assert classifier is not None
+    got = await classifier.classify("과제2 제출 다음주 수요일까지", FROM_INBOX)
+    await classifier.classify("다른 메시지", FROM_INBOX)
+    assert shown == ["nimble"]  # asked once what the model is
+    assert sent[0]["state"] == "과제2 제출 다음주 수요일까지"
+    assert set(sent[0]["questions"]["channel"]["criteria"]) == {"컴퓨터구조", "일상", "-"}
+    assert got.type == "task"
+    assert got.title == "과제2 제출"
+    assert got.channel_hint == "컴퓨터구조"
+    assert got.due_at == datetime(2026, 9, 30, 23, 59, tzinfo=SEOUL)
+    assert got.confidence == pytest.approx(0.72)
+
+
+async def test_decision_event_without_a_date_falls_back() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/show":
+            return httpx.Response(200, json={"capabilities": ["decision"]})
+        answers = {
+            "type": choice("event", {"task": 0.1, "event": 0.6, "idea": 0.25, "study_note": 0.05})
+        }
+        return httpx.Response(200, json={"model": "nimble", "answers": answers, "usage": {}})
+
+    classifier = ollama(handler)
+    assert classifier is not None
+    got = await classifier.classify("조교 면담 잡기", CONTEXT)
+    assert (got.type, got.channel_hint, got.confidence) == ("idea", "컴퓨터구조", 0.25)
+
+    timed = await classifier.classify("내일 오후 3시 조교 면담", CONTEXT)
+    assert timed.type == "event"
+    assert timed.starts_at == datetime(2026, 9, 25, 15, tzinfo=SEOUL)
+    assert timed.title == "조교 면담"
+
+
+async def test_chat_model_still_uses_chat_endpoint() -> None:
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json={"capabilities": ["completion"]})
+
+    classifier = ollama(handler, model="qwen")
+    assert classifier is not None
+    picked = await classifier._pick()  # pyright: ignore[reportAttributeAccessIssue]
+    assert isinstance(picked, OpenAICompatClassifier)
+    assert paths == ["/api/show"]
+
+
+def test_decision_request_skips_channel_when_fixed() -> None:
+    body = decision_request("tev1", "x", CONTEXT)
+    assert list(body["questions"]) == ["type"]
+
+
+async def test_decision_trusts_a_channel_named_in_the_text() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/show":
+            return httpx.Response(200, json={"capabilities": ["decision"]})
+        answers = {
+            "type": choice("task", {"task": 0.9, "event": 0.1}),
+            "channel": choice("일상", {"컴퓨터구조": 0.2, "일상": 0.7, "-": 0.1}),
+        }
+        return httpx.Response(200, json={"model": "nimble", "answers": answers, "usage": {}})
+
+    classifier = ollama(handler)
+    assert classifier is not None
+    got = await classifier.classify("컴퓨터구조 실습 보고서", FROM_INBOX)
+    assert (got.channel_hint, got.confidence) == ("컴퓨터구조", 0.9)
+
+
+async def test_missing_model_is_named_in_the_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "not found"})
+
+    classifier = ollama(handler)
+    assert classifier is not None
+    with pytest.raises(ClassifierError, match="not installed"):
+        await classifier.classify("x", FROM_INBOX)

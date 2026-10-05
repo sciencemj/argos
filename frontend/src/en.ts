@@ -456,6 +456,7 @@ export const en: Record<string, string> = {
   "다시 확인": "Check again",
   "입력한 내용이 ollama.com으로 전송돼요": "Your input is sent to ollama.com",
   "이 컴퓨터에서만 실행돼요": "Runs only on this computer",
+  "판단 모델 · 빠르게 고르기만 해요": "Decision model · fast, picks only",
   "Ollama에서 찾을 수 없어요 · 다른 모델을 골라 주세요":
     "Not found in Ollama · Please choose another model",
   "분류 끄기": "Turn off categorization",

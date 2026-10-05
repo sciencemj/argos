@@ -21,7 +21,7 @@ INSTALLED = [
 def ollama(monkeypatch: pytest.MonkeyPatch) -> list[OllamaModel]:
     installed = list(INSTALLED)
 
-    async def fake(settings: Settings) -> list[OllamaModel]:
+    async def fake(settings: Settings, *, decision: bool = False) -> list[OllamaModel]:
         return installed
 
     monkeypatch.setattr(classifier, "list_ollama_models", fake)
@@ -43,7 +43,7 @@ def test_lists_installed_models(client: TestClient, ollama: list[OllamaModel]) -
 
 
 def test_unreachable_ollama(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    async def down(settings: Settings) -> list[OllamaModel]:
+    async def down(settings: Settings, *, decision: bool = False) -> list[OllamaModel]:
         raise ClassifierError("connection refused")
 
     monkeypatch.setattr(classifier, "list_ollama_models", down)
@@ -115,6 +115,7 @@ async def test_list_ollama_models_filters_embedding_models(
             {"name": "embeddinggemma:300m", "capabilities": ["embedding"], "details": {}},
             {"name": "qwen3.5:9b-mlx", "capabilities": ["completion", "thinking"], "details": {}},
             {"name": "old-ollama-model", "details": {}},  # no capabilities field: keep
+            {"name": "nimble:9b", "capabilities": ["decision"], "details": {}},
         ]
     }
     seen: list[str] = []
@@ -132,3 +133,8 @@ async def test_list_ollama_models_filters_embedding_models(
     models = await list_ollama_models(Settings(classifier_base_url="http://ollama.test/v1"))
     assert [m.name for m in models] == ["old-ollama-model", "qwen3.5:9b-mlx", "gpt-oss:20b-cloud"]
     assert seen == ["http://ollama.test/api/tags"]
+    # Decision models classify but cannot chat: only the classifier list has them.
+    with_decision = await list_ollama_models(
+        Settings(classifier_base_url="http://ollama.test/v1"), decision=True
+    )
+    assert [m.name for m in with_decision if m.decision] == ["nimble:9b"]

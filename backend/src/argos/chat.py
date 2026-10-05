@@ -307,18 +307,21 @@ async def classify_item(
             return  # deleted or handled while we waited
         channel = await session.get(Channel, item.channel_id) if item.channel_id else None
         personal = await services.get_personal_channel(session)
-        names = await session.scalars(
-            select(Channel.name)
-            .where(Channel.kind.not_in([ChannelKind.SYSTEM, ChannelKind.DM]))
-            .order_by(Channel.name)
-        )
+        rows = (
+            await session.execute(
+                select(Channel.name, Channel.kind)
+                .where(Channel.kind.not_in([ChannelKind.SYSTEM, ChannelKind.DM]))
+                .order_by(Channel.name)
+            )
+        ).all()
         context = ClassifyContext(
             now=now,
             tz=settings.zoneinfo,
             channel_name=channel.name if channel else None,
             channel_kind=channel.kind if channel else None,
-            channel_names=list(names.all()),
+            channel_names=[name for name, _ in rows],
             personal_channel=personal.name if personal else None,
+            channel_kinds={name: str(kind) for name, kind in rows},
             language=settings.language,
         )
         try:

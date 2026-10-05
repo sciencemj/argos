@@ -199,6 +199,7 @@ class OllamaModelOut(BaseModel):
     name: str
     remote: bool
     parameter_size: str | None
+    decision: bool = False  # a decision model: classifies fast, cannot chat
 
 
 class OllamaModelsOut(BaseModel):
@@ -2205,7 +2206,7 @@ async def put_classifier_settings(
     base: Settings = request.app.state.base_settings
     if model and base.classifier_provider == "ollama":
         try:
-            installed = {m.name for m in await classifier.list_ollama_models(base)}
+            installed = {m.name for m in await classifier.list_ollama_models(base, decision=True)}
         except classifier.ClassifierError as exc:
             raise services.InvalidError("Ollama에 연결할 수 없어요") from exc
         if model not in installed:
@@ -2225,7 +2226,7 @@ async def list_classifier_models(request: Request) -> OllamaModelsOut:
             reachable=False, error="모델 목록은 ollama provider에서만 볼 수 있어요"
         )
     try:
-        models = await classifier.list_ollama_models(base)
+        models = await classifier.list_ollama_models(base, decision=True)
     except classifier.ClassifierError:
         return OllamaModelsOut(
             reachable=False, error="Ollama에 연결할 수 없어요. 실행 중인지 확인해 주세요."
@@ -2233,7 +2234,12 @@ async def list_classifier_models(request: Request) -> OllamaModelsOut:
     return OllamaModelsOut(
         reachable=True,
         models=[
-            OllamaModelOut(name=m.name, remote=m.remote, parameter_size=m.parameter_size)
+            OllamaModelOut(
+                name=m.name,
+                remote=m.remote,
+                parameter_size=m.parameter_size,
+                decision=m.decision,
+            )
             for m in models
         ],
     )

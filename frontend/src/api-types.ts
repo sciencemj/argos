@@ -2406,6 +2406,11 @@ export interface components {
             remote: boolean;
             /** Parameter Size */
             parameter_size: string | null;
+            /**
+             * Decision
+             * @default false
+             */
+            decision: boolean;
         };
         /** OllamaModelsOut */
         OllamaModelsOut: {

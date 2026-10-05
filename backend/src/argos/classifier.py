@@ -9,7 +9,7 @@ import json
 import logging
 import re
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -108,6 +108,7 @@ class ClassifyContext:
     channel_kind: str | None
     channel_names: list[str]
     personal_channel: str | None = None  # the built-in #일상 channel's current name
+    channel_kinds: dict[str, str] = field(default_factory=dict[str, str])  # name → kind
     language: Literal["ko", "en"] = "ko"
 
 
@@ -310,6 +311,172 @@ class OpenAICompatClassifier:
             raise ClassifierError(f"unusable classifier output: {exc}") from exc
 
 
+# --- decision models (Ollama /v1/systemone) ---------------------------------------------
+
+NO_CHANNEL = "-"
+MAX_CHOICES = 26  # systemone's limit on options per choice question
+
+# English criteria even for Korean text: on a 48-message Korean benchmark Tev1 0.8B
+# picked the right type 83% of the time with these, 71% with Korean ones.
+TYPE_CRITERIA = {
+    "task": "Task: an action the user must do (submit, prepare, send, buy)",
+    "event": "Event: something scheduled at a date or time (exam, class, meeting, "
+    "appointment, party)",
+    "idea": 'Idea: something the user might try someday ("would be nice to", "maybe try")',
+    "study_note": "Study note: a statement explaining a concept, definition, formula or fact",
+}
+KIND_NAMES = {"course": "course", "project": "project"}
+
+
+def decision_request(model: str, text: str, ctx: ClassifyContext) -> dict[str, Any]:
+    """Typed questions for a decision model: it picks the type and channel. It cannot
+    write, so dates come from the deterministic grammar and the title from the text."""
+    questions: dict[str, Any] = {
+        "type": {
+            "type": "choice",
+            "instructions": "A user typed this message into a planner app. "
+            "What kind of entry is it?",
+            "criteria": TYPE_CRITERIA,
+        }
+    }
+    asks_channel = ctx.channel_kind not in ("course", "project", "personal")
+    if asks_channel and 0 < len(ctx.channel_names) < MAX_CHOICES:
+        criteria: dict[str, str] = {}
+        for name in ctx.channel_names:
+            kind = KIND_NAMES.get(ctx.channel_kinds.get(name, ""), "channel")
+            criteria[name] = f"About the {kind} '{name}'"
+        if ctx.personal_channel in criteria:
+            criteria[ctx.personal_channel] = (
+                "Personal life: appointments, doctor, exercise, groceries, chores, family, friends"
+            )
+        criteria[NO_CHANNEL] = "General school matters, or none of these"
+        questions["channel"] = {
+            "type": "choice",
+            "instructions": "Which area does this message belong to? "
+            "Consider abbreviations of course names.",
+            "criteria": criteria,
+        }
+    return {"model": model, "state": text, "questions": questions}
+
+
+def _named_channel(text: str, names: list[str]) -> str | None:
+    """The one channel whose name the text spells out, if exactly one does."""
+    lowered = text.lower()
+    named = [n for n in names if n.lower() in lowered]
+    return named[0] if len(named) == 1 else None
+
+
+def _picked(answer: dict[str, Any]) -> tuple[str, float]:
+    choice = str(answer["choice"])
+    probabilities: dict[str, Any] = answer.get("probabilities") or {}
+    return choice, float(probabilities.get(choice, answer.get("confidence", 0)))
+
+
+def read_decision(answers: dict[str, Any], text: str, ctx: ClassifyContext) -> Suggestion:
+    """The decision model's answers → a Suggestion. confidence is the probability of the
+    chosen type (times the channel's when one was asked). An event needs a date, so an
+    event without one in the text becomes the next most likely type."""
+    today = ctx.now.astimezone(ctx.tz).date()
+    day = commands.find_date(text, today)
+    clock = commands.find_time(text)
+    kind, confidence = _picked(answers["type"])
+    if kind == "event" and day is None and clock is None:
+        raw: dict[str, Any] = answers["type"].get("probabilities") or {}
+        probabilities = {k: float(v) for k, v in raw.items()}
+        probabilities.pop("event", None)
+        kind = max(probabilities, key=lambda k: probabilities[k]) if probabilities else "task"
+        confidence = min(probabilities.get(kind, 0.0), 0.7)
+    if ctx.channel_kind in ("course", "project", "personal"):
+        hint = ctx.channel_name
+    elif named := _named_channel(text, ctx.channel_names):
+        hint = named  # spelled out in the text: no need to trust the model
+    elif "channel" in answers:
+        hint, p_channel = _picked(answers["channel"])
+        confidence *= p_channel
+        hint = None if hint == NO_CHANNEL else hint
+    else:
+        hint = None
+    first_line = text.strip().splitlines()[0] if text.strip() else text
+    title = commands.strip_when(first_line, today) or first_line
+    when: dict[str, Any] = {}
+    on = day or today
+    if kind == "event" and clock is not None:
+        start = datetime.combine(on, clock, ctx.tz)
+        when = {"starts_at": start, "ends_at": start + timedelta(hours=1)}
+    elif kind == "event":
+        when = {"all_day_date": on}
+    elif kind == "task" and (day is not None or clock is not None):
+        when = {"due_at": datetime.combine(on, clock or commands.DEFAULT_DUE, ctx.tz)}
+    return Suggestion(
+        type=kind,  # pyright: ignore[reportArgumentType]
+        title=title[:500],
+        channel_hint=hint,
+        confidence=max(0.0, min(1.0, confidence)),
+        **when,
+    )
+
+
+class DecisionClassifier:
+    """Ollama decision models (Nimble, Tev1, Clef …) through /v1/systemone: one forward
+    pass, no generated text, so it is fast and returns real probabilities."""
+
+    def __init__(self, http: httpx2.AsyncClient, root: str, model: str) -> None:
+        self._http = http
+        self._root = root
+        self._model = model
+
+    async def classify(self, text: str, context: ClassifyContext) -> Suggestion:
+        body = decision_request(self._model, text, context)
+        try:
+            response = await self._http.post(f"{self._root}/v1/systemone", json=body)
+            response.raise_for_status()
+            answers: dict[str, Any] = response.json()["answers"]
+            return read_decision(answers, text, context)
+        except (KeyError, TypeError, ValueError, ValidationError) as exc:
+            raise ClassifierError(f"unusable decision output: {exc}") from exc
+        except Exception as exc:
+            raise ClassifierError(f"classifier request failed: {type(exc).__name__}") from exc
+
+
+class OllamaClassifier:
+    """Asks Ollama once what the model is: a decision model goes through /v1/systemone,
+    anything else through the chat endpoint."""
+
+    def __init__(self, chat: "OpenAICompatClassifier", root: str, model: str, timeout: float):
+        self._chat = chat
+        self._root = root
+        self._model = model
+        self._http = httpx2.AsyncClient(timeout=timeout)
+        self._picked: Classifier | None = None
+
+    async def _pick(self) -> Classifier:
+        if self._picked is None:
+            try:
+                response = await self._http.post(
+                    f"{self._root}/api/show", json={"model": self._model}
+                )
+                if response.status_code == 404:
+                    raise ClassifierError(f"model not installed in Ollama: {self._model}")
+                response.raise_for_status()
+                capabilities: list[str] = response.json().get("capabilities") or []
+            except ClassifierError:
+                raise
+            except Exception as exc:
+                # Not cached: Ollama may simply not be running yet.
+                raise ClassifierError(
+                    f"cannot reach Ollama at {self._root}: {type(exc).__name__}"
+                ) from exc
+            self._picked = (
+                DecisionClassifier(self._http, self._root, self._model)
+                if "decision" in capabilities
+                else self._chat
+            )
+        return self._picked
+
+    async def classify(self, text: str, context: ClassifyContext) -> Suggestion:
+        return await (await self._pick()).classify(text, context)
+
+
 def anchor_dates(suggestion: Suggestion, text: str, ctx: ClassifyContext) -> Suggestion:
     """Replaces the model's date with the one the deterministic grammar reads from the
     text, when it finds one; small models miscount "다음주 수요일". A clock time in the
@@ -359,7 +526,11 @@ def build_classifier(settings: Settings) -> Classifier | None:
     effort = settings.classifier_reasoning_effort
     if effort is None and settings.classifier_provider == "ollama":
         effort = "none"
-    return OpenAICompatClassifier(client, settings.classifier_model, reasoning_effort=effort)
+    chat = OpenAICompatClassifier(client, settings.classifier_model, reasoning_effort=effort)
+    if settings.classifier_provider != "ollama":
+        return chat
+    root = base_url.removesuffix("/").removesuffix("/v1")
+    return OllamaClassifier(chat, root, settings.classifier_model, settings.classifier_timeout)
 
 
 # --- runtime settings ------------------------------------------------------------
@@ -394,11 +565,13 @@ class OllamaModel:
     name: str
     remote: bool  # "*-cloud" models run on ollama.com: text leaves this machine
     parameter_size: str | None
+    decision: bool = False  # answers typed questions only (/v1/systemone), cannot chat
 
 
-async def list_ollama_models(settings: Settings) -> list[OllamaModel]:
+async def list_ollama_models(settings: Settings, *, decision: bool = False) -> list[OllamaModel]:
     """Chat-capable models installed in the local Ollama (embedding-only ones are left
-    out). Raises ClassifierError when Ollama cannot be reached."""
+    out), plus decision models when `decision` (the classifier can use them, agents
+    cannot). Raises ClassifierError when Ollama cannot be reached."""
     base = (settings.classifier_base_url or DEFAULT_BASE_URLS["ollama"]).removesuffix("/")
     root = base.removesuffix("/v1")
     try:
@@ -412,11 +585,18 @@ async def list_ollama_models(settings: Settings) -> list[OllamaModel]:
     entries: list[dict[str, Any]] = data.get("models", [])
     for m in entries:
         capabilities: list[str] | None = m.get("capabilities")
+        is_decision = capabilities is not None and "decision" in capabilities
         if capabilities is not None and "completion" not in capabilities:
-            continue
+            if not (decision and is_decision):
+                continue
         details: dict[str, Any] = m.get("details") or {}
         size: str | None = details.get("parameter_size") or None
         models.append(
-            OllamaModel(name=str(m["name"]), remote=bool(m.get("remote_host")), parameter_size=size)
+            OllamaModel(
+                name=str(m["name"]),
+                remote=bool(m.get("remote_host")),
+                parameter_size=size,
+                decision=is_decision,
+            )
         )
     return sorted(models, key=lambda m: (m.remote, m.name))
