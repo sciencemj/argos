@@ -46,6 +46,10 @@ def merged_path(found: str | None, current: str) -> str:
 
 def prepare_environment() -> Path:
     """Environment for Settings, set before argos.config is imported."""
+    # The shell points TMPDIR at the server's unpack folder (lib.rs runtime_dir); agents,
+    # tools and tempfile get the user's usual temp folder back.
+    if system_tmp := os.environ.pop("ARGOS_SYSTEM_TMPDIR", None):
+        os.environ["TMPDIR"] = system_tmp
     os.environ["PATH"] = merged_path(login_path(), os.environ.get("PATH", ""))
     data = Path(os.environ.setdefault("ARGOS_DATA_DIR", str(DEFAULT_DATA))).expanduser()
     data.mkdir(parents=True, exist_ok=True)

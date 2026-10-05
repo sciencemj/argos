@@ -44,6 +44,26 @@ fn data_dir() -> PathBuf {
     home.join("Library/Application Support/Argos")
 }
 
+/// Where the one-file server unpacks itself. Not the system temp folder: macOS deletes
+/// files there that were not touched for three days, so a server left running for days
+/// lost modules it had not imported yet (`No module named 'jiter.jiter'`). Leftovers from
+/// earlier runs that did not exit cleanly are removed before a new server starts.
+fn runtime_dir() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let dir = home.join("Library/Caches/Argos/runtime");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("_MEI") {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 /// Is an Argos server answering on the port? (a plain HTTP/1.0 GET, no client library)
 fn argos_answers() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
@@ -102,7 +122,13 @@ fn start_server(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("서버 파일을 찾지 못했어요: {e}"))?
         .env("ARGOS_DATA_DIR", data_dir())
         .env("ARGOS_PORT", PORT.to_string())
-        .env("ARGOS_PARENT_PID", std::process::id().to_string());
+        .env("ARGOS_PARENT_PID", std::process::id().to_string())
+        // TMPDIR picks the unpack folder; the server puts the user's own back for its tools.
+        .env("TMPDIR", runtime_dir())
+        .env(
+            "ARGOS_SYSTEM_TMPDIR",
+            std::env::var_os("TMPDIR").unwrap_or_else(|| std::env::temp_dir().into_os_string()),
+        );
     if let Some(bundle) = the_app_bundle() {
         command = command.env("ARGOS_DESKTOP_APP", bundle);
     }
