@@ -48,7 +48,9 @@ def wait_job(client: TestClient, task_id: str, *statuses: str) -> dict[str, Any]
     deadline = time.time() + 5
     while time.time() < deadline:
         task = client.get(f"/api/v1/tasks/{task_id}").json()
-        if task["job"] and task["job"]["status"] in statuses:
+        # A done run moves its card to review in a second commit: wait for that too.
+        moved = task["job"] and (task["job"]["status"] != "done" or task["status"] == "review")
+        if task["job"] and task["job"]["status"] in statuses and moved:
             return task
         time.sleep(0.02)
     raise AssertionError(f"job did not reach {statuses}")
