@@ -8,7 +8,10 @@ export function ApprovalsPage() {
   return (
     <div className="min-h-0 grow overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-9 pt-8 pb-8">
-        <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+        <h1
+          data-tauri-drag-region="deep"
+          className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink"
+        >
           {tr("승인 대기")}
         </h1>
         <p className="m-0 max-w-[580px] text-[13px] text-text-3">

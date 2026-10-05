@@ -49,7 +49,10 @@ export function NotificationsPage() {
   return (
     <div className="min-h-0 grow overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-9 pt-8 pb-8">
-        <div className="flex items-baseline gap-3">
+        <div
+          data-tauri-drag-region="deep"
+          className="flex items-baseline gap-3"
+        >
           <h1 className="m-0 grow text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {tr("알림")}
           </h1>

@@ -108,7 +108,7 @@ export function Sidebar({
   return (
     <aside className="flex min-h-0 flex-col border-r border-line-soft bg-sidebar">
       <div
-        data-tauri-drag-region
+        data-tauri-drag-region="deep"
         className="flex flex-col gap-3.5 px-4 pt-[18px] pb-3.5"
       >
         <div className="flex items-baseline justify-between px-1">

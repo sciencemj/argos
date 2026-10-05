@@ -181,7 +181,10 @@ export function ChannelPage() {
 
   return (
     <>
-      <header className={`${column} flex flex-col gap-3 px-8 pt-[18px] pb-4`}>
+      <header
+        data-tauri-drag-region="deep"
+        className={`${column} flex flex-col gap-3 px-8 pt-[18px] pb-4`}
+      >
         <div className="flex items-center gap-3.5">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {!space && <span className="text-hash">#</span>}{" "}
@@ -258,6 +261,7 @@ function DMPage({ channel }: { channel: Channel }) {
   return (
     <>
       <header
+        data-tauri-drag-region="deep"
         className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 pt-[18px] pb-4`}
       >
         <AgentAvatar id={agent?.name} size={36} />

@@ -50,7 +50,10 @@ export function TodayPage() {
   return (
     <div className="min-h-0 grow overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-6 px-9 pt-8 pb-[26px]">
-        <header className="flex flex-wrap items-end gap-5">
+        <header
+          data-tauri-drag-region="deep"
+          className="flex flex-wrap items-end gap-5"
+        >
           <div className="flex grow flex-col gap-2">
             <div className="font-mono text-[12px] text-meta">
               {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
