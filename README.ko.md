@@ -4,6 +4,8 @@
 
 # Argos
 
+개발용 [LearningX LMS 확장 프로그램 연결 안내](docs/lms-extension.md): 브라우저에서 로그인한 고려대 LMS의 학습 정보를 로컬 Argos로 가져옵니다.
+
 **학교 공부와 사이드 프로젝트를 한곳에서. 일정, 할 일, 노트, AI 에이전트가 모이는 내 Mac 전용 대시보드.**
 
 [English](README.md) · **한국어**
