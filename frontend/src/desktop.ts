@@ -27,6 +27,10 @@ export const hideQuickWindow = () => invoke("hide_quick");
 /** Brings the main window forward at a path (e.g. the inbox after capturing). */
 export const openMainWindow = (path: string) => invoke("open_main", { path });
 
+/** Opens a chat attachment in its default app (Preview, …); the app copies it out first. */
+export const openAttachment = (id: string, name: string) =>
+  invoke("open_attachment", { id, name });
+
 export type UpdateState = {
   current: string;
   checking: boolean;

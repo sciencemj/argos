@@ -26,6 +26,7 @@ export type Run = Schemas["RunOut"];
 export type Routines = Schemas["RoutinesOut"];
 export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
+export type Attachment = Schemas["AttachmentOut"];
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
   { id: "backlog", label: tr("백로그") },
@@ -44,6 +45,11 @@ function errorText(message: string): string {
   const translated = t(message);
   if (translated !== message) return translated;
   const replacements: [RegExp, string][] = [
+    [/^(\d+)MB까지 올릴 수 있어요$/, "Files can be up to $1 MB."],
+    [
+      /^첨부는 (\d+)개까지 보낼 수 있어요$/,
+      "Up to $1 attachments per message.",
+    ],
     [
       /^애플 ID나 앱 전용 암호가 맞지 않아요$/,
       "Check your Apple ID and app-specific password.",
@@ -123,6 +129,7 @@ export function invalidateFor(
       ...feeds,
     ],
     inbox_item: [["inbox"], ["today"], ...feeds],
+    attachment: feeds, // a message's files are linked right after it is stored
     message: [...feeds, ["dm-sessions"]], // a message makes its DM conversation current
     dm_session: [["dm-sessions"]],
     routine: [["routines"]],
@@ -436,6 +443,30 @@ export const usePostMessage = () =>
           body,
         }),
       ),
+  );
+
+export const attachmentUrl = (id: string) =>
+  `/api/v1/attachments/${encodeURIComponent(id)}/content`;
+
+/** Uploads one file for the composer; its id goes with the message later. */
+export const uploadAttachment = (file: File) =>
+  call(
+    client.POST("/api/v1/attachments", {
+      // The generated type says string (OpenAPI "binary"); the form carries the File.
+      body: { file: file as unknown as string },
+      bodySerializer: () => {
+        const form = new FormData();
+        form.append("file", file, file.name);
+        return form;
+      },
+    }),
+  );
+
+export const deleteAttachment = (id: string) =>
+  call(
+    client.DELETE("/api/v1/attachments/{attachment_id}", {
+      params: { path: { attachment_id: id } },
+    }),
   );
 
 export const usePinMessage = () =>

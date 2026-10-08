@@ -160,3 +160,16 @@ export const ChartIcon = ({ size = 16 }: P) => (
     <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
   </Stroke>
 );
+
+export const PaperclipIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M21 11.5 12.6 19.9a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" />
+  </Stroke>
+);
+
+export const FileIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5" />
+  </Stroke>
+);

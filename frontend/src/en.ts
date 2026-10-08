@@ -681,4 +681,15 @@ export const en: Record<string, string> = {
     " to capture a note in Inbox. Argos keeps running in the menu bar after you close the window.",
   "매일 챙길 일을 적어 두면 여기서 체크하고 연속 기록이 쌓여요.":
     "Add a daily routine, check it off here, and build a streak.",
+  첨부: "Attachments",
+  "첨부 빼기": "Remove attachment",
+  "파일 없음": "File missing",
+  "첨부는 10개까지 붙일 수 있어요": "You can attach up to 10 files.",
+  "파일 붙이기": "Attach files",
+  "여기에 놓아 첨부": "Drop to attach",
+  "이미 보낸 첨부는 지울 수 없어요":
+    "An attachment that was sent cannot be removed.",
+  "빈 메시지는 보낼 수 없어요": "Type a message or attach a file.",
+  "이미 보낸 첨부예요": "That attachment was already sent.",
+  "같은 첨부가 두 번 들어 있어요": "The same attachment is in there twice.",
 };
