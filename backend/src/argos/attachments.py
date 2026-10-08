@@ -126,7 +126,7 @@ def save_upload(source: BinaryIO, name: str, path: Path, limit: int) -> Stored:
                 _heic_to_jpeg(path)
                 name, kind, mime = str(Path(name).with_suffix(".jpg")), "image", "image/jpeg"
                 size = path.stat().st_size
-            except (OSError, ValueError):
+            except Exception:  # bad or oversized (decompression bomb) photos stay files
                 kind, mime = "file", "image/heic"
         if kind == "image":
             dimensions = _image_size(path)

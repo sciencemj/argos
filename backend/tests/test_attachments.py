@@ -334,3 +334,15 @@ def test_agent_gets_attachments_of_the_thread(settings: Settings) -> None:
     last = local.transcripts[1]
     assert [a.name for a in last[-1].attachments] == ["note.txt"] and last[-1].text == ""
     assert [a.name for a in last[0].attachments] == ["board.png"]  # the root's file too
+
+
+def test_heic_bomb_becomes_a_plain_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pillow_heif = pytest.importorskip("pillow_heif")
+    buffer = io.BytesIO()
+    try:
+        pillow_heif.from_pillow(Image.new("RGB", (64, 64), "blue")).save(buffer, format="HEIF")
+    except Exception as exc:
+        pytest.skip(f"no HEIF encoder: {exc}")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)  # 64×64 is now over twice the limit
+    stored = save(tmp_path, buffer.getvalue(), "bomb.heic")
+    assert stored.kind == "file"
