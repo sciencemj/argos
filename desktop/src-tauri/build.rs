@@ -5,6 +5,7 @@ const COMMANDS: &[&str] = &[
     "notify",
     "hide_quick",
     "open_main",
+    "open_attachment",
     "update_status",
     "check_update",
     "restart_to_update",

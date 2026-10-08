@@ -296,6 +296,7 @@ fn quick_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .skip_taskbar(true)
         .visible(false)
         .center()
+        .disable_drag_drop_handler() // file drops reach the page (attachments)
         .build()
 }
 
@@ -322,6 +323,45 @@ fn open_main(app: AppHandle, path: String) {
         let _ = quick.hide(); // opened from quick capture: that window goes away
     }
     show_main(&app, Some(&path));
+}
+
+/// Extensions opened in their default app (Preview, Pages, …). Anything else — scripts,
+/// `.command`, apps — is only shown in Finder, so a click never runs a file.
+const OPENABLE: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "heic", "txt", "md", "csv", "json", "rtf", "doc",
+    "docx", "xls", "xlsx", "ppt", "pptx", "key", "pages", "numbers", "hwp", "hwpx", "zip", "mp3",
+    "m4a", "wav", "mp4", "mov",
+];
+
+/// Opens a chat attachment (data_dir/attachments/<id>). The stored file has no name, so a
+/// copy with its real name goes to the cache first.
+#[tauri::command]
+fn open_attachment(id: String, name: String) -> Result<(), String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return Err("bad attachment id".into());
+    }
+    let file_name = std::path::Path::new(&name)
+        .file_name()
+        .ok_or("bad attachment name")?
+        .to_owned();
+    let source = data_dir().join("attachments").join(&id);
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let folder = home.join("Library/Caches/Argos/opened").join(&id);
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let target = folder.join(file_name);
+    std::fs::copy(&source, &target).map_err(|e| e.to_string())?;
+    let openable = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| OPENABLE.contains(&e.to_ascii_lowercase().as_str()));
+    let mut open = std::process::Command::new("open");
+    if !openable {
+        open.arg("-R"); // reveal in Finder
+    }
+    open.arg(&target).status().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// The last step of "Argos 완전 삭제" (settings), after the server has removed what it
@@ -389,6 +429,7 @@ pub fn run() {
             notify,
             hide_quick,
             open_main,
+            open_attachment,
             update::update_status,
             update::check_update,
             update::restart_to_update,
