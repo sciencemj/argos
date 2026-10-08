@@ -1581,6 +1581,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_lms_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect */
+        post: operations["connect_api_v1_lms_connection_post"];
+        /** Disconnect */
+        delete: operations["disconnect_api_v1_lms_connection_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Data */
+        post: operations["import_data_api_v1_lms_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/materials/needed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Materials Needed */
+        post: operations["materials_needed_api_v1_lms_materials_needed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/materials/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Material File */
+        post: operations["material_file_api_v1_lms_materials_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/materials/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Material Download
+         * @description Read a file-specific signed storage URL, without school cookies or redirects.
+         */
+        post: operations["material_download_api_v1_lms_materials_download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1786,6 +1892,13 @@ export interface components {
         BackupIn: {
             /** Keep */
             keep: number;
+        };
+        /** Body_material_file_api_v1_lms_materials_file_post */
+        Body_material_file_api_v1_lms_materials_file_post: {
+            /** Metadata */
+            metadata: string;
+            /** File */
+            file: string;
         };
         /** Body_upload_attachment_api_v1_attachments_post */
         Body_upload_attachment_api_v1_attachments_post: {
@@ -2266,6 +2379,94 @@ export interface components {
              * @enum {string}
              */
             language: "ko" | "en";
+        };
+        /** LmsCourse */
+        LmsCourse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** LmsFile */
+        LmsFile: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** LmsImport */
+        LmsImport: {
+            /** Account Id */
+            account_id: string;
+            /** Courses */
+            courses: components["schemas"]["LmsCourse"][];
+            /** Items */
+            items: components["schemas"]["LmsItem"][];
+        };
+        /** LmsImportResult */
+        LmsImportResult: {
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Unchanged */
+            unchanged: number;
+        };
+        /** LmsItem */
+        LmsItem: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "assignment" | "announcement" | "activity" | "conversation" | "attendance" | "material";
+            /** Course Id */
+            course_id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Url */
+            url: string;
+            /** Due At */
+            due_at?: string | null;
+            file?: components["schemas"]["LmsFile"] | null;
+        };
+        /** LmsMaterialDownload */
+        LmsMaterialDownload: {
+            /** Account Id */
+            account_id: string;
+            item: components["schemas"]["LmsItem"];
+            /** Download Url */
+            download_url: string;
+        };
+        /** LmsMaterialsNeeded */
+        LmsMaterialsNeeded: {
+            /** Item Ids */
+            item_ids: string[];
+        };
+        /** LmsStatus */
+        LmsStatus: {
+            /** Connected */
+            connected: boolean;
+            /** Last Sync */
+            last_sync?: string | null;
+        };
+        /** LmsToken */
+        LmsToken: {
+            /** Token */
+            token: string;
         };
         /** MaterialOut */
         MaterialOut: {
@@ -6137,6 +6338,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodayOut"];
+                };
+            };
+        };
+    };
+    status_api_v1_lms_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    connect_api_v1_lms_connection_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsToken"];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_lms_connection_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    import_data_api_v1_lms_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materials_needed_api_v1_lms_materials_needed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsMaterialsNeeded"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    material_file_api_v1_lms_materials_file_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_material_file_api_v1_lms_materials_file_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    material_download_api_v1_lms_materials_download_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsMaterialDownload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

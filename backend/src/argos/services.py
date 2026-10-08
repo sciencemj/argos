@@ -2,6 +2,8 @@
 activity_log row in the same transaction."""
 
 import asyncio
+import hashlib
+import json
 import re
 import secrets
 import tomllib
@@ -208,6 +210,256 @@ async def feed_token(session: AsyncSession, *, rotate: bool = False) -> str:
     token = secrets.token_urlsafe(24)
     await set_setting_quietly(session, FEED_TOKEN, token)
     return token
+
+
+def lms_key(account_id: str, kind: str, course: str | None, external_id: str) -> str:
+    raw = json.dumps([account_id, kind, course, external_id], ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def lms_hash(value: dict[str, Any]) -> str:
+    value = {key: item for key, item in value.items() if key != "file" or item is not None}
+    return hashlib.sha256(
+        json.dumps(value, default=_jsonable, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+async def lms_source(session: AsyncSession, external_id: str) -> SourceLink | None:
+    return await session.scalar(
+        select(SourceLink).where(
+            SourceLink.source == "learningx", SourceLink.external_id == external_id
+        )
+    )
+
+
+async def import_lms(
+    session: AsyncSession,
+    *,
+    account_id: str,
+    courses: Sequence[dict[str, Any]],
+    items: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    """Commit an extension batch once; absent items never mean remote deletion.
+
+    Remote edits refresh titles, descriptions and dates, preserving local task status
+    and ordering. LMS bodies are plain text, not executable HTML or Markdown.
+    """
+    actor = "system:lms"
+    now = utcnow()
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    changes: list[tuple[str, Record, dict[str, Any]]] = []
+
+    async def record(obj: Record) -> None:
+        session.add(obj)
+        await session.flush()
+        fields = snapshot(obj)
+        _log(session, obj, "created", actor, after=fields)
+        changes.append(("object.created", obj, fields))
+
+    def key(kind: str, course: str | None, external_id: str) -> str:
+        return lms_key(account_id, kind, course, external_id)
+
+    async def link_for(external_id: str) -> SourceLink | None:
+        return await lms_source(session, external_id)
+
+    area = await session.scalar(select(Area).where(Area.name == "LearningX"))
+    if area is None:
+        area = Area(name="LearningX", sort_order=100)
+        await record(area)
+    channel_ids: dict[str | None, str] = {}
+    channel_courses: list[dict[str, Any]] = [*courses, {"id": None, "name": "알림·메시지"}]
+    for course in channel_courses:
+        course_id = course["id"]
+        channel_key = key("channel", course_id, "")
+        link = await link_for(channel_key)
+        channel = await session.get(Channel, link.object_id) if link else None
+        if channel is None:
+            # A suffix keeps same-name courses and accounts distinct without taking
+            # over an existing user-created channel.
+            base = f"{course['name'][:70]} · LMS {channel_key[:8]}"
+            name = base
+            index = 2
+            while await session.scalar(select(Channel.id).where(Channel.name == name)):
+                name = f"{base} ({index})"
+                index += 1
+            channel = Channel(name=name, kind=ChannelKind.COURSE, area_id=area.id)
+            await record(channel)
+            if link is None:
+                link = SourceLink(
+                    source="learningx",
+                    external_id=channel_key,
+                    object_type="channel",
+                    object_id=channel.id,
+                    container="https://lms.korea.ac.kr",
+                    container_name=course["name"],
+                    uid=channel_key,
+                    last_synced_at=now,
+                )
+                session.add(link)
+            else:
+                link.object_id = channel.id
+        channel_ids[course_id] = channel.id
+
+    for item in items:
+        external_id = key(item["kind"], item["course_id"], item["id"])
+        content_hash = lms_hash(item)
+        link = await link_for(external_id)
+        model = Task if item["kind"] == "assignment" else Message
+        obj = await session.get(model, link.object_id) if link else None
+        # Escape Markdown punctuation so LMS text stays text in Argos' renderer.
+        plain = re.sub(r"([\\`*_{}\[\]<>#|!~])", r"\\\1", item["text"])
+        title = re.sub(r"([\\`*_{}\[\]<>#|!~])", r"\\\1", item["title"])
+        body = f"{title}\n\n{plain}\n\n{item['url']}"
+        fields: dict[str, Any] = (
+            {"title": item["title"], "description": body, "due_at": item["due_at"]}
+            if model is Task
+            else {"body": body}
+        )
+        if obj is None:
+            if model is Task:
+                obj = Task(
+                    channel_id=channel_ids[item["course_id"]],
+                    status=TaskStatus.TODO,
+                    position=await _end_position(session, TaskStatus.TODO),
+                    **fields,
+                )
+            else:
+                obj = Message(
+                    channel_id=channel_ids[item["course_id"]],
+                    author_type=AuthorType.SYSTEM,
+                    **fields,
+                )
+            await record(obj)
+            counts["created"] += 1
+            if link is None:
+                link = SourceLink(
+                    source="learningx",
+                    external_id=external_id,
+                    object_type=obj.__tablename__,
+                    object_id=obj.id,
+                    container=item["url"],
+                    container_name=item["title"][:200],
+                    uid=external_id,
+                )
+                session.add(link)
+            else:
+                link.object_id = obj.id
+        elif link is not None and link.content_hash != content_hash:
+            before = snapshot(obj)
+            for field, value in fields.items():
+                setattr(obj, field, value)
+            await session.flush()
+            after = snapshot(obj)
+            _log(session, obj, "updated", actor, before=before, after=after)
+            changes.append(("object.updated", obj, after))
+            counts["updated"] += 1
+        else:
+            counts["unchanged"] += 1
+        assert link is not None
+        link.content_hash = content_hash
+        link.last_synced_at = now
+        link.local_updated_at = obj.updated_at
+        link.container = item["url"]
+    # Bookkeeping belongs to this same transaction, including the last successful sync.
+    setting = await session.scalar(select(AppSetting).where(AppSetting.key == "lms_last_sync"))
+    if setting is None:
+        session.add(AppSetting(key="lms_last_sync", value=now.isoformat()))
+    else:
+        setting.value = now.isoformat()
+    await session.commit()
+    for type_, obj, fields in changes:
+        await _publish(type_, obj, fields)
+    return counts
+
+
+async def lms_material_needed(
+    session: AsyncSession, account_id: str, item: dict[str, Any], directory: Path
+) -> bool:
+    link = await lms_source(
+        session, lms_key(account_id, "material-file", item["course_id"], item["id"])
+    )
+    if link is None or link.content_hash != lms_hash(item["file"]):
+        return True
+    attachment = await session.get(Attachment, link.object_id)
+    return attachment is None or not await asyncio.to_thread((directory / link.object_id).is_file)
+
+
+async def import_lms_material(
+    session: AsyncSession,
+    account_id: str,
+    item: dict[str, Any],
+    source: BinaryIO,
+    directory: Path,
+    limit: int,
+) -> dict[str, int]:
+    """Attach bytes to the already imported material, atomically replacing old bytes.
+
+    URLs with temporary download credentials are never persisted. A stale upload
+    cannot overwrite a newer module snapshot. Failed uploads leave no file or row.
+    """
+    item_link = await lms_source(
+        session, lms_key(account_id, "material", item["course_id"], item["id"])
+    )
+    message = await session.get(Message, item_link.object_id) if item_link else None
+    if message is None or item_link is None or item_link.content_hash != lms_hash(item):
+        raise ConflictError("학습자료 목록을 먼저 다시 수집해 주세요")
+    if not await lms_material_needed(session, account_id, item, directory):
+        return {"created": 0, "updated": 0, "unchanged": 1}
+    external_id = lms_key(account_id, "material-file", item["course_id"], item["id"])
+    link = await lms_source(session, external_id)
+    previous = await session.get(Attachment, link.object_id) if link else None
+    attachment_id = new_id()
+    path = directory / attachment_id
+    try:
+        stored = await asyncio.to_thread(
+            attachments.save_upload, source, item["file"]["name"], path, limit
+        )
+        if stored.size != item["file"]["size"]:
+            raise InvalidError("학습자료 파일 크기가 목록과 달라요. 다시 수집해 주세요")
+
+        # Login/error documents must never be stored as a successful PDF/office file.
+        def read_head() -> bytes:
+            with path.open("rb") as stream:
+                return stream.read(512)
+
+        head = await asyncio.to_thread(read_head)
+        if head.lstrip().lower().startswith((b"<!doctype html", b"<html")):
+            raise InvalidError("학습자료 대신 로그인 페이지가 반환됐어요")
+        attachment = Attachment(id=attachment_id, message_id=message.id, **asdict(stored))
+        session.add(attachment)
+        await session.flush()
+        _log(session, attachment, "created", "system:lms", after=snapshot(attachment))
+        if link is None:
+            link = SourceLink(
+                source="learningx",
+                external_id=external_id,
+                uid=external_id,
+                object_type="attachment",
+                object_id=attachment.id,
+                container=item["url"],
+                container_name=stored.name,
+            )
+            session.add(link)
+        else:
+            link.object_id = attachment.id
+        link.content_hash = lms_hash(item["file"])
+        link.last_synced_at = utcnow()
+        if previous is not None:
+            _log(session, previous, "deleted", "system:lms", before=snapshot(previous))
+            await session.delete(previous)
+        await session.commit()
+    except attachments.TooLarge as exc:
+        await session.rollback()
+        await asyncio.to_thread(path.unlink, missing_ok=True)
+        raise TooLargeError(f"{exc.limit // (1024 * 1024)}MB까지 저장할 수 있어요") from exc
+    except BaseException:
+        await session.rollback()
+        await asyncio.to_thread(path.unlink, missing_ok=True)
+        raise
+    if previous is not None:
+        await asyncio.to_thread((directory / previous.id).unlink, missing_ok=True)
+    await _publish("object.updated", message, snapshot(message))
+    return {"created": int(previous is None), "updated": int(previous is not None), "unchanged": 0}
 
 
 # --- activity -----------------------------------------------------------------
