@@ -10,8 +10,10 @@ import pytest
 from fakes import FakeAgent, FakeClassifier, fake_agents
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from files import png, text_pdf
 
 from argos.agents import Failure, Status, Token, parse_claude_line, parse_codex_line
+from argos.attachments import AttachmentRef
 from argos.config import Settings
 from argos.main import create_app
 
@@ -368,7 +370,7 @@ def fake_sdk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     sessions: set[str] = set()
     calls: list[tuple[str, Any]] = []
 
-    async def fake_query(*, prompt: str, options: Any) -> Any:
+    async def fake_query(*, prompt: Any, options: Any) -> Any:
         calls.append((prompt, options))
         sessions.add(options.session_id or options.resume)
         for message in _sdk_messages(f"turn{len(calls)}"):
@@ -436,7 +438,7 @@ async def test_claude_sdk_coding_mode_works_like_claude_code(
 
     calls: list[Any] = []
 
-    async def fake_query(*, prompt: str, options: Any) -> Any:
+    async def fake_query(*, prompt: Any, options: Any) -> Any:
         calls.append(options)
         for message in _sdk_messages("done"):
             yield message
@@ -612,3 +614,152 @@ def test_builtin_agent_models_are_set_in_settings(client: TestClient) -> None:
     assert back["model"] is None  # the CLI's own default again
     assert client.put("/api/v1/agents/hermes/model", json={"model": "x"}).status_code == 422
     assert client.put("/api/v1/agents/nobody/model", json={"model": "x"}).status_code == 404
+
+
+# --- attachments -------------------------------------------------------------------------
+
+
+def _file(tmp_path: Path, name: str, data: bytes, kind: str, mime: str) -> AttachmentRef:
+    path = tmp_path / name
+    path.write_bytes(data)
+    return AttachmentRef(path, name, mime, kind, len(data))
+
+
+async def test_claude_sdk_sends_images_and_pdfs_as_blocks(fake_sdk: Any, tmp_path: Path) -> None:
+    from argos.agents import Turn
+
+    adapter, calls = fake_sdk
+    files = (
+        _file(tmp_path, "a.png", png(), "image", "image/png"),
+        _file(tmp_path, "p.pdf", text_pdf("X"), "pdf", "application/pdf"),
+    )
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=files)], "ctx", "t-1")]
+    prompt, _options = calls[0]
+    [message] = [m async for m in prompt]
+    content = message["message"]["content"]
+    assert [b["type"] for b in content] == ["image", "document", "text"]
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert content[1]["title"] == "p.pdf"
+    assert "봐줘" in content[2]["text"] and "[첨부: a.png — 함께 보냄]" in content[2]["text"]
+
+
+async def test_claude_sdk_without_attachments_still_sends_a_string(fake_sdk: Any) -> None:
+    from argos.agents import Turn
+
+    adapter, calls = fake_sdk
+    [e async for e in adapter.stream([Turn("user", "안녕")], "ctx", "t-2")]
+    assert isinstance(calls[0][0], str)
+
+
+async def test_codex_app_server_sends_image_input(fake_codex: Any, tmp_path: Path) -> None:
+    from argos.agents import Turn
+
+    adapter, _ids, seen = fake_codex
+    image = _file(tmp_path, "a.png", png(), "image", "image/png")
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=(image,))], "ctx", "t-3")]
+    turn = next(r for r in seen()["requests"] if r["method"] == "turn/start")
+    kinds = [item["type"] for item in turn["params"]["input"]]
+    assert kinds == ["text", "image"]
+    assert turn["params"]["input"][1]["url"].startswith("data:image/png;base64,")
+
+
+async def test_hermes_sends_input_image(tmp_path: Path) -> None:
+    import httpx2
+    from openai import AsyncOpenAI
+
+    from argos.agents import HermesResponsesAdapter, Turn
+
+    sent: list[dict[str, Any]] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(json.loads(request.content))
+        body = (FIXTURES / "hermes_responses.sse").read_bytes()
+        return httpx2.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = AsyncOpenAI(base_url="http://hermes.test/v1", api_key="k", http_client=http)
+    adapter = HermesResponsesAdapter(client, "hermes-agent", "hermes")
+    files = (
+        _file(tmp_path, "a.png", png(), "image", "image/png"),
+        _file(tmp_path, "p.pdf", text_pdf("PDFTEXT"), "pdf", "application/pdf"),
+    )
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=files)], "ctx", "c")]
+    [message] = sent[0]["input"]
+    assert message["role"] == "user"
+    assert [p["type"] for p in message["content"]] == ["input_text", "input_image"]
+    assert "PDFTEXT" in message["content"][0]["text"]  # PDFs go as text to Hermes
+    assert message["content"][1]["image_url"].startswith("data:image/png;base64,")
+
+
+def _ollama(handler: Any, vision: bool) -> Any:
+    import httpx2
+    from openai import AsyncOpenAI
+
+    from argos.agents import OpenAICompatAdapter
+
+    async def sees() -> bool:
+        return vision
+
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    client = AsyncOpenAI(base_url="http://ollama.test/v1", api_key="k", http_client=http)
+    return OpenAICompatAdapter(client, "gemma", "local", vision=sees)
+
+
+def _sse_done(sent: list[dict[str, Any]]) -> Any:
+    import httpx2
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(json.loads(request.content))
+        delta = {"index": 0, "delta": {"content": "ok"}, "finish_reason": None}
+        chunk = {"id": "1", "object": "chat.completion.chunk", "created": 0, "model": "m",
+                 "choices": [delta]}  # fmt: skip
+        body = f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n"
+        return httpx2.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    return handler
+
+
+async def test_ollama_vision_model_gets_image_url(tmp_path: Path) -> None:
+    from argos.agents import Turn
+
+    sent: list[dict[str, Any]] = []
+    adapter = _ollama(_sse_done(sent), vision=True)
+    image = _file(tmp_path, "a.png", png(), "image", "image/png")
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=(image,))], "ctx", "s")]
+    user = sent[0]["messages"][-1]
+    assert [p["type"] for p in user["content"]] == ["text", "image_url"]
+
+
+async def test_ollama_text_model_is_told_it_cannot_see(tmp_path: Path) -> None:
+    from argos.agents import Turn
+
+    sent: list[dict[str, Any]] = []
+    adapter = _ollama(_sse_done(sent), vision=False)
+    image = _file(tmp_path, "a.png", png(), "image", "image/png")
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=(image,))], "ctx", "s")]
+    user = sent[0]["messages"][-1]
+    assert isinstance(user["content"], str) and "이미지를 볼 수 없어" in user["content"]
+
+
+async def test_cli_adapter_passes_images_as_files(tmp_path: Path) -> None:
+    from argos.agents import CLIAdapter, Turn, is_codex_final
+
+    script = tmp_path / "fake-cli"
+    record = tmp_path / "argv.txt"
+    done = json.dumps({"type": "turn.completed"})
+    script.write_text(
+        f'#!/bin/sh\nfor a in "$@"; do echo "$a" >> {record}; done\n'
+        f'for a in "$@"; do case "$a" in --image=*) test -s "${{a#--image=}}" '
+        f"&& echo exists >> {record};; esac; done\necho '{done}'\n"
+    )
+    script.chmod(0o755)
+    adapter = CLIAdapter(
+        [str(script)], tmp_path, parse_codex_line, is_codex_final, "codex", image_flag="--image"
+    )
+    image = _file(tmp_path, "a.png", png(), "image", "image/png")
+    [e async for e in adapter.stream([Turn("user", "봐줘", attachments=(image,))], "ctx", "s")]
+    lines = record.read_text().splitlines()
+    [image_arg] = [line for line in lines if line.startswith("--image=")]
+    assert image_arg.endswith(".png") and "exists" in lines
+    prompt_at = next(i for i, line in enumerate(lines) if "봐줘" in line)
+    assert lines.index(image_arg) < prompt_at  # the prompt is still a separate, last argument

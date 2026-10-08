@@ -11,17 +11,21 @@ not recognise is ignored rather than failing the run.
 """
 
 import asyncio
+import base64
 import json
+import mimetypes
 import os
 import re
 import shutil
+import tempfile
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+import httpx2
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
@@ -33,9 +37,8 @@ from claude_agent_sdk import (
     query,
 )
 from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionMessageParam
 
-from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, parts_for
+from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, data_url, parts_for
 from argos.config import Settings
 from argos.models import Agent, AgentBackend
 
@@ -131,33 +134,110 @@ def with_attachments(
     return [t for t, _ in pairs], [m for _, media in pairs for m in media]
 
 
+async def claude_prompt(text: str, media: list[Media]) -> AsyncIterator[dict[str, Any]]:
+    """Stream-JSON input for the Claude SDK: one user message, files before the words."""
+    content: list[dict[str, Any]] = []
+    for item in media:
+        source = {
+            "type": "base64",
+            "media_type": item.mime,
+            "data": base64.b64encode(item.data).decode(),
+        }
+        if isinstance(item, ImagePart):
+            content.append({"type": "image", "source": source})
+        else:
+            content.append({"type": "document", "source": source, "title": item.name})
+    content.append({"type": "text", "text": text})
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+    }
+
+
+NO_VISION = "(이 모델은 이미지를 볼 수 없어서 이미지는 빠졌어요. 비전 모델을 고르면 볼 수 있어요)"
+
+
+def chat_messages(
+    pairs: list[tuple[Turn, list[Media]]], context: str, me: str, vision: bool
+) -> list[dict[str, Any]]:
+    """OpenAI chat messages: images as image_url parts on their turn (vision models), or a
+    note that they were left out."""
+    messages: list[dict[str, Any]] = [{"role": "system", "content": context}]
+    for turn, media in pairs:
+        if turn.speaker == me:
+            messages.append({"role": "assistant", "content": turn.text})
+            continue
+        text = turn.text if turn.speaker == "user" else f"[{turn.speaker}]: {turn.text}"
+        images = [m for m in media if isinstance(m, ImagePart)]
+        if images and vision:
+            parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
+            parts += [{"type": "image_url", "image_url": {"url": data_url(m)}} for m in images]
+            messages.append({"role": "user", "content": parts})
+        else:
+            content = f"{text}\n\n{NO_VISION}" if images else text
+            messages.append({"role": "user", "content": content})
+    return messages
+
+
+_VISION: dict[tuple[str, str], bool] = {}
+
+
+async def ollama_vision(base_url: str, model: str) -> bool:
+    """Whether an Ollama model takes images (`/api/show` capabilities). A server that
+    does not answer that (another OpenAI-compatible one) gets the images and decides."""
+    key = (base_url, model)
+    if key not in _VISION:
+        root = base_url.rstrip("/").removesuffix("/v1")
+        try:
+            async with httpx2.AsyncClient(timeout=5) as http:
+                response = await http.post(f"{root}/api/show", json={"model": model})
+                response.raise_for_status()
+                capabilities = cast(list[str], response.json().get("capabilities") or [])
+        except (httpx2.HTTPError, ValueError):
+            return True
+        _VISION[key] = "vision" in capabilities
+    return _VISION[key]
+
+
+async def _sees_images(
+    pairs: list[tuple[Turn, list[Media]]], vision: Callable[[], Awaitable[bool]] | None
+) -> bool:
+    if not any(isinstance(m, ImagePart) for _, media in pairs for m in media):
+        return False
+    return vision is None or await vision()
+
+
 # --- OpenAI-compatible (Hermes, Ollama) ---------------------------------------------------
 
 
 class OpenAICompatAdapter:
     def __init__(
-        self, client: AsyncOpenAI, model: str, name: str, extra: dict[str, Any] | None = None
+        self,
+        client: AsyncOpenAI,
+        model: str,
+        name: str,
+        extra: dict[str, Any] | None = None,
+        vision: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self._client = client
         self._model = model
         self._name = name
         self._extra = extra or {}
+        self._vision = vision  # None: send images and let the server decide
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
     ) -> AsyncIterator[AgentEvent]:
-        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": context}]
-        for turn in transcript:
-            if turn.speaker == self._name:
-                messages.append({"role": "assistant", "content": turn.text})
-            elif turn.speaker == "user":
-                messages.append({"role": "user", "content": turn.text})
-            else:  # another agent's words, attributed so the model does not claim them
-                messages.append({"role": "user", "content": f"[{turn.speaker}]: {turn.text}"})
+        # Another agent's words are attributed so the model does not claim them.
+        pairs = await asyncio.to_thread(split_attachments, transcript)
+        messages = chat_messages(
+            pairs, context, self._name, await _sees_images(pairs, self._vision)
+        )
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
-                messages=messages,
+                messages=cast(Any, messages),
                 stream=True,
                 extra_body=self._extra,
             )
@@ -220,6 +300,7 @@ class LLMToolAdapter:
         mcp_url: str,
         tools: list[str],
         connect: Callable[[str], Any] = mcp_tools,
+        vision: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self._client = client
         self._model = model
@@ -227,19 +308,15 @@ class LLMToolAdapter:
         self._mcp_url = mcp_url
         self._tools = tools
         self._connect = connect
+        self._vision = vision
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
     ) -> AsyncIterator[AgentEvent]:
-        messages: list[dict[str, Any]] = [{"role": "system", "content": context}]
-        for turn in transcript:
-            role = "assistant" if turn.speaker == self._name else "user"
-            text = (
-                turn.text
-                if turn.speaker in (self._name, "user")
-                else f"[{turn.speaker}]: {turn.text}"
-            )
-            messages.append({"role": role, "content": text})
+        pairs = await asyncio.to_thread(split_attachments, transcript)
+        messages = chat_messages(
+            pairs, context, self._name, await _sees_images(pairs, self._vision)
+        )
         async with self._connect(self._mcp_url) as tools:
             specs = [
                 {"type": "function", "function": t}
@@ -324,11 +401,20 @@ class HermesResponsesAdapter:
     async def stream(
         self, transcript: list[Turn], context: str, session: str
     ) -> AsyncIterator[AgentEvent]:
-        text = render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+        turns, media = await asyncio.to_thread(
+            with_attachments, pending_turns(transcript, self._name) or transcript[-1:]
+        )
+        text = render_new_turns(turns)
+        images = [m for m in media if isinstance(m, ImagePart)]
+        request_input: Any = text
+        if images:
+            content: list[dict[str, Any]] = [{"type": "input_text", "text": text}]
+            content += [{"type": "input_image", "image_url": data_url(m)} for m in images]
+            request_input = [{"role": "user", "content": content}]
         try:
             response = await self._client.responses.create(
                 model=self._model,
-                input=text,
+                input=request_input,
                 instructions=context,
                 stream=True,
                 extra_body={"conversation": session},
@@ -408,20 +494,33 @@ class CLIAdapter:
         parse: Any,
         is_final: Any,
         name: str,
+        image_flag: str | None = None,
     ) -> None:
         self._argv = argv
         self._workspace = workspace
         self._parse = parse
         self._is_final = is_final
         self._name = name
+        self._image_flag = image_flag  # e.g. codex exec's --image <file>
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
     ) -> AsyncIterator[AgentEvent]:
-        """Stateless: every run gets the context and the whole transcript."""
-        prompt = f"{context}\n\n{render_transcript(transcript, self._name)}"
-        async for event in self._exec([], prompt):
-            yield event
+        """Stateless: every run gets the context and the whole transcript. Images go as
+        files in a temporary folder that lives as long as the run."""
+        turns, media = await asyncio.to_thread(with_attachments, transcript)
+        prompt = f"{context}\n\n{render_transcript(turns, self._name)}"
+        flag = self._image_flag
+        images = [m for m in media if isinstance(m, ImagePart)] if flag else []
+        with tempfile.TemporaryDirectory(prefix="argos-images-") as folder:
+            extra: list[str] = []
+            for number, image in enumerate(images, 1):
+                suffix = mimetypes.guess_extension(image.mime) or ".img"
+                path = Path(folder) / f"{number}{suffix}"
+                await asyncio.to_thread(path.write_bytes, image.data)
+                extra.append(f"{flag}={path}")  # `--image a b` would swallow the prompt
+            async for event in self._exec(extra, prompt):
+                yield event
 
     async def _exec(self, extra: list[str], prompt: str) -> AsyncIterator[AgentEvent]:
         binary = shutil.which(self._argv[0])
@@ -618,12 +717,22 @@ class ClaudeSDKAdapter:
                 **common,
             )
         last = transcript[-1] if transcript else None
-        if last is not None and last.skill is not None and self._tools != []:
-            prompt = f"/{last.skill} {last.args}".strip()  # Claude Code expands it itself
+        skill = last is not None and last.skill is not None and self._tools != []
+        if skill and last is not None:
+            sent = [last]
         elif exists:
-            prompt = render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
+            sent = pending_turns(transcript, self._name) or transcript[-1:]
         else:
-            prompt = render_transcript(transcript, self._name)
+            sent = transcript
+        turns, media = await asyncio.to_thread(with_attachments, sent, pdf_native=True)
+        if skill and last is not None:
+            text = f"/{last.skill} {last.args}".strip()  # Claude Code expands it itself
+        elif exists:
+            text = render_new_turns(turns)
+        else:
+            text = render_transcript(turns, self._name)
+        # With files the prompt is a stream-JSON message carrying image/document blocks.
+        prompt: str | AsyncIterator[dict[str, Any]] = claude_prompt(text, media) if media else text
         try:
             async for message in query(prompt=prompt, options=options):
                 if (event := claude_sdk_event(message)) is not None:
@@ -813,12 +922,11 @@ class CodexAppServerAdapter:
             thread_id = str(_obj(_obj(reply.get("result")).get("thread")).get("id"))
             await self._sessions.set(session, thread_id)
 
-        text = (
-            render_new_turns(pending_turns(transcript, self._name) or transcript[-1:])
-            if resumed
-            else render_transcript(transcript, self._name)
-        )
+        sent = (pending_turns(transcript, self._name) or transcript[-1:]) if resumed else transcript
+        turns, media = await asyncio.to_thread(with_attachments, sent)
+        text = render_new_turns(turns) if resumed else render_transcript(turns, self._name)
         items: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        items += [{"type": "image", "url": data_url(m)} for m in media if isinstance(m, ImagePart)]
         last = transcript[-1] if transcript else None
         if last is not None and last.skill is not None and last.skill_path is not None:
             items.insert(0, {"type": "skill", "name": last.skill, "path": last.skill_path})
@@ -998,13 +1106,17 @@ def build_adapter(
             if not model:
                 raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
             base = settings.classifier_base_url or "http://127.0.0.1:11434/v1"
+
+            async def sees() -> bool:
+                return await ollama_vision(base, model)
+
             client = AsyncOpenAI(
                 base_url=base, api_key="ollama", timeout=settings.agent_timeout, max_retries=0
             )
             if tools:  # a custom agent with tools: the model calls them through MCP
-                return LLMToolAdapter(client, model, agent.name, mcp, tools)
+                return LLMToolAdapter(client, model, agent.name, mcp, tools, vision=sees)
             return OpenAICompatAdapter(
-                client, model, agent.name, extra={"reasoning_effort": "none"}
+                client, model, agent.name, extra={"reasoning_effort": "none"}, vision=sees
             )
         case AgentBackend.CLAUDE_CODE:
             cli = shutil.which(settings.claude_bin)
@@ -1061,5 +1173,7 @@ def build_adapter(
             ]  # fmt: skip
             if agent.model:
                 argv += ["--model", agent.model]
-            return CLIAdapter(argv, workspace, parse_codex_line, is_codex_final, agent.name)
+            return CLIAdapter(
+                argv, workspace, parse_codex_line, is_codex_final, agent.name, image_flag="--image"
+            )
     raise AgentUnavailable(f"unknown agent backend {agent.backend!r}")
