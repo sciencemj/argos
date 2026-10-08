@@ -20,7 +20,6 @@ export function QuickCapture() {
   const post = usePostMessage();
   const input = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
-  const [sent, setSent] = useState(false);
   const files = useAttachmentDrafts();
   const drop = useFileDrop(files.add);
   const picker = useRef<HTMLInputElement>(null);
@@ -42,7 +41,6 @@ export function QuickCapture() {
   useEffect(() => {
     const onFocus = () => {
       exit.reset(); // never left faded out, even if the show signal did not arrive
-      setSent(false);
       input.current?.focus();
     };
     onFocus();
@@ -54,7 +52,6 @@ export function QuickCapture() {
   useEffect(() => {
     if (shown === 0) return;
     exit.reset();
-    setSent(false);
     input.current?.focus();
   }, [shown, exit.reset]);
 
@@ -73,11 +70,10 @@ export function QuickCapture() {
     post.mutate(
       { channelId: inbox.id, body, attachment_ids: files.ids },
       {
+        // Leave at once with the words still showing; the card is emptied once hidden.
         onSuccess: () => {
-          setText("");
           files.clear();
-          setSent(true);
-          setTimeout(close, 700);
+          close();
         },
       },
     );
@@ -135,15 +131,13 @@ export function QuickCapture() {
           }}
         />
         <div className="flex min-w-0 grow">
-          {files.drafts.length > 0 && !sent ? (
+          {files.drafts.length > 0 ? (
             <DraftChips
               compact
               drafts={files.drafts}
               onRemove={files.remove}
               onRetry={files.retry}
             />
-          ) : sent ? (
-            tr("인박스에 넣었어요")
           ) : (
             tr("Enter 보내기 · Shift+Enter 줄바꿈 · Esc 닫기")
           )}
