@@ -175,3 +175,4 @@
 | 2026-10-08 | Pillow·pillow-heif·pypdf 추가 | 큰 이미지 축소와 아이폰 HEIC 변환, Claude 외 에이전트용 PDF 텍스트 추출 |
 | 2026-10-08 | 첨부 저장 위치는 설정이 아니라 `data_dir/attachments` 고정 | 데스크톱 앱이 파일을 열 때 같은 경로를 알아야 함(Tauri `open_attachment`). 설계의 `attachments_dir` 설정 대신 |
 | 2026-10-08 | Claude는 PDF를 document 블록으로 원본 전달, Codex app-server는 이미지를 `{"type":"image","url":"data:…"}`로 전달(파일 경로 불필요) | 실측(claude-agent-sdk 0.2.159 스트림 입력에서 이미지·PDF 모두 읽음, codex-cli 0.159 app-server가 data URL 이미지를 읽음) |
+| 2026-10-08 | 메시지 저장과 첨부 연결은 한 트랜잭션이 아니라 메시지 커밋 직후 연결(첨부 행 `object.updated` 이벤트로 피드 갱신) | `chat.post_message`가 여러 경로로 메시지를 만들어 한 트랜잭션으로 묶으려면 경로마다 고쳐야 함. 첨부 id 검사는 메시지 저장 전에 해서 잘못된 id로는 아무것도 저장되지 않음. 같은 id를 동시에 두 번 보내는 경합은 남음(백로그) |
