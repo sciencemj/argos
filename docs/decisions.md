@@ -171,3 +171,7 @@
 | 2026-10-05 | 판단 모델과 함께 쓸 제목 모델(`classifier_title_model`, 챗 모델) 설정 추가: 할 일·일정 제목만 이 모델이 다듬고, 실패하거나 비어 있으면 원문에서 날짜만 뺀 제목. Ollama 에이전트의 기본 모델도 제목 모델 → 분류 모델 순 | 사용자 요청. 분류 모델이 판단 모델이면 대화를 못 하므로 에이전트 기본값이 깨지지 않게 |
 | 2026-10-05 | 창 이동 영역: 위쪽 20px 고정 띠는 그대로 두고, 사이드바 위쪽과 각 화면 머리글을 `data-tauri-drag-region="deep"`(Tauri 2.11, 버튼·링크는 그대로 클릭)으로 | 띠를 키우면 머리글 버튼(채널 설정 등) 윗부분 클릭을 가림 |
 | 2026-10-05 | 제목 모델 방식(`classifier_title_mode`) 선택: `parallel`(판단·제목 요청을 동시에, 두 모델이 메모리에 함께 있을 때) / `sequential`(제안을 원문 제목으로 먼저 저장하고 제목은 잠금으로 하나씩 나중에, 자동 적용은 제목 뒤). 모델 이름은 예시로만 안내 | 사용자 요청. 16GB 맥에서 tev1:4b + gemma4:e2b는 함께 올라가지 못해 매번 교체됨 |
+| 2026-10-08 | 첨부 파일: 2단계 업로드(`POST /attachments` → 메시지에 `attachment_ids`), 파일은 `data_dir/attachments/<id>`, 에이전트에는 어댑터별 네이티브 입력(Claude content 블록, Codex 이미지 입력, Hermes `input_image`, Ollama `image_url`) | 사용자 결정(설계 `docs/superpowers/specs/2026-10-08-chat-attachments-design.md`). 붙이는 동안 업로드되고, MCP 도구 방식은 백엔드마다 지원이 달라서 제외 |
+| 2026-10-08 | Pillow·pillow-heif·pypdf 추가 | 큰 이미지 축소와 아이폰 HEIC 변환, Claude 외 에이전트용 PDF 텍스트 추출 |
+| 2026-10-08 | 첨부 저장 위치는 설정이 아니라 `data_dir/attachments` 고정 | 데스크톱 앱이 파일을 열 때 같은 경로를 알아야 함(Tauri `open_attachment`). 설계의 `attachments_dir` 설정 대신 |
+| 2026-10-08 | Claude는 PDF를 document 블록으로 원본 전달, Codex app-server는 이미지를 `{"type":"image","url":"data:…"}`로 전달(파일 경로 불필요) | 실측(claude-agent-sdk 0.2.159 스트림 입력에서 이미지·PDF 모두 읽음, codex-cli 0.159 app-server가 data URL 이미지를 읽음) |
