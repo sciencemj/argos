@@ -1,20 +1,23 @@
 """Domain services. Every write in the app goes through here (PLAN §4) and leaves an
 activity_log row in the same transaction."""
 
+import asyncio
 import re
 import secrets
 import tomllib
 import uuid
 from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from argos import attachments
 from argos.hub import hub
 from argos.models import (
     ActivityLog,
@@ -26,6 +29,7 @@ from argos.models import (
     ApprovalStatus,
     AppSetting,
     Area,
+    Attachment,
     AuthorType,
     Channel,
     ChannelKind,
@@ -44,6 +48,7 @@ from argos.models import (
     SourceLink,
     Task,
     TaskStatus,
+    new_id,
     utcnow,
 )
 
@@ -64,6 +69,10 @@ class InvalidError(Exception):
 
 
 class ConflictError(Exception):
+    pass
+
+
+class TooLargeError(Exception):
     pass
 
 
@@ -903,6 +912,60 @@ async def create_message(
         ref_id=ref.id if ref is not None else None,
     )
     return await _create(session, message, actor)
+
+
+# --- attachments (PLAN Phase 13) -----------------------------------------------------
+
+
+async def create_attachment(
+    session: AsyncSession, source: BinaryIO, name: str, directory: Path, limit: int, actor: str
+) -> Attachment:
+    attachment_id = new_id()
+    try:
+        stored = await asyncio.to_thread(
+            attachments.save_upload, source, name, directory / attachment_id, limit
+        )
+    except attachments.TooLarge as exc:
+        raise TooLargeError(f"{exc.limit // (1024 * 1024)}MB까지 올릴 수 있어요") from exc
+    return await _create(session, Attachment(id=attachment_id, **asdict(stored)), actor)
+
+
+async def get_attachment(session: AsyncSession, attachment_id: str) -> Attachment:
+    return await _get(session, Attachment, attachment_id)
+
+
+async def delete_attachment(
+    session: AsyncSession, attachment_id: str, directory: Path, actor: str
+) -> None:
+    """Only an upload that was not sent yet (the composer's ✕)."""
+    attachment = await get_attachment(session, attachment_id)
+    if attachment.message_id is not None:
+        raise ConflictError("이미 보낸 첨부는 지울 수 없어요")
+    await _delete(session, attachment, actor)
+    await asyncio.to_thread((directory / attachment_id).unlink, missing_ok=True)
+
+
+def _remove_files_except(directory: Path, keep: set[str]) -> None:
+    if directory.is_dir():
+        for path in directory.iterdir():
+            if path.is_file() and path.name not in keep:
+                path.unlink(missing_ok=True)
+
+
+async def sweep_attachments(session: AsyncSession, directory: Path, now: datetime) -> None:
+    """At start: uploads never sent within a day, and files whose row is gone (a deleted
+    channel's messages take their attachment rows with them)."""
+    stale = (
+        await session.scalars(
+            select(Attachment).where(
+                Attachment.message_id.is_(None), Attachment.created_at < now - timedelta(days=1)
+            )
+        )
+    ).all()
+    for attachment in stale:
+        await _delete(session, attachment, "system")
+    keep = set((await session.scalars(select(Attachment.id))).all())
+    await asyncio.to_thread(_remove_files_except, directory, keep)
 
 
 # --- DM conversations -------------------------------------------------------------------

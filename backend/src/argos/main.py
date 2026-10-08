@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ def create_app(config: Settings = settings) -> FastAPI:
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
         async with app.state.sessionmaker() as session:
             await services.abandon_running_runs(session)
+            await services.sweep_attachments(session, config.attachments_dir, datetime.now(UTC))
         app.state.calendar_sync = caldav_sync.CalendarSync(
             app.state.sessionmaker, lambda: app.state.settings, caldav_sync.Keychain()
         )

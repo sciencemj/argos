@@ -20,6 +20,7 @@ from fastapi import (
     FastAPI,
     Query,
     Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -33,6 +34,7 @@ from starlette.exceptions import HTTPException
 
 from argos import (
     agents,
+    attachments,
     caldav_sync,
     chat,
     classifier,
@@ -56,6 +58,7 @@ from argos.models import (
     AgentRun,
     Approval,
     ApprovalStatus,
+    Attachment,
     AuthorType,
     Channel,
     ChannelKind,
@@ -398,6 +401,26 @@ class RefOut(BaseModel):
     event: EventOut | None = None
     approval: ApprovalOut | None = None
     debate: DebateOut | None = None
+
+
+class AttachmentOut(Out):
+    id: str
+    name: str
+    mime: str
+    size: int
+    kind: Literal["image", "text", "pdf", "file"]
+    width: int | None
+    height: int | None
+    missing: bool = False  # the file is gone (e.g. restored from a database-only backup)
+
+
+def _attachments_out(items: Sequence[Attachment], directory: Path) -> list[AttachmentOut]:
+    out: list[AttachmentOut] = []
+    for attachment in items:
+        item = AttachmentOut.model_validate(attachment)
+        item.missing = not (directory / attachment.id).is_file()
+        out.append(item)
+    return out
 
 
 class MessageOut(Out):
@@ -857,6 +880,49 @@ async def convert_message(session: Session, message_id: str, body: MessageConver
         session, message_id, kind=body.kind, fields=fields, actor=USER
     )
     return PromotedOut(object_type=obj.__tablename__, id=obj.id)
+
+
+ATTACHMENT_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    # Even if a browser renders it, an uploaded SVG/HTML runs no script with the API's origin.
+    "Content-Security-Policy": "sandbox",
+    "Cache-Control": "private, max-age=31536000, immutable",  # an id's file never changes
+}
+
+
+@router.post("/attachments", status_code=status.HTTP_201_CREATED)
+async def upload_attachment(session: Session, config: Config, file: UploadFile) -> AttachmentOut:
+    attachment = await services.create_attachment(
+        session,
+        file.file,
+        file.filename or "file",
+        config.attachments_dir,
+        config.attachment_max_mb * 1024 * 1024,
+        USER,
+    )
+    [out] = _attachments_out([attachment], config.attachments_dir)
+    return out
+
+
+@router.get("/attachments/{attachment_id}/content", response_class=FileResponse)
+async def attachment_content(session: Session, config: Config, attachment_id: str) -> FileResponse:
+    attachment = await services.get_attachment(session, attachment_id)
+    path = config.attachments_dir / attachment.id
+    if not await asyncio.to_thread(path.is_file):
+        raise services.NotFoundError("attachment file", attachment.id)
+    inline = attachment.mime in attachments.INLINE_MIMES
+    return FileResponse(
+        path,
+        media_type=attachment.mime,
+        filename=attachment.name,
+        content_disposition_type="inline" if inline else "attachment",
+        headers=ATTACHMENT_HEADERS,
+    )
+
+
+@router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attachment(session: Session, config: Config, attachment_id: str) -> None:
+    await services.delete_attachment(session, attachment_id, config.attachments_dir, USER)
 
 
 @router.post("/inbox/{item_id}/accept")
@@ -2612,6 +2678,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(services.ConflictError)
     async def conflict(_: Request, exc: services.ConflictError) -> JSONResponse:
         return _error(409, "conflict", str(exc))
+
+    @app.exception_handler(services.TooLargeError)
+    async def too_large(_: Request, exc: services.TooLargeError) -> JSONResponse:
+        return _error(413, "too_large", str(exc))
 
     @app.exception_handler(services.InvalidError)
     async def invalid(_: Request, exc: services.InvalidError) -> JSONResponse:
