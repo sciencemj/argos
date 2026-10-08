@@ -369,3 +369,19 @@ def test_agents_get_phone_photos_upright(tmp_path: Path) -> None:
     assert isinstance(part, ImagePart)
     with Image.open(io.BytesIO(part.data)) as image:
         assert image.size == (20, 40)
+
+
+KOREAN_CSV = "이름,점수\n김철수,90\n이영희,85\n"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [KOREAN_CSV.encode("cp949"), KOREAN_CSV.encode("utf-16"), KOREAN_CSV.encode("utf-8-sig")],
+    ids=["cp949", "utf-16", "utf-8-bom"],
+)
+def test_korean_excel_csv_is_text_agents_can_read(tmp_path: Path, data: bytes) -> None:
+    stored = save(tmp_path, data, "성적.csv")
+    assert stored.kind == "text"
+    part = to_part(AttachmentRef(tmp_path / "a1", "성적.csv", stored.mime, "text", len(data)),
+                   pdf_native=False)  # fmt: skip
+    assert isinstance(part, TextPart) and "김철수,90" in part.text

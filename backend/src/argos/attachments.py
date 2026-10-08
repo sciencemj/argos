@@ -59,14 +59,27 @@ def safe_name(name: str) -> str:
     return base or "file"
 
 
-def _is_text(head: bytes) -> bool:
-    if b"\x00" in head:
-        return False
+def _decodes(head: bytes, encoding: str) -> bool:
     try:
-        head.decode("utf-8")
+        head.decode(encoding)
     except UnicodeDecodeError as exc:
         return exc.start >= len(head) - 3  # the head ended inside a character
     return True
+
+
+def text_encoding(head: bytes) -> str | None:
+    """How a text file is encoded, from its first bytes; None for binary. Korean Excel
+    saves CSV as CP949 (or UTF-16), not UTF-8."""
+    if head.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+    if head.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    if b"\x00" in head:
+        return None
+    for encoding in ("utf-8", "cp949"):
+        if _decodes(head, encoding):
+            return encoding
+    return None
 
 
 def sniff(head: bytes, name: str) -> tuple[str, str]:
@@ -84,7 +97,7 @@ def sniff(head: bytes, name: str) -> tuple[str, str]:
         return "heic", "image/heic"
     if head.startswith(b"%PDF-"):
         return "pdf", "application/pdf"
-    if Path(name).suffix.lower() in TEXT_EXTENSIONS and _is_text(head):
+    if Path(name).suffix.lower() in TEXT_EXTENSIONS and text_encoding(head) is not None:
         return "text", "text/plain"
     return "file", mimetypes.guess_type(name)[0] or "application/octet-stream"
 
@@ -252,7 +265,9 @@ def to_part(attachment: AttachmentRef, *, pdf_native: bool) -> AgentPart:
             case "pdf":
                 return _fenced(attachment.name, _pdf_text(attachment.path))
             case "text":
-                return _fenced(attachment.name, attachment.path.read_text(errors="replace"))
+                data = attachment.path.read_bytes()
+                encoding = text_encoding(data[:_HEAD]) or "utf-8"
+                return _fenced(attachment.name, data.decode(encoding, errors="replace"))
             case _:
                 size = human_size(attachment.size)
                 return TextPart(f"[첨부: {attachment.name}, {size} — 내용 읽기 불가]")
