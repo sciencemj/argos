@@ -22,6 +22,14 @@ import {
   usePostMessage,
 } from "./api";
 import {
+  AttachmentList,
+  canSend,
+  DraftChips,
+  pastedFiles,
+  useAttachmentDrafts,
+  useFileDrop,
+} from "./attachments";
+import {
   ApprovalCard,
   DebateCard,
   EventRefCard,
@@ -36,6 +44,7 @@ import {
   CheckIcon,
   DogIcon,
   KanbanIcon,
+  PaperclipIcon,
   PinIcon,
   SendIcon,
 } from "./icons";
@@ -232,12 +241,15 @@ export function MessageItem({
           >
             <Markdown text={message.body} />
           </div>
-        ) : (
+        ) : message.body ? (
           <div
             className={`select-text whitespace-pre-wrap ${system || agent ? "text-text-2" : "text-[15px] text-text"}`}
           >
             {message.body}
           </div>
+        ) : null}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentList attachments={message.attachments} />
         )}
         {inlineReplies &&
           message.agent_replies &&
@@ -634,6 +646,9 @@ export function Composer({
   const settings = useAgentSettings();
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const files = useAttachmentDrafts();
+  const drop = useFileDrop(files.add);
+  const picker = useRef<HTMLInputElement>(null);
   const dm = channel.kind === "dm";
   const dmAgent = agents.data?.find((a) => a.id === channel.default_agent_id);
   const channelDefault = agents.data?.find(
@@ -724,18 +739,24 @@ export function Composer({
 
   const send = () => {
     const body = text.trim();
-    if (!body || post.isPending) return;
+    if (!canSend(text, files.drafts) || post.isPending) return;
     post.mutate(
       {
         channelId: channel.id,
         body,
+        attachment_ids: files.ids,
         thread_root_id: threadRootId,
         session_id: sessionId,
         // A thread always says its mode (the toggle may switch it); a new message only
         // turns coding on.
         coding: codeable ? (threadRootId ? coding : coding || null) : null,
       },
-      { onSuccess: () => setText("") },
+      {
+        onSuccess: () => {
+          setText("");
+          files.clear();
+        },
+      },
     );
   };
 
@@ -833,7 +854,20 @@ export function Composer({
           </span>
         </div>
       )}
-      <div className={`${card} flex flex-col gap-3 px-[18px] pt-4 pb-3`}>
+      <div
+        {...drop.handlers}
+        className={`${card} relative flex flex-col gap-3 px-[18px] pt-4 pb-3 ${drop.over ? "border-ink" : ""}`}
+      >
+        {drop.over && (
+          <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-card/90 text-[13px] font-medium text-ink">
+            {tr("여기에 놓아 첨부")}
+          </span>
+        )}
+        <DraftChips
+          drafts={files.drafts}
+          onRemove={files.remove}
+          onRetry={files.retry}
+        />
         <label htmlFor={inputId} className="sr-only">
           {threadRootId ? tr("스레드에 답장") : tr("메시지 입력")}
         </label>
@@ -844,6 +878,12 @@ export function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={(e) => {
+            const pasted = pastedFiles(e.clipboardData);
+            if (pasted.length === 0) return;
+            e.preventDefault();
+            files.add(pasted);
+          }}
           placeholder={
             coding && codeable
               ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
@@ -856,6 +896,25 @@ export function Composer({
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
         <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={tr("파일 붙이기")}
+            title={tr("파일 붙이기")}
+            onClick={() => picker.current?.click()}
+            className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
+          >
+            <PaperclipIcon size={14} />
+          </button>
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              files.add(Array.from(e.target.files ?? []));
+              e.target.value = ""; // the same file can be picked again
+            }}
+          />
           {!dm &&
             SLASH.map((c) => (
               <button
@@ -903,7 +962,7 @@ export function Composer({
             type="button"
             aria-label={tr("보내기")}
             onClick={send}
-            disabled={!text.trim() || post.isPending}
+            disabled={!canSend(text, files.drafts) || post.isPending}
             className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-cta text-on-cta shadow-raised disabled:opacity-40"
           >
             <SendIcon />

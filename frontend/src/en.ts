@@ -692,4 +692,6 @@ export const en: Record<string, string> = {
   "빈 메시지는 보낼 수 없어요": "Type a message or attach a file.",
   "이미 보낸 첨부예요": "That attachment was already sent.",
   "같은 첨부가 두 번 들어 있어요": "The same attachment is in there twice.",
+  "생각난 걸 적거나 붙여넣고 Enter — 인박스로 가요 (/task, /event도 돼요)":
+    "Type or paste, then Enter — it goes to the inbox (/task, /event work too)",
 };
