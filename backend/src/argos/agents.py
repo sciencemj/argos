@@ -134,8 +134,9 @@ def with_attachments(
     return [t for t, _ in pairs], [m for _, media in pairs for m in media]
 
 
-async def claude_prompt(text: str, media: list[Media]) -> AsyncIterator[dict[str, Any]]:
-    """Stream-JSON input for the Claude SDK: one user message, files before the words."""
+def claude_content(text: str, media: list[Media]) -> list[dict[str, Any]]:
+    """Claude content blocks, files before the words. Blocking: base64 of up to tens of
+    MB, so it runs through asyncio.to_thread."""
     content: list[dict[str, Any]] = []
     for item in media:
         source = {
@@ -148,6 +149,11 @@ async def claude_prompt(text: str, media: list[Media]) -> AsyncIterator[dict[str
         else:
             content.append({"type": "document", "source": source, "title": item.name})
     content.append({"type": "text", "text": text})
+    return content
+
+
+async def claude_prompt(content: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+    """Stream-JSON input for the Claude SDK: one user message."""
     yield {
         "type": "user",
         "message": {"role": "user", "content": content},
@@ -732,7 +738,9 @@ class ClaudeSDKAdapter:
         else:
             text = render_transcript(turns, self._name)
         # With files the prompt is a stream-JSON message carrying image/document blocks.
-        prompt: str | AsyncIterator[dict[str, Any]] = claude_prompt(text, media) if media else text
+        prompt: str | AsyncIterator[dict[str, Any]] = text
+        if media:
+            prompt = claude_prompt(await asyncio.to_thread(claude_content, text, media))
         try:
             async for message in query(prompt=prompt, options=options):
                 if (event := claude_sdk_event(message)) is not None:

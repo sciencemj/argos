@@ -167,6 +167,11 @@ MAX_IMAGE_SIDE = 2000
 MAX_IMAGE_BYTES = 3_750_000  # Claude refuses images over 5 MB of base64
 TEXT_LIMIT = 100_000  # characters per file
 MAX_IMAGES = 5  # images re-sent from older turns when a whole transcript goes out
+# Claude reads PDFs itself up to these (the API refuses a request over 32 MB of base64 or a
+# document over 100 pages); past them, and past this many bytes of PDFs in one request,
+# PDFs go as extracted text like for the other agents.
+PDF_NATIVE_BYTES = 20_000_000
+PDF_NATIVE_PAGES = 100
 
 
 @dataclass(frozen=True)
@@ -252,6 +257,12 @@ def _fenced(name: str, text: str) -> TextPart:
     return TextPart(f"[첨부: {name}]\n{fence}\n{text[:TEXT_LIMIT]}{tail}\n{fence}")
 
 
+def _native_pdf(attachment: AttachmentRef) -> bool:
+    if attachment.size > PDF_NATIVE_BYTES:
+        return False
+    return len(PdfReader(attachment.path).pages) <= PDF_NATIVE_PAGES
+
+
 def to_part(attachment: AttachmentRef, *, pdf_native: bool) -> AgentPart:
     """One attachment as an agent reads it. Blocking (file reads, resizing). A file that
     cannot be read becomes a note, so one bad file never fails the whole answer."""
@@ -260,7 +271,7 @@ def to_part(attachment: AttachmentRef, *, pdf_native: bool) -> AgentPart:
             case "image":
                 data, mime = _image(attachment.path, attachment.mime)
                 return ImagePart(attachment.name, mime, data, attachment.path)
-            case "pdf" if pdf_native:
+            case "pdf" if pdf_native and _native_pdf(attachment):
                 return PdfPart(attachment.name, attachment.path.read_bytes())
             case "pdf":
                 return _fenced(attachment.name, _pdf_text(attachment.path))
@@ -279,8 +290,10 @@ def parts_for(
     groups: Sequence[Sequence[AttachmentRef]], *, pdf_native: bool
 ) -> list[list[AgentPart]]:
     """Each turn's attachments as parts. Every image of the newest turn goes; older
-    turns' images fill the rest of MAX_IMAGES, newest first, and the others are named."""
+    turns' images fill the rest of MAX_IMAGES, newest first, and the others are named.
+    Native PDFs share PDF_NATIVE_BYTES, newest first; the rest go as text."""
     budget = MAX_IMAGES
+    pdf_budget = PDF_NATIVE_BYTES
     out: list[list[AgentPart]] = []
     for index in range(len(groups) - 1, -1, -1):
         newest = index == len(groups) - 1
@@ -291,7 +304,11 @@ def parts_for(
                     parts.append(TextPart(f"[첨부: {attachment.name} — 이전 이미지라 생략]"))
                     continue
                 budget -= 1
-            parts.append(to_part(attachment, pdf_native=pdf_native))
+            native = pdf_native and attachment.kind == "pdf" and attachment.size <= pdf_budget
+            part = to_part(attachment, pdf_native=native)
+            if isinstance(part, PdfPart):
+                pdf_budget -= attachment.size
+            parts.append(part)
         out.append(parts)
     return out[::-1]
 

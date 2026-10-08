@@ -385,3 +385,33 @@ def test_korean_excel_csv_is_text_agents_can_read(tmp_path: Path, data: bytes) -
     part = to_part(AttachmentRef(tmp_path / "a1", "성적.csv", stored.mime, "text", len(data)),
                    pdf_native=False)  # fmt: skip
     assert isinstance(part, TextPart) and "김철수,90" in part.text
+
+
+def test_long_pdf_goes_as_text_even_to_claude(tmp_path: Path) -> None:
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(attachments.PDF_NATIVE_PAGES + 1):
+        writer.add_blank_page(width=200, height=200)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    long = ref(tmp_path, "long.pdf", buffer.getvalue(), "pdf", "application/pdf")
+    assert isinstance(to_part(long, pdf_native=True), TextPart)
+
+
+def test_big_pdf_goes_as_text_even_to_claude(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pdf = ref(tmp_path, "p.pdf", text_pdf("BIG"), "pdf", "application/pdf")
+    monkeypatch.setattr(attachments, "PDF_NATIVE_BYTES", pdf.size - 1)
+    part = to_part(pdf, pdf_native=True)
+    assert isinstance(part, TextPart) and "BIG" in part.text
+
+
+def test_native_pdfs_share_one_request_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pdf = ref(tmp_path, "p.pdf", text_pdf("ONE"), "pdf", "application/pdf")
+    monkeypatch.setattr(attachments, "PDF_NATIVE_BYTES", pdf.size * 3 // 2)  # room for one
+    [older], [newer] = parts_for([[pdf], [pdf]], pdf_native=True)
+    assert isinstance(newer, PdfPart) and isinstance(older, TextPart)
