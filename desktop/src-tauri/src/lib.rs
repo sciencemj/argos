@@ -139,24 +139,38 @@ fn start_server(app: &AppHandle) -> Result<(), String> {
 
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
+        let mut reason: Option<String> = None; // why the server could not start, if it said
         while let Some(event) = events.recv().await {
-            if let CommandEvent::Terminated(done) = event {
-                handle.state::<Server>().0.lock().unwrap().take();
-                let log = data_dir().join("logs/server.log");
-                status(
-                    &handle,
-                    &format!(
-                        "서버가 멈췄어요 (코드 {:?}). 기록: {}",
-                        done.code,
-                        log.display()
-                    ),
-                    true,
-                );
-                show_main(&handle, None);
+            match event {
+                CommandEvent::Stderr(line) => {
+                    if let Some(text) = startup_error(&String::from_utf8_lossy(&line)) {
+                        reason = Some(text.to_owned());
+                    }
+                }
+                CommandEvent::Terminated(done) => {
+                    handle.state::<Server>().0.lock().unwrap().take();
+                    let log = data_dir().join("logs/server.log");
+                    let message = exit_message(reason.as_deref(), done.code, &log);
+                    status(&handle, &message, true);
+                    show_main(&handle, None);
+                }
+                _ => {}
             }
         }
     });
     Ok(())
+}
+
+/// The server's one-line reason for not starting (desktop.py `startup_errors`).
+fn startup_error(line: &str) -> Option<&str> {
+    line.trim().strip_prefix("ARGOS_STARTUP_ERROR: ")
+}
+
+fn exit_message(reason: Option<&str>, code: Option<i32>, log: &std::path::Path) -> String {
+    match reason {
+        Some(reason) => format!("{reason} 기록: {}", log.display()),
+        None => format!("서버가 멈췄어요 (코드 {code:?}). 기록: {}", log.display()),
+    }
 }
 
 /// Asks the server to stop (SIGTERM lets uvicorn finish writes and close the database),
@@ -530,4 +544,33 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main(app, None), // Dock icon clicked
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_error_line_is_picked_out_of_stderr() {
+        assert_eq!(
+            startup_error(
+                "ARGOS_STARTUP_ERROR: 이 데이터는 더 새 버전의 Argos에서 만들어졌어요.\n"
+            ),
+            Some("이 데이터는 더 새 버전의 Argos에서 만들어졌어요.")
+        );
+        assert_eq!(startup_error("Traceback (most recent call last):"), None);
+    }
+
+    #[test]
+    fn exit_message_prefers_the_servers_reason() {
+        let log = std::path::Path::new("/tmp/server.log");
+        assert_eq!(
+            exit_message(Some("업데이트해 주세요."), Some(1), log),
+            "업데이트해 주세요. 기록: /tmp/server.log"
+        );
+        assert_eq!(
+            exit_message(None, Some(1), log),
+            "서버가 멈췄어요 (코드 Some(1)). 기록: /tmp/server.log"
+        );
+    }
 }

@@ -135,3 +135,46 @@ def test_update_with_new_migrations_backs_up_first(
     assert len(backups) == 1
     desktop.migrate(config)  # nothing new: no second backup
     assert len(ops.list_backups(config.backup_dir)) == 1
+
+
+def test_database_from_a_newer_version_is_named(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Opening data a newer Argos already migrated (e.g. after going back a version):
+    say so instead of alembic's "Can't locate revision", and change nothing."""
+    import sqlite3
+
+    from alembic.config import Config
+
+    from alembic import command
+    from argos import config as config_module
+
+    config = settings.model_copy(update={"db_path": tmp_path / "app.db"})
+    monkeypatch.setattr(config_module, "settings", config)
+    current = Config()
+    current.set_main_option("script_location", str(desktop.BUNDLE / "alembic"))
+    command.upgrade(current, "head")
+    with sqlite3.connect(config.db_path) as db:
+        db.execute("update alembic_version set version_num = 'ffffffffffff'")  # a future one
+
+    with pytest.raises(desktop.NewerDatabase, match="더 새 버전"):
+        desktop.migrate(config)
+    assert ops.list_backups(config.backup_dir) == []
+
+
+def test_startup_failure_is_logged_and_told_to_the_app(
+    caplog: pytest.LogCaptureFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as stopped, desktop.startup_errors():
+        raise RuntimeError("boom")
+    assert stopped.value.code == 1
+    assert "boom" in caplog.text and "Traceback" in caplog.text  # in server.log
+    line = capsys.readouterr().err.strip().splitlines()[-1]
+    assert line.startswith("ARGOS_STARTUP_ERROR: 서버를 시작하지 못했어요")
+
+
+def test_newer_database_message_goes_to_the_app(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit), desktop.startup_errors():
+        raise desktop.NewerDatabase("이 데이터는 더 새 버전의 Argos에서 만들어졌어요.")
+    err = capsys.readouterr().err
+    assert "ARGOS_STARTUP_ERROR: 이 데이터는 더 새 버전의 Argos에서 만들어졌어요." in err

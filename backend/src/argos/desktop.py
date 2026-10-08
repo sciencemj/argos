@@ -8,6 +8,8 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -61,6 +63,14 @@ def prepare_environment() -> Path:
     return data
 
 
+STARTUP_ERROR = "ARGOS_STARTUP_ERROR: "  # the app shows the rest of this stderr line
+
+
+class NewerDatabase(Exception):
+    """The data was migrated by a newer Argos than this one (e.g. after going back a
+    version): this version cannot read it and must not touch it."""
+
+
 def migrate(settings: "Settings") -> None:
     """Brings the database up to this version. When an update brings new migrations, the
     database is backed up first, so a bad migration can be undone by hand."""
@@ -82,7 +92,12 @@ def migrate(settings: "Settings") -> None:
         with engine.connect() as conn:
             current = MigrationContext.configure(conn).get_current_revision()
         engine.dispose()
-        head = ScriptDirectory.from_config(config).get_current_head()
+        scripts = ScriptDirectory.from_config(config)
+        head = scripts.get_current_head()
+        if current is not None and current not in {s.revision for s in scripts.walk_revisions()}:
+            raise NewerDatabase(
+                "이 데이터는 더 새 버전의 Argos에서 만들어졌어요. 최신 Argos로 업데이트해 주세요."
+            )
         if current is not None and current != head:
             try:
                 ops.backup_db(
@@ -91,6 +106,26 @@ def migrate(settings: "Settings") -> None:
             except (OSError, sqlite3.Error):
                 logging.exception("backup before migrating failed")
     command.upgrade(config, "head")
+
+
+@contextmanager
+def startup_errors() -> Generator[None]:
+    """A failure while starting goes to server.log with its traceback (stderr is not kept)
+    and, as one line, to the app, which shows it instead of a bare exit code."""
+    try:
+        yield
+    except NewerDatabase as exc:
+        logging.error("cannot start: %s", exc)
+        print(f"{STARTUP_ERROR}{exc}", file=sys.stderr, flush=True)
+        sys.exit(1)
+    except Exception:
+        logging.exception("server failed to start")
+        print(
+            f"{STARTUP_ERROR}서버를 시작하지 못했어요. 자세한 내용은 기록에 있어요.",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
 
 
 def exit_with_parent() -> None:
@@ -126,14 +161,14 @@ def main() -> None:
     )
     exit_with_parent()
 
-    import uvicorn
+    with startup_errors():
+        import uvicorn
 
-    from argos.config import settings
-    from argos.main import create_app
+        from argos.config import settings
+        from argos.main import create_app
 
-    migrate(settings)
-
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_config=None)
+        migrate(settings)
+        uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_config=None)
 
 
 if __name__ == "__main__":

@@ -176,3 +176,4 @@
 | 2026-10-08 | 첨부 저장 위치는 설정이 아니라 `data_dir/attachments` 고정 | 데스크톱 앱이 파일을 열 때 같은 경로를 알아야 함(Tauri `open_attachment`). 설계의 `attachments_dir` 설정 대신 |
 | 2026-10-08 | Claude는 PDF를 document 블록으로 원본 전달, Codex app-server는 이미지를 `{"type":"image","url":"data:…"}`로 전달(파일 경로 불필요) | 실측(claude-agent-sdk 0.2.159 스트림 입력에서 이미지·PDF 모두 읽음, codex-cli 0.159 app-server가 data URL 이미지를 읽음) |
 | 2026-10-08 | 메시지 저장과 첨부 연결은 한 트랜잭션이 아니라 메시지 커밋 직후 연결(첨부 행 `object.updated` 이벤트로 피드 갱신) | `chat.post_message`가 여러 경로로 메시지를 만들어 한 트랜잭션으로 묶으려면 경로마다 고쳐야 함. 첨부 id 검사는 메시지 저장 전에 해서 잘못된 id로는 아무것도 저장되지 않음. 같은 id를 동시에 두 번 보내는 경합은 남음(백로그) |
+| 2026-10-08 | 데스크톱 서버가 시작하다 실패하면 원인을 `server.log`에(트레이스백 포함) 남기고, 앱에는 stderr 한 줄 `ARGOS_STARTUP_ERROR: <안내>`로 알려 그 문장을 "서버가 멈췄어요 (코드 …)" 대신 보여 줌. 더 새 버전이 마이그레이션한 데이터는 건드리지 않고 "최신 Argos로 업데이트해 주세요" 안내 | v0.1.9 테스트 빌드 후 0.1.8을 다시 열자 alembic "Can't locate revision"으로 서버가 꺼졌는데, 기록에도 화면에도 원인이 없었음(실측) |
