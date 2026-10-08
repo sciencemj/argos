@@ -945,6 +945,51 @@ async def delete_attachment(
     await asyncio.to_thread((directory / attachment_id).unlink, missing_ok=True)
 
 
+async def check_attachments(session: AsyncSession, ids: Sequence[str]) -> list[Attachment]:
+    """Uploads that may go with a new message, in the order given. Runs before the
+    message is stored so a bad id stores nothing."""
+    if len(ids) > attachments.MAX_FILES:
+        raise InvalidError(f"첨부는 {attachments.MAX_FILES}개까지 보낼 수 있어요")
+    if len(set(ids)) != len(ids):
+        raise InvalidError("같은 첨부가 두 번 들어 있어요")
+    if not ids:
+        return []
+    found = {
+        a.id: a
+        for a in (await session.scalars(select(Attachment).where(Attachment.id.in_(ids)))).all()
+    }
+    for attachment_id in ids:
+        attachment = found.get(attachment_id)
+        if attachment is None:
+            raise NotFoundError("attachment", attachment_id)
+        if attachment.message_id is not None:
+            raise ConflictError("이미 보낸 첨부예요")
+    return [found[i] for i in ids]
+
+
+async def link_attachments(
+    session: AsyncSession, message: Message, items: Sequence[Attachment], actor: str
+) -> None:
+    for attachment in items:
+        await _update(session, attachment, {"message_id": message.id}, actor)
+
+
+async def attachments_for(
+    session: AsyncSession, message_ids: Sequence[str]
+) -> dict[str, list[Attachment]]:
+    if not message_ids:
+        return {}
+    rows = await session.scalars(
+        select(Attachment)
+        .where(Attachment.message_id.in_(message_ids))
+        .order_by(Attachment.created_at, Attachment.id)
+    )
+    grouped: dict[str, list[Attachment]] = {}
+    for attachment in rows.all():
+        grouped.setdefault(attachment.message_id or "", []).append(attachment)
+    return grouped
+
+
 def _remove_files_except(directory: Path, keep: set[str]) -> None:
     if directory.is_dir():
         for path in directory.iterdir():

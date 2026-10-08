@@ -7,6 +7,7 @@ in the background.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -77,12 +78,41 @@ async def post_message(
     thread_root_id: str | None = None,
     session_id: str | None = None,
     coding: bool | None = None,
+    attachment_ids: Sequence[str] = (),
 ) -> Posted:
     """Stores the message and decides what happens next (see runner.py for routing):
-    agents to answer, or an inbox item to classify, or neither."""
+    agents to answer, or an inbox item to classify, or neither. Attachments are checked
+    first and linked before any agent starts, so the agent's transcript has them."""
     body = body.strip()
-    if not body:
+    files = await services.check_attachments(session, attachment_ids)
+    if not body and not files:
         raise services.InvalidError("빈 메시지는 보낼 수 없어요")
+    posted = await _route(
+        session,
+        channel_id=channel_id,
+        body=body,
+        now=now,
+        settings=settings,
+        thread_root_id=thread_root_id,
+        session_id=session_id,
+        coding=coding,
+    )
+    if files:
+        await services.link_attachments(session, posted.message, files, "user")
+    return posted
+
+
+async def _route(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    body: str,
+    now: datetime,
+    settings: Settings,
+    thread_root_id: str | None,
+    session_id: str | None,
+    coding: bool | None,
+) -> Posted:
     channel = await services.get_channel(session, channel_id)
     personal = (
         await services.get_personal_channel(session)
@@ -165,6 +195,8 @@ async def post_message(
         raise services.InvalidError(str(exc)) from exc
 
     match command:
+        case None if not body:  # only attachments: nothing for the classifier to read
+            return Posted(await _say(session, channel, body, None, in_thread))
         case None:
             item = await services.create_inbox_item(
                 session,

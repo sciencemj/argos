@@ -442,6 +442,7 @@ class MessageOut(Out):
     run: "RunOut | None" = None  # set on an agent's reply
     # First-round agent answers to this message, shown inline under it in the feed.
     agent_replies: list["MessageOut"] = Field(default_factory=list["MessageOut"])
+    attachments: list[AttachmentOut] = Field(default_factory=list[AttachmentOut])
 
 
 class RunOut(Out):
@@ -520,13 +521,15 @@ class ThreadOut(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=10_000)
+    # May be empty when attachments go with it (chat.post_message checks).
+    body: str = Field(default="", max_length=10_000)
     thread_root_id: str | None = None
     # DM: continue this conversation; omitted, the current one (or a new one when idle).
     session_id: str | None = None
     # Coding mode (files, shell, network in the channel's project folder): on a new
     # conversation it starts one; in a thread it switches the thread; null keeps it.
     coding: bool | None = None
+    attachment_ids: list[str] = Field(default_factory=list[str], max_length=10)
 
 
 class SkillOut(BaseModel):
@@ -702,9 +705,13 @@ async def _attach_summaries(session: AsyncSession, refs: dict[tuple[str, str], B
         d.summary = bodies.get(d.summary_message_id or "")
 
 
-async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[MessageOut]:
-    """Embeds each message's referenced object and reply count in two small queries."""
+async def _messages_out(
+    session: AsyncSession, messages: list[Message], directory: Path
+) -> list[MessageOut]:
+    """Embeds each message's referenced object, reply count and attachments (stored in
+    `directory`) in a few small queries."""
     counts = await services.reply_counts(session, [m.id for m in messages])
+    files = await services.attachments_for(session, [m.id for m in messages])
     by_type: dict[str, set[str]] = {}
     for m in messages:
         if m.ref_type and m.ref_id:
@@ -756,12 +763,13 @@ async def _messages_out(session: AsyncSession, messages: list[Message]) -> list[
     for m in messages:
         item = MessageOut.model_validate(m)
         item.reply_count = counts.get(m.id, 0)
+        item.attachments = _attachments_out(files.get(m.id, []), directory)
         if m.ref_type and m.ref_id and (ref := refs.get((m.ref_type, m.ref_id))):
             item.ref = RefOut.model_validate({m.ref_type: ref})
         if m.run_id:
             item.run = runs.get(m.run_id)
         if m.id in replies_by_root:
-            item.agent_replies = await _messages_out(session, replies_by_root[m.id])
+            item.agent_replies = await _messages_out(session, replies_by_root[m.id], directory)
         out.append(item)
     return out
 
@@ -784,6 +792,7 @@ def _classify_later(
 @router.get("/channels/{channel_id}/messages")
 async def list_messages(
     session: Session,
+    config: Config,
     channel_id: str,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -804,7 +813,10 @@ async def list_messages(
         limit=limit,
         session_id=session_id,
     )
-    return MessagePage(items=await _messages_out(session, messages), next_cursor=next_cursor)
+    return MessagePage(
+        items=await _messages_out(session, messages, config.attachments_dir),
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/channels/{channel_id}/sessions")
@@ -839,6 +851,7 @@ async def post_message(
         coding=body.coding,
         now=datetime.now(UTC),
         settings=config,
+        attachment_ids=body.attachment_ids,
     )
     _classify_later(request, background, config, posted.classify_item_id)
     runner: Runner = request.app.state.runner
@@ -852,24 +865,26 @@ async def post_message(
         )
     if posted.debate:
         runner.start_debate(posted.debate.id)
-    [out] = await _messages_out(session, [posted.message])
+    [out] = await _messages_out(session, [posted.message], config.attachments_dir)
     return out
 
 
 @router.get("/messages/{message_id}/thread")
-async def get_thread(session: Session, message_id: str) -> ThreadOut:
+async def get_thread(session: Session, config: Config, message_id: str) -> ThreadOut:
     root, replies = await services.list_thread(session, message_id)
-    [root_out, *reply_out] = await _messages_out(session, [root, *replies])
+    [root_out, *reply_out] = await _messages_out(session, [root, *replies], config.attachments_dir)
     return ThreadOut(root=root_out, replies=reply_out)
 
 
 @router.patch("/messages/{message_id}")
-async def update_message(session: Session, message_id: str, body: MessageUpdate) -> MessageOut:
+async def update_message(
+    session: Session, config: Config, message_id: str, body: MessageUpdate
+) -> MessageOut:
     changes = _changes(body)
     if changes.get("pinned") is None:
         changes.pop("pinned", None)
     message = await services.update_message(session, message_id, changes, USER)
-    [out] = await _messages_out(session, [message])
+    [out] = await _messages_out(session, [message], config.attachments_dir)
     return out
 
 
@@ -2109,7 +2124,7 @@ async def make_weekly_review(session: Session, config: Config) -> MessageOut:
     message = await services.create_message(
         session, channel_id=today.id, body=text, author_type=AuthorType.SYSTEM, actor=USER
     )
-    [out] = await _messages_out(session, [message])
+    [out] = await _messages_out(session, [message], config.attachments_dir)
     return out
 
 

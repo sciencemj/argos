@@ -165,3 +165,69 @@ async def test_sweep_removes_stale_uploads_and_stray_files(
     left = (await session.scalars(select(Attachment.id))).all()
     assert left == [fresh.id]
     assert sorted(p.name for p in directory.iterdir()) == [fresh.id]
+
+
+# --- sending -----------------------------------------------------------------------------
+
+
+def channel_id(client: TestClient, name: str) -> str:
+    channels = client.get("/api/v1/channels").json()["channels"]
+    return next(c["id"] for c in channels if c["name"] == name)
+
+
+def post(client: TestClient, channel: str, body: str, ids: list[str]) -> Any:
+    return client.post(
+        f"/api/v1/channels/{channel}/messages", json={"body": body, "attachment_ids": ids}
+    )
+
+
+def test_message_carries_its_attachments(api: TestClient) -> None:
+    course = channel_id(api, "컴퓨터구조")
+    first, second = upload(api, png(), "1.png"), upload(api, b"x", "2.txt")
+    sent = post(api, course, "자료", [first["id"], second["id"]])
+    assert sent.status_code == 201, sent.text
+    assert [a["name"] for a in sent.json()["attachments"]] == ["1.png", "2.txt"]
+    feed = api.get(f"/api/v1/channels/{course}/messages").json()["items"]
+    assert [a["id"] for a in feed[-1]["attachments"]] == [first["id"], second["id"]]
+
+
+def test_attachment_only_message_skips_the_inbox(api: TestClient) -> None:
+    course = channel_id(api, "컴퓨터구조")
+    sent = post(api, course, "", [upload(api, png(), "board.png")["id"]])
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["body"] == "" and sent.json()["ref_type"] is None
+    assert api.get("/api/v1/inbox").json()["items"] == []
+
+
+def test_empty_message_without_attachments_is_422(api: TestClient) -> None:
+    assert post(api, channel_id(api, "컴퓨터구조"), "  ", []).status_code == 422
+
+
+def test_attachment_cannot_be_sent_twice_or_deleted_after(api: TestClient) -> None:
+    course = channel_id(api, "컴퓨터구조")
+    item = upload(api, b"x", "a.txt")
+    assert post(api, course, "one", [item["id"]]).status_code == 201
+    assert post(api, course, "two", [item["id"]]).status_code == 409
+    assert api.delete(f"/api/v1/attachments/{item['id']}").status_code == 409
+
+
+def test_unknown_duplicate_and_too_many_ids(api: TestClient) -> None:
+    course = channel_id(api, "컴퓨터구조")
+    assert post(api, course, "x", ["nope"]).status_code == 404
+    item = upload(api, b"x", "a.txt")
+    assert post(api, course, "x", [item["id"], item["id"]]).status_code == 422
+    many = [upload(api, b"x", f"{i}.txt")["id"] for i in range(11)]
+    assert post(api, course, "x", many).status_code == 422
+    feed = api.get(f"/api/v1/channels/{course}/messages").json()["items"]
+    assert all(m["body"] != "x" for m in feed)  # failed sends stored nothing
+
+
+def test_deleting_the_channel_drops_attachment_rows(api: TestClient) -> None:
+    area_id = api.get("/api/v1/channels").json()["areas"][0]["id"]
+    created = api.post("/api/v1/channels", json={"name": "임시", "area_id": area_id})
+    assert created.status_code == 201, created.text
+    channel = created.json()["id"]
+    item = upload(api, b"x", "a.txt")
+    assert post(api, channel, "x", [item["id"]]).status_code == 201
+    assert api.delete(f"/api/v1/channels/{channel}?force=true").status_code == 204
+    assert api.get(f"/api/v1/attachments/{item['id']}/content").status_code == 404
