@@ -201,6 +201,23 @@ class Message(Record):
     coding: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
+class Attachment(Record):
+    """A file attached to a chat message (PLAN Phase 13). Stored at
+    data_dir/attachments/<id>; `message_id` stays empty between upload and send."""
+
+    __tablename__ = "attachment"
+
+    message_id: Mapped[str | None] = mapped_column(
+        ForeignKey("message.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(10))  # image | text | pdf | file
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+
+
 class ActivityLog(Record):
     __tablename__ = "activity_log"
 

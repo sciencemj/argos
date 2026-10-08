@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     job_max_budget_usd: float = 2.0  # Claude jobs stop past this API-cost estimate
     context_limit: int = 4000  # characters of channel context sent with each run
     dm_session_idle_hours: float = 6.0  # a DM message after this long starts a new conversation
+    attachment_max_mb: int = 25  # per file attached to a chat message
 
     @model_validator(mode="after")
     def _inside_data_dir(self) -> "Settings":
@@ -131,6 +132,11 @@ class Settings(BaseSettings):
         if self.hermes_api_key is None:
             self.hermes_api_key = _hermes_key(self.hermes_home / ".env")
         return self
+
+    @property
+    def attachments_dir(self) -> Path:
+        """Chat attachments by id. Fixed inside data_dir: the desktop app opens them there."""
+        return self.data_dir / "attachments"
 
     @property
     def mcp_url(self) -> str:
