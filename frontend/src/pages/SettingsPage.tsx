@@ -34,6 +34,7 @@ import { t, tr, tt } from "../i18n";
 import { LanguagePicker } from "../LanguagePicker";
 import { btn, card, ErrorText, field, label } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
+import { LmsSection } from "./LmsSettings";
 import {
   AppUpdateSection,
   NotifySection,
@@ -55,7 +56,7 @@ const GROUPS = [
     title: tr("입력과 알림"),
     hint: tr("정리 모델, 알림, 주간 리뷰"),
   },
-  { id: "links", title: tr("연결"), hint: tr("옵시디언, 애플 캘린더") },
+  { id: "links", title: tr("연결"), hint: tr("옵시디언, 애플 캘린더, LMS") },
   {
     id: "work",
     title: tr("작업과 운영"),
@@ -174,6 +175,7 @@ export function SettingsPage() {
               <VaultSection />
               <ICloudSection />
               <CalendarFeedSection />
+              <LmsSection />
             </>,
           )}
           {section(

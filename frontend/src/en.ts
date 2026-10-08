@@ -694,4 +694,15 @@ export const en: Record<string, string> = {
   "같은 첨부가 두 번 들어 있어요": "The same attachment is in there twice.",
   "생각난 걸 적거나 붙여넣고 Enter — 인박스로 가요 (/task, /event도 돼요)":
     "Type or paste, then Enter — it goes to the inbox (/task, /event work too)",
+  "옵시디언, 애플 캘린더, LMS": "Obsidian, Apple Calendar, LMS",
+  "LearningX LMS": "LearningX LMS",
+  "Chrome 확장 프로그램에서 로그인된 고려대 LMS의 과제·공지·메시지 요약을 가져와요. 출결은 현재 화면의 표를 가져와요.":
+    "Import assignments, announcements and message previews from a signed-in Korea University LMS tab through the Chrome extension. Attendance is captured from the table on the current page.",
+  "연결 코드가 발급되어 있어요": "A connection code has been issued",
+  "LMS 연결 전이에요": "LMS is not connected",
+  "연결 코드 재발급": "Replace connection code",
+  "연결 코드 발급": "Create connection code",
+  "확장 프로그램에 입력할 연결 코드": "Connection code for the extension",
+  "연결 코드를 재발급하면 기존 코드는 폐기돼요. 해제해도 가져온 학습 정보는 남아요.":
+    "Replacing the code revokes the previous one. Disconnecting keeps imported learning data.",
 };

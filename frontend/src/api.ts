@@ -1185,3 +1185,26 @@ export const usePrepareUninstall = () =>
   useMutation({
     mutationFn: () => call(client.POST("/api/v1/setup/uninstall")),
   });
+
+export const useLmsStatus = () =>
+  useQuery({
+    queryKey: ["lms"],
+    queryFn: () => call(client.GET("/api/v1/lms/status")),
+    refetchInterval: 30_000,
+  });
+
+export function useConnectLms() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.POST("/api/v1/lms/connection")),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["lms"] }),
+  });
+}
+
+export function useDisconnectLms() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.DELETE("/api/v1/lms/connection")),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["lms"] }),
+  });
+}
