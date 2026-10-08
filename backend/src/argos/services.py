@@ -313,7 +313,12 @@ async def update_channel(
 
 
 async def delete_channel(
-    session: AsyncSession, channel_id: str, actor: str, *, force: bool = False
+    session: AsyncSession,
+    channel_id: str,
+    actor: str,
+    *,
+    force: bool = False,
+    attachments_dir: Path | None = None,
 ) -> None:
     """Refuses while the channel still holds tasks or events unless `force`; forced
     deletes log each contained object so nothing disappears without a trace."""
@@ -328,7 +333,17 @@ async def delete_channel(
         )
     for obj in [*tasks, *events]:
         await _delete(session, obj, actor)
+    # Attachment rows go with the messages (FK cascade); their files go here.
+    files = (
+        await session.scalars(
+            select(Attachment.id)
+            .join(Message, Attachment.message_id == Message.id)
+            .where(Message.channel_id == channel.id)
+        )
+    ).all()
     await _delete(session, channel, actor)
+    if attachments_dir is not None:
+        await asyncio.to_thread(_remove_files, attachments_dir, list(files))
 
 
 # --- tasks --------------------------------------------------------------------
@@ -990,16 +1005,15 @@ async def attachments_for(
     return grouped
 
 
-def _remove_files_except(directory: Path, keep: set[str]) -> None:
-    if directory.is_dir():
-        for path in directory.iterdir():
-            if path.is_file() and path.name not in keep:
-                path.unlink(missing_ok=True)
+def _remove_files(directory: Path, ids: list[str]) -> None:
+    for attachment_id in ids:
+        (directory / attachment_id).unlink(missing_ok=True)
 
 
 async def sweep_attachments(session: AsyncSession, directory: Path, now: datetime) -> None:
-    """At start: uploads never sent within a day, and files whose row is gone (a deleted
-    channel's messages take their attachment rows with them)."""
+    """At start: uploads never sent within a day, with their files. Files this database
+    has no row for are left alone: they may belong to another database (a test stack on
+    the same data folder, a restored backup)."""
     stale = (
         await session.scalars(
             select(Attachment).where(
@@ -1007,10 +1021,10 @@ async def sweep_attachments(session: AsyncSession, directory: Path, now: datetim
             )
         )
     ).all()
+    ids = [a.id for a in stale]
     for attachment in stale:
         await _delete(session, attachment, "system")
-    keep = set((await session.scalars(select(Attachment.id))).all())
-    await asyncio.to_thread(_remove_files_except, directory, keep)
+    await asyncio.to_thread(_remove_files, directory, ids)
 
 
 # --- DM conversations -------------------------------------------------------------------

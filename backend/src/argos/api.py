@@ -691,8 +691,12 @@ def _vault_root(config: Settings) -> Path:
 
 
 @router.delete("/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_channel(session: Session, channel_id: str, force: bool = False) -> None:
-    await services.delete_channel(session, channel_id, USER, force=force)
+async def delete_channel(
+    session: Session, config: Config, channel_id: str, force: bool = False
+) -> None:
+    await services.delete_channel(
+        session, channel_id, USER, force=force, attachments_dir=config.attachments_dir
+    )
 
 
 async def _attach_summaries(session: AsyncSession, refs: dict[tuple[str, str], BaseModel]) -> None:

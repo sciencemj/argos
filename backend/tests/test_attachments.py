@@ -149,7 +149,7 @@ def test_missing_file_is_404(api: TestClient, settings: Settings) -> None:
     assert api.get(f"/api/v1/attachments/{item['id']}/content").status_code == 404
 
 
-async def test_sweep_removes_stale_uploads_and_stray_files(
+async def test_sweep_removes_stale_uploads_but_never_unknown_files(
     session: AsyncSession, settings: Settings
 ) -> None:
     directory = settings.attachments_dir
@@ -168,7 +168,9 @@ async def test_sweep_removes_stale_uploads_and_stray_files(
 
     left = (await session.scalars(select(Attachment.id))).all()
     assert left == [fresh.id]
-    assert sorted(p.name for p in directory.iterdir()) == [fresh.id]
+    # A file this database does not know may belong to another database (a test stack,
+    # a restored backup): it stays.
+    assert sorted(p.name for p in directory.iterdir()) == sorted([fresh.id, "stray"])
 
 
 # --- sending -----------------------------------------------------------------------------
@@ -226,7 +228,9 @@ def test_unknown_duplicate_and_too_many_ids(api: TestClient) -> None:
     assert all(m["body"] != "x" for m in feed)  # failed sends stored nothing
 
 
-def test_deleting_the_channel_drops_attachment_rows(api: TestClient) -> None:
+def test_deleting_the_channel_drops_attachment_rows_and_files(
+    api: TestClient, settings: Settings
+) -> None:
     area_id = api.get("/api/v1/channels").json()["areas"][0]["id"]
     created = api.post("/api/v1/channels", json={"name": "임시", "area_id": area_id})
     assert created.status_code == 201, created.text
@@ -235,6 +239,7 @@ def test_deleting_the_channel_drops_attachment_rows(api: TestClient) -> None:
     assert post(api, channel, "x", [item["id"]]).status_code == 201
     assert api.delete(f"/api/v1/channels/{channel}?force=true").status_code == 204
     assert api.get(f"/api/v1/attachments/{item['id']}/content").status_code == 404
+    assert not (settings.attachments_dir / item["id"]).exists()  # the file went too
 
 
 # --- what agents get ---------------------------------------------------------------------
