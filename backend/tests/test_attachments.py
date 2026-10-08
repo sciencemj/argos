@@ -1,4 +1,5 @@
 import io
+import time
 import unicodedata
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -6,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fakes import FakeAgent, FakeClassifier, fake_agents
 from fastapi.testclient import TestClient
 from files import png, text_pdf
 from PIL import Image
@@ -13,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos import attachments, services
+from argos.agents import Turn, split_attachments, with_attachments
+from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, parts_for, to_part
 from argos.config import Settings
 from argos.main import create_app
 from argos.models import Attachment
@@ -231,3 +235,97 @@ def test_deleting_the_channel_drops_attachment_rows(api: TestClient) -> None:
     assert post(api, channel, "x", [item["id"]]).status_code == 201
     assert api.delete(f"/api/v1/channels/{channel}?force=true").status_code == 204
     assert api.get(f"/api/v1/attachments/{item['id']}/content").status_code == 404
+
+
+# --- what agents get ---------------------------------------------------------------------
+
+
+def ref(tmp_path: Path, name: str, data: bytes, kind: str, mime: str) -> AttachmentRef:
+    path = tmp_path / name
+    path.write_bytes(data)
+    return AttachmentRef(path, name, mime, kind, len(data))
+
+
+def test_large_image_is_shrunk_for_agents(tmp_path: Path) -> None:
+    big = ref(tmp_path, "big.png", png(4000, 1000), "image", "image/png")
+    part = to_part(big, pdf_native=False)
+    assert isinstance(part, ImagePart)
+    with Image.open(io.BytesIO(part.data)) as image:
+        assert max(image.size) == 2000
+    small = to_part(ref(tmp_path, "s.png", png(), "image", "image/png"), pdf_native=False)
+    assert isinstance(small, ImagePart) and small.data == png() and small.mime == "image/png"
+
+
+def test_text_is_inlined_and_cut(tmp_path: Path) -> None:
+    long = ref(tmp_path, "a.md", ("x" * 100_005).encode(), "text", "text/plain")
+    part = to_part(long, pdf_native=False)
+    assert isinstance(part, TextPart)
+    assert part.text.startswith("[첨부: a.md]\n```\n") and "이후 생략" in part.text
+    assert part.text.count("x") == 100_000
+
+
+def test_fence_outlasts_backticks_in_the_file(tmp_path: Path) -> None:
+    part = to_part(ref(tmp_path, "a.md", b"```py\nx\n```", "text", "text/plain"), pdf_native=False)
+    assert isinstance(part, TextPart) and "\n````\n" in part.text
+
+
+def test_pdf_native_or_extracted(tmp_path: Path) -> None:
+    pdf = ref(tmp_path, "p.pdf", text_pdf("ARGOS42"), "pdf", "application/pdf")
+    assert isinstance(to_part(pdf, pdf_native=True), PdfPart)
+    text = to_part(pdf, pdf_native=False)
+    assert isinstance(text, TextPart) and "ARGOS42" in text.text
+
+
+def test_unreadable_and_other_files_become_notes(tmp_path: Path) -> None:
+    gone = AttachmentRef(tmp_path / "nope", "lost.png", "image/png", "image", 10)
+    assert to_part(gone, pdf_native=False) == TextPart("[첨부: lost.png — 읽지 못함]")
+    other = to_part(ref(tmp_path, "a.zip", b"PK", "file", "application/zip"), pdf_native=False)
+    assert other == TextPart("[첨부: a.zip, 2 B — 내용 읽기 불가]")
+
+
+def test_older_images_are_capped_newest_turn_keeps_all(tmp_path: Path) -> None:
+    image = ref(tmp_path, "i.png", png(), "image", "image/png")
+    groups = parts_for([[image] * 4, [image] * 4, [image] * 3], pdf_native=False)
+    kinds = [[type(p).__name__ for p in g] for g in groups]
+    assert kinds[2] == ["ImagePart"] * 3  # the newest turn: all
+    assert kinds[1] == ["ImagePart"] * 2 + ["TextPart"] * 2  # 5 total
+    assert kinds[0] == ["TextPart"] * 4
+
+
+def test_split_attachments_writes_notes_into_turn_text(tmp_path: Path) -> None:
+    image = ref(tmp_path, "i.png", png(), "image", "image/png")
+    note = ref(tmp_path, "n.txt", b"memo", "text", "text/plain")
+    turns = [Turn("user", "봐줘", attachments=(image, note)), Turn("claude", "응")]
+    [(first, media), (second, none)] = split_attachments(turns)
+    assert first.attachments == () and none == [] and second.text == "응"
+    assert first.text.startswith("봐줘\n\n[첨부: n.txt]")
+    assert "[첨부: i.png — 함께 보냄]" in first.text
+    assert [m.name for m in media] == ["i.png"]
+    flat, all_media = with_attachments(turns)
+    assert flat[0].text == first.text and len(all_media) == 1
+
+
+def test_agent_gets_attachments_of_the_thread(settings: Settings) -> None:
+    local = FakeAgent("local", ["봤어요"])
+    config = settings.model_copy(update={"default_agent": "local"})
+    with TestClient(create_app(config)) as client:
+        client.app.state.runner.adapter_factory = fake_agents(local=local)  # type: ignore[attr-defined]
+        client.app.state.classifier = FakeClassifier(error="no model")  # type: ignore[attr-defined]
+        course = channel_id(client, "컴퓨터구조")
+        first = upload(client, png(), "board.png")
+        asked = post(client, course, "/ask 이거 뭐야", [first["id"]]).json()
+        second = upload(client, b"memo", "note.txt")
+        reply = client.post(  # an attachment-only reply in the thread
+            f"/api/v1/channels/{course}/messages",
+            json={"body": "", "thread_root_id": asked["id"], "attachment_ids": [second["id"]]},
+        )
+        assert reply.status_code == 201, reply.text
+        deadline = time.time() + 5
+        while len(local.transcripts) < 2 and time.time() < deadline:
+            time.sleep(0.02)
+    first_turn = local.transcripts[0][-1]
+    assert [a.name for a in first_turn.attachments] == ["board.png"]
+    assert first_turn.attachments[0].path == config.attachments_dir / first["id"]
+    last = local.transcripts[1]
+    assert [a.name for a in last[-1].attachments] == ["note.txt"] and last[-1].text == ""
+    assert [a.name for a in last[0].attachments] == ["board.png"]  # the root's file too

@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import services
+from argos import attachments, services
 from argos.agents import (
     AgentAdapter,
     AgentUnavailable,
@@ -145,8 +145,9 @@ async def build_context(
     return "\n".join(lines)[: settings.context_limit]
 
 
-async def build_transcript(session: AsyncSession, trigger: Message) -> list[Turn]:
-    """The thread the trigger is in; in a DM, the recent turns of its conversation."""
+async def build_transcript(session: AsyncSession, trigger: Message, directory: Path) -> list[Turn]:
+    """The thread the trigger is in; in a DM, the recent turns of its conversation.
+    `directory`: where attachments are stored (Settings.attachments_dir)."""
     channel = await session.get(Channel, trigger.channel_id)
     if trigger.thread_root_id is not None:
         root, replies = await services.list_thread(session, trigger.thread_root_id)
@@ -161,10 +162,15 @@ async def build_transcript(session: AsyncSession, trigger: Message) -> list[Turn
         messages = list(recent.all())[::-1]
     else:
         messages = [trigger]
+    files = await services.attachments_for(session, [m.id for m in messages])
     turns = [
-        Turn("user" if m.author_type == "user" else (m.author_id or "system"), m.body)
+        Turn(
+            "user" if m.author_type == "user" else (m.author_id or "system"),
+            m.body,
+            attachments=tuple(attachments.ref(a, directory) for a in files.get(m.id, [])),
+        )
         for m in messages
-        if m.body.strip()
+        if m.body.strip() or m.id in files
     ]
     return turns[-TRANSCRIPT_LIMIT:]
 
@@ -334,7 +340,7 @@ class Runner:
                 actor="user",
             )
             context = await build_context(session, agent, channel, self.settings)
-            transcript = await build_transcript(session, trigger)
+            transcript = await build_transcript(session, trigger, self.settings.attachments_dir)
             if transcript and parse_call(transcript[-1].text) is not None:
                 transcript = apply_skill(transcript, await self.skill_lister(agent, self.settings))
             # One backend conversation per Argos thread (or per DM conversation), like
@@ -376,9 +382,19 @@ class Runner:
             job=(task, instructions, workspace),
         )
         context = job_context(agent, channel, task, workspace, self.settings.language)
+        files = await services.attachments_for(session, [trigger.id])
+        refs = tuple(
+            attachments.ref(a, self.settings.attachments_dir) for a in files.get(trigger.id, [])
+        )
         job = _Job(task_id=task.id, workspace=workspace)
         coro = self._run(
-            run.id, agent, reply.id, [Turn("user", instructions)], context, f"job-{run.id}", job
+            run.id,
+            agent,
+            reply.id,
+            [Turn("user", instructions, attachments=refs)],
+            context,
+            f"job-{run.id}",
+            job,
         )
         running = asyncio.create_task(coro)
         self._tasks[run.id] = running

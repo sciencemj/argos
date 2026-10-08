@@ -9,7 +9,7 @@ import re
 import shutil
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 import httpx2
@@ -57,7 +57,9 @@ def apply_skill(transcript: list[Turn], skills: list[Skill]) -> list[Turn]:
     skill = next((s for s in skills if s.name == name), None)
     if skill is None:
         return transcript
-    turn = Turn("user", instruction(name, args), skill=name, args=args, skill_path=skill.path)
+    turn = replace(
+        transcript[-1], text=instruction(name, args), skill=name, args=args, skill_path=skill.path
+    )
     return [*transcript[:-1], turn]
 
 

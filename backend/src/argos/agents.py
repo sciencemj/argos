@@ -16,9 +16,9 @@ import os
 import re
 import shutil
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -35,6 +35,7 @@ from claude_agent_sdk import (
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, parts_for
 from argos.config import Settings
 from argos.models import Agent, AgentBackend
 
@@ -68,6 +69,7 @@ class Turn:
     skill: str | None = None
     args: str = ""
     skill_path: str | None = None  # Codex: the skill's SKILL.md
+    attachments: tuple[AttachmentRef, ...] = ()  # files sent with this message
 
 
 class AgentAdapter(Protocol):
@@ -98,6 +100,35 @@ def render_transcript(transcript: list[Turn], me: str) -> str:
         "\n".join(lines)
         + f"\n\n위 대화에 이어서 [{me}]로서 답하세요. 답에 [{me}] 같은 이름 표시는 붙이지 마세요."
     )
+
+
+Media = ImagePart | PdfPart
+
+
+def split_attachments(
+    turns: Sequence[Turn], *, pdf_native: bool = False
+) -> list[tuple[Turn, list[Media]]]:
+    """Each turn with its text-like attachments written into its text (and a line naming
+    each image or PDF), plus the images (and, for Claude, PDFs) to send with it.
+    Blocking when there are attachments: call through asyncio.to_thread."""
+    if not any(t.attachments for t in turns):
+        return [(t, []) for t in turns]
+    groups = parts_for([t.attachments for t in turns], pdf_native=pdf_native)
+    out: list[tuple[Turn, list[Media]]] = []
+    for turn, parts in zip(turns, groups, strict=True):
+        media: list[Media] = [p for p in parts if not isinstance(p, TextPart)]
+        notes = [p.text for p in parts if isinstance(p, TextPart)]
+        notes += [f"[첨부: {m.name} — 함께 보냄]" for m in media]
+        text = "\n\n".join(x for x in (turn.text, *notes) if x)
+        out.append((replace(turn, text=text, attachments=()), media))
+    return out
+
+
+def with_attachments(
+    turns: Sequence[Turn], *, pdf_native: bool = False
+) -> tuple[list[Turn], list[Media]]:
+    pairs = split_attachments(turns, pdf_native=pdf_native)
+    return [t for t, _ in pairs], [m for _, media in pairs for m in media]
 
 
 # --- OpenAI-compatible (Hermes, Ollama) ---------------------------------------------------
