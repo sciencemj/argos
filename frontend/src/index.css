@@ -316,6 +316,26 @@ body {
   animation: toast-in 0.2s ease-out;
 }
 
+/* Quick capture (desktop): grows in like Spotlight, shrinks away when closed. */
+@keyframes quick-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+.quick-in {
+  animation: quick-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.04) both;
+}
+@keyframes quick-out {
+  to {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+.quick-out {
+  animation: quick-out 0.12s ease-in both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .paw-step {
     animation: none;
@@ -323,7 +343,9 @@ body {
   }
   .check-draw,
   .check-box[aria-pressed="true"],
-  .toast-in {
+  .toast-in,
+  .quick-in,
+  .quick-out {
     animation: none;
   }
 }

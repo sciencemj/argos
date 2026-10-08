@@ -10,6 +10,7 @@ import {
 import { hideQuickWindow, openMainWindow } from "../desktop";
 import { tr } from "../i18n";
 import { PaperclipIcon } from "../icons";
+import { useExit, useShowCount } from "../quickMotion";
 import { ErrorText } from "../ui";
 
 /** The desktop app's quick-capture window (global shortcut, PLAN Phase 12): one line into
@@ -23,6 +24,10 @@ export function QuickCapture() {
   const files = useAttachmentDrafts();
   const drop = useFileDrop(files.add);
   const picker = useRef<HTMLInputElement>(null);
+  // Spotlight-like: the card grows in each time the app shows the window, and shrinks
+  // away when the page closes it (the shortcut closes it at once, from the app).
+  const shown = useShowCount();
+  const exit = useExit(120);
   const inbox = data?.channels.find(
     (c) => c.kind === "system" && c.name === "inbox",
   );
@@ -36,21 +41,31 @@ export function QuickCapture() {
   // The window is reused: every time it is shown, start clean with the cursor in place.
   useEffect(() => {
     const onFocus = () => {
+      exit.reset(); // never left faded out, even if the show signal did not arrive
       setSent(false);
       input.current?.focus();
     };
     onFocus();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []);
+  }, [exit.reset]);
 
-  const close = () => {
-    setText("");
-    post.reset();
-    // Uploads that were not sent go right away (a sent message keeps its files).
-    for (const d of files.drafts) files.remove(d.key);
-    void hideQuickWindow();
-  };
+  // Shown again: the entrance replays on a fresh card (keyed by `shown`).
+  useEffect(() => {
+    if (shown === 0) return;
+    exit.reset();
+    setSent(false);
+    input.current?.focus();
+  }, [shown, exit.reset]);
+
+  const close = () =>
+    exit.leave(() => {
+      setText("");
+      post.reset();
+      // Uploads that were not sent go right away (a sent message keeps its files).
+      for (const d of files.drafts) files.remove(d.key);
+      void hideQuickWindow();
+    });
 
   const send = () => {
     const body = text.trim();
@@ -70,9 +85,10 @@ export function QuickCapture() {
 
   return (
     <div
+      key={shown}
       data-tauri-drag-region
       {...drop.handlers}
-      className={`flex h-full flex-col gap-2 overflow-hidden rounded-2xl border bg-card p-4 ${drop.over ? "border-ink" : "border-line"}`}
+      className={`flex h-full flex-col gap-2 overflow-hidden rounded-2xl border bg-card p-4 ${drop.over ? "border-ink" : "border-line"} ${exit.leaving ? "quick-out" : "quick-in"}`}
     >
       <textarea
         ref={input}
@@ -136,11 +152,13 @@ export function QuickCapture() {
           <button
             type="button"
             className="cursor-pointer text-text-3 hover:text-ink"
-            onClick={() => {
-              setText("");
-              post.reset();
-              void openMainWindow(`/c/${inbox.id}`); // the app hides this window
-            }}
+            onClick={() =>
+              exit.leave(() => {
+                setText("");
+                post.reset();
+                void openMainWindow(`/c/${inbox.id}`); // the app hides this window
+              })
+            }
           >
             {tr("인박스 열기")}
           </button>

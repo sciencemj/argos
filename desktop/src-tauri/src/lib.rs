@@ -257,6 +257,8 @@ fn toggle_quick(app: &AppHandle) {
         let _ = quick.center();
         let _ = quick.show();
         let _ = quick.set_focus();
+        // The page replays its entrance (quickMotion.ts QUICK_SHOW_EVENT).
+        let _ = quick.eval("window.dispatchEvent(new Event('argos:quick-show'))");
     }
 }
 
