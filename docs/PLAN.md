@@ -447,6 +447,19 @@ flowchart LR
 
 설치·구조·포트는 `docs/desktop.md`.
 
+### Phase 13. 첨부 파일 (추가 범위, 2026-10-08 사용자 요청)
+
+**목표**: 채팅에 파일과 이미지를 붙이고, 에이전트가 그 내용을 읽는다. 설계는
+`docs/superpowers/specs/2026-10-08-chat-attachments-design.md`.
+
+- 넣기: ⌘V 붙여넣기, Finder 드래그 앤 드롭, 📎 버튼. 채널·스레드·DM·빠른 입력 창
+- 저장: `data_dir/attachments/<id>`, 파일당 `attachment_max_mb`(기본 25), 메시지당 10개
+- 에이전트: 이미지는 각 백엔드의 이미지 입력, 텍스트 파일은 본문에, PDF는 Claude 문서 블록·나머지는 추출 텍스트
+- 보안: 이미지 4종만 화면 표시, 나머지는 다운로드, `nosniff`·`CSP: sandbox`
+
+**완료 기준**: 스크린샷을 붙여 @Claude·@Codex·@Hermes·로컬 비전 모델에게 물으면 내용을 답하고, PDF를 붙이면
+내용을 요약하며, 데스크톱 앱에서 Finder 드래그와 빠른 입력 창 붙여넣기가 된다.
+
 ---
 
 ## 7. 인터페이스 명세

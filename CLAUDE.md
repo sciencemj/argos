@@ -68,6 +68,9 @@ vitest, build), api-types 최신 여부.
   WS로 스트리밍, 답 본문은 끝날 때 한 번 저장. 잡(`kind=job`)은 세마포어(`job_concurrency`)로
   대기(`queued`), 카드 이동(todo → in_progress → review), 도구 단계 로그를 남긴다. 취소는 asyncio 태스크
   취소. 서버 시작 시 남은 running/queued run은 error 처리.
+- **`attachments.py`**: 채팅 첨부(Phase 13). 파일은 `data_dir/attachments/<id>`(이름은 DB에만), 종류는 내용으로
+  판별. `Turn.attachments` → `split_attachments`/`with_attachments`(agents.py)가 이미지·PDF 파트와 본문 텍스트로
+  나누고 어댑터가 백엔드별 형식으로 보낸다. 미전송 업로드는 서버 시작 때 24시간 지나면 정리.
 - **`agents.py`**: 어댑터 `stream(transcript, context, session)`가 `Token`/`Status`/`Failure`를 낸다.
   Hermes(게이트웨이 Responses API + `conversation`), Claude(claude-agent-sdk, uuid5 세션 +
   `get_session_info`로 resume 판단), Codex(`codex app-server` JSON-RPC, 전용 `CODEX_HOME`에 auth.json·skills·AGENTS.md만
