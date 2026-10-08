@@ -346,3 +346,26 @@ def test_heic_bomb_becomes_a_plain_file(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)  # 64×64 is now over twice the limit
     stored = save(tmp_path, buffer.getvalue(), "bomb.heic")
     assert stored.kind == "file"
+
+
+def rotated_jpeg() -> bytes:
+    """A 40×20 sensor image a phone marks "rotate 90°" (EXIF orientation 6): 20×40 upright."""
+    image = Image.new("RGB", (40, 20), "green")
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", exif=exif)
+    return buffer.getvalue()
+
+
+def test_phone_photo_size_follows_its_orientation(tmp_path: Path) -> None:
+    stored = save(tmp_path, rotated_jpeg(), "IMG_0002.jpg")
+    assert (stored.width, stored.height) == (20, 40)
+
+
+def test_agents_get_phone_photos_upright(tmp_path: Path) -> None:
+    photo = ref(tmp_path, "p.jpg", rotated_jpeg(), "image", "image/jpeg")
+    part = to_part(photo, pdf_native=False)
+    assert isinstance(part, ImagePart)
+    with Image.open(io.BytesIO(part.data)) as image:
+        assert image.size == (20, 40)

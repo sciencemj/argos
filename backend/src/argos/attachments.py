@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener  # pyright: ignore[reportUnknownVariableType]
 from pypdf import PdfReader
 
@@ -89,11 +89,20 @@ def sniff(head: bytes, name: str) -> tuple[str, str]:
     return "file", mimetypes.guess_type(name)[0] or "application/octet-stream"
 
 
+_ORIENTATION = 0x0112  # EXIF: how the camera held the phone
+
+
+def _orientation(image: Image.Image) -> int:
+    return int(image.getexif().get(_ORIENTATION, 1))
+
+
 def _image_size(path: Path) -> tuple[int, int] | None:
+    """As shown: browsers turn phone photos upright, so 90° turns swap the sides."""
     try:
         with Image.open(path) as image:
             image.load()  # truncated files fail here, not later in the feed
-            return image.size
+            width, height = image.size
+            return (height, width) if _orientation(image) in (5, 6, 7, 8) else (width, height)
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):
         return None
 
@@ -200,11 +209,14 @@ def human_size(size: int) -> str:
 def _image(path: Path, mime: str) -> tuple[bytes, str]:
     data = path.read_bytes()
     with Image.open(path) as image:
-        if max(image.size) <= MAX_IMAGE_SIDE and len(data) <= MAX_IMAGE_BYTES:
+        upright = _orientation(image) in (1, 0)
+        if upright and max(image.size) <= MAX_IMAGE_SIDE and len(data) <= MAX_IMAGE_BYTES:
             return data, mime
-        image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+        # Models ignore EXIF orientation: turn the pixels themselves.
+        turned = ImageOps.exif_transpose(image)
+        turned.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
         out = io.BytesIO()
-        image.convert("RGB").save(out, "JPEG", quality=85)
+        turned.convert("RGB").save(out, "JPEG", quality=85)
         return out.getvalue(), "image/jpeg"
 
 
