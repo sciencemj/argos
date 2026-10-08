@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Argos · LearningX 연결",
+  "version": "0.1.0",
+  "minimum_chrome_version": "102",
+  "description": "로그인된 고려대 LMS에서 학습 정보를 읽어 로컬 Argos로 전달합니다.",
+  "permissions": ["storage", "scripting", "alarms"],
+  "host_permissions": [
+    "https://lms.korea.ac.kr/*",
+    "https://mylms.korea.ac.kr/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Argos LMS 연결" }
+}

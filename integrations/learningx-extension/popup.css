@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { width: 340px; padding: 16px; margin: 0; }
+h1 { font-size: 18px; margin-top: 0; }
+p { font-size: 12px; line-height: 1.6; }
+label { display: block; margin-bottom: 12px; font-size: 12px; }
+input:not([type=checkbox]) { display: block; box-sizing: border-box; width: 100%; margin-top: 5px; padding: 8px; }
+.check { display: flex; align-items: center; gap: 5px; }
+button { cursor: pointer; padding: 8px; margin: 4px 0; }
+.actions { display: flex; gap: 8px; margin-top: 8px; }
+#status { white-space: pre-wrap; overflow-wrap: anywhere; }
