@@ -6,6 +6,7 @@ const COMMANDS: &[&str] = &[
     "hide_quick",
     "open_main",
     "open_attachment",
+    "open_lms_extension",
     "update_status",
     "check_update",
     "restart_to_update",

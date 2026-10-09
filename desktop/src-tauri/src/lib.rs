@@ -380,6 +380,26 @@ fn open_attachment(id: String, name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Fixed destinations only: the installation guide cannot open arbitrary files or URLs.
+#[tauri::command]
+fn open_lms_extension(browser: bool) -> Result<(), String> {
+    let mut open = std::process::Command::new("open");
+    if browser {
+        open.args(["-a", "Google Chrome", "chrome://extensions/"]);
+    } else {
+        let folder = data_dir().join("browser-extensions/learningx");
+        if !folder.join("manifest.json").is_file() {
+            return Err("먼저 확장 프로그램 파일을 준비해 주세요".into());
+        }
+        open.arg(folder);
+    }
+    let status = open.status().map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("Chrome 또는 확장 프로그램 폴더를 열지 못했어요".into());
+    }
+    Ok(())
+}
+
 /// The last step of "Argos 완전 삭제" (settings), after the server has removed what it
 /// installed elsewhere (agent MCP entries and skills, start at login, Keychain items):
 /// stops the server and moves the app, its caches and — when asked — the data to the
@@ -446,6 +466,7 @@ pub fn run() {
             hide_quick,
             open_main,
             open_attachment,
+            open_lms_extension,
             update::update_status,
             update::check_update,
             update::restart_to_update,

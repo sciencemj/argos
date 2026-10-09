@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from argos import caldav_sync, notify, onboarding, ops, services, usage, vault
+from argos import caldav_sync, lms_extension, notify, onboarding, ops, services, usage, vault
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
@@ -23,6 +23,7 @@ def create_app(config: Settings = settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lms_extension.refresh, config.data_dir)
         engine = make_engine(config.db_url)
         app.state.sessionmaker = make_sessionmaker(engine)
         async with app.state.sessionmaker() as session:

@@ -2,6 +2,11 @@ import { collectLms, downloadMaterial } from "./collector.js";
 
 const LMS_PATTERNS = ["https://lms.korea.ac.kr/*", "https://mylms.korea.ac.kr/*"];
 let running = false;
+let checkingUpdate = false;
+// Argos embeds the revision in this script when preparing the stable folder.
+// A source-checkout installation is unmanaged. Never read a mutable file to infer
+// which revision this worker loaded: it may already contain the next app update.
+const PACKAGED_BUILD = null; // ARGOS_BUILD
 // Register event handlers synchronously. Service worker modules cannot use top-level await.
 const restrictedStorage = chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 
@@ -88,7 +93,33 @@ async function sync(mode = "sync", tabId) {
     const status = { ok: false, at: new Date().toISOString(), error: error.message };
     await chrome.storage.local.set({ status });
     throw error;
-  } finally { running = false; }
+  } finally { running = false; void checkUpdate(); }
+}
+
+export async function checkUpdate(build = PACKAGED_BUILD) {
+  if (!build || running || checkingUpdate) return;
+  checkingUpdate = true;
+  try {
+    await restrictedStorage;
+    const { config } = await chrome.storage.local.get("config");
+    if (!config?.token) return;
+    const response = await fetch(`${localServer(config.server)}/api/v1/lms/extension/check`, {
+      method: "POST", credentials: "omit", redirect: "error",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token}` },
+      body: JSON.stringify({ revision: build.revision, permissions: build.permissions }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return;
+    const update = await response.json();
+    const latest = (await chrome.storage.local.get("config")).config;
+    if (latest?.token !== config.token || latest?.server !== config.server) return;
+    await chrome.storage.local.set({ extensionUpdate: { manual: Boolean(update.manual_update) } });
+    if (update.reload === true && update.manual_update === false && !running &&
+        /^[a-f0-9]{64}$/.test(update.revision) && update.revision !== build.revision) {
+      chrome.runtime.reload();
+    }
+  } catch { /* Argos can be closed; retry without disrupting collection. */ }
+  finally { checkingUpdate = false; }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
@@ -105,14 +136,17 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       await chrome.storage.local.set({ config: { server, token: message.token, auto: Boolean(message.auto), materials: Boolean(message.materials) } });
       await chrome.alarms.clear("lms-sync");
       if (message.auto) await chrome.alarms.create("lms-sync", { periodInMinutes: 15 });
+      await chrome.alarms.create("lms-extension-update", { periodInMinutes: 5 });
       reply({ ok: true });
+      void checkUpdate();
     })().catch((error) => reply({ ok: false, error: error.message }));
     return true;
   }
   if (message.type === "disconnect") {
     (async () => {
       await chrome.alarms.clear("lms-sync");
-      await chrome.storage.local.remove(["config", "status"]);
+      await chrome.alarms.clear("lms-extension-update");
+      await chrome.storage.local.remove(["config", "status", "extensionUpdate"]);
       reply({ ok: true });
     })();
     return true;
@@ -129,12 +163,19 @@ async function automatic(tabId) {
   if (status?.ok && Date.now() - Date.parse(status.at) < 5 * 60_000) return;
   try { await sync("sync", tabId); } catch { /* Popup shows the failed collection. */ }
 }
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "lms-sync") void automatic(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "lms-sync") void automatic();
+  if (alarm.name === "lms-extension-update") void checkUpdate();
+});
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === "complete" && /^https:\/\/(my)?lms\.korea\.ac\.kr\//.test(tab.url ?? "") &&
       !tab.url.includes("/xn-sso/")) void automatic(tabId);
 });
-chrome.runtime.onStartup.addListener(async () => {
+async function restoreAlarms() {
   const { config } = await chrome.storage.local.get("config");
   if (config?.auto) await chrome.alarms.create("lms-sync", { periodInMinutes: 15 });
-});
+  if (config?.token) await chrome.alarms.create("lms-extension-update", { periodInMinutes: 5 });
+  void checkUpdate();
+}
+chrome.runtime.onStartup.addListener(restoreAlarms);
+chrome.runtime.onInstalled.addListener(restoreAlarms);

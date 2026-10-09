@@ -31,6 +31,13 @@ export const openMainWindow = (path: string) => invoke("open_main", { path });
 export const openAttachment = (id: string, name: string) =>
   invoke("open_attachment", { id, name });
 
+/** Installation guide: fixed Chrome extensions page or the app-managed folder. */
+export async function openLmsExtension(browser: boolean) {
+  const bridge = tauri();
+  if (!bridge) throw new Error("Argos 데스크톱 앱에서 열어 주세요.");
+  await bridge.core.invoke("open_lms_extension", { browser });
+}
+
 export type UpdateState = {
   current: string;
   checking: boolean;

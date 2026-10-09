@@ -13,6 +13,7 @@ import { language, t, tr } from "../i18n";
 import { DogIcon } from "../icons";
 import { LanguagePicker } from "../LanguagePicker";
 import { btn, card, ErrorText } from "../ui";
+import { LmsSection } from "./LmsSettings";
 import { AgentSection, ClassifierSection, VaultSection } from "./SettingsPage";
 
 // Why each tool matters to Argos, in the words of the setup screen.
@@ -324,6 +325,7 @@ export function WelcomePage() {
             <AgentSection />
             <ClassifierSection />
             <VaultSection />
+            <LmsSection />
           </div>
         )}
         {step === 3 && (

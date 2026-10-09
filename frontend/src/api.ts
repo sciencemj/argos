@@ -1193,6 +1193,14 @@ export const useLmsStatus = () =>
     refetchInterval: 30_000,
   });
 
+export function usePrepareLmsExtension() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.POST("/api/v1/lms/extension/prepare")),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["lms"] }),
+  });
+}
+
 export function useConnectLms() {
   const qc = useQueryClient();
   return useMutation({

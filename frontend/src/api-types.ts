@@ -1598,6 +1598,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/extension/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Extension */
+        post: operations["prepare_extension_api_v1_lms_extension_prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/extension/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Extension */
+        post: operations["check_extension_api_v1_lms_extension_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lms/connection": {
         parameters: {
             query?: never;
@@ -2387,6 +2421,28 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** LmsExtensionCheck */
+        LmsExtensionCheck: {
+            /** Revision */
+            revision: string;
+            /** Permissions */
+            permissions: string;
+        };
+        /** LmsExtensionUpdate */
+        LmsExtensionUpdate: {
+            /** Revision */
+            revision?: string | null;
+            /**
+             * Reload
+             * @default false
+             */
+            reload: boolean;
+            /**
+             * Manual Update
+             * @default false
+             */
+            manual_update: boolean;
+        };
         /** LmsFile */
         LmsFile: {
             /** Id */
@@ -2462,6 +2518,19 @@ export interface components {
             connected: boolean;
             /** Last Sync */
             last_sync?: string | null;
+            /** Extension Path */
+            extension_path?: string | null;
+            /** Extension Version */
+            extension_version?: string | null;
+            /** Extension Seen At */
+            extension_seen_at?: string | null;
+            /** Extension Revision */
+            extension_revision?: string | null;
+            /**
+             * Extension Manual Update
+             * @default false
+             */
+            extension_manual_update: boolean;
         };
         /** LmsToken */
         LmsToken: {
@@ -6358,6 +6427,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    prepare_extension_api_v1_lms_extension_prepare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    check_extension_api_v1_lms_extension_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsExtensionCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsExtensionUpdate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

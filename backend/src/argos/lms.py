@@ -5,6 +5,7 @@ import hashlib
 import io
 import logging
 import secrets
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import unquote, urlsplit
 
@@ -20,7 +21,7 @@ from pydantic import (
 )
 from starlette.exceptions import HTTPException
 
-from argos import services
+from argos import lms_extension, services
 from argos.api import Config, Session
 
 router = APIRouter(prefix="/api/v1/lms", tags=["lms"])
@@ -69,6 +70,22 @@ async def paired(session: Session, authorization: Annotated[str | None, Header()
 class LmsStatus(BaseModel):
     connected: bool
     last_sync: str | None = None
+    extension_path: str | None = None
+    extension_version: str | None = None
+    extension_seen_at: str | None = None
+    extension_revision: str | None = None
+    extension_manual_update: bool = False
+
+
+class LmsExtensionCheck(BaseModel):
+    revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    permissions: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class LmsExtensionUpdate(BaseModel):
+    revision: str | None = None
+    reload: bool = False
+    manual_update: bool = False
 
 
 class LmsToken(BaseModel):
@@ -182,11 +199,55 @@ class LmsMaterialDownload(LmsMaterialUpload):
 
 
 @router.get("/status", dependencies=[Depends(local_settings_request)])
-async def status(session: Session) -> LmsStatus:
+async def status(session: Session, config: Config) -> LmsStatus:
+    build = await asyncio.to_thread(lms_extension.installed, config.data_dir)
+    seen: dict[str, str] = await services.get_setting(session, "lms_extension_seen") or {}
     return LmsStatus(
         connected=bool(await services.get_setting(session, TOKEN_KEY)),
         last_sync=await services.get_setting(session, "lms_last_sync"),
+        extension_path=str(lms_extension.install_dir(config.data_dir)) if build else None,
+        extension_version=build["version"] if build else None,
+        extension_seen_at=seen.get("at"),
+        extension_revision=seen.get("revision"),
+        extension_manual_update=bool(
+            build and seen and build["permissions"] != seen.get("permissions")
+        ),
     )
+
+
+@router.post("/extension/prepare", dependencies=[Depends(local_settings_request)])
+async def prepare_extension(session: Session, config: Config) -> LmsStatus:
+    async with sync_lock:
+        try:
+            await asyncio.to_thread(lms_extension.prepare, config.data_dir)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(500, "확장 프로그램 파일을 준비하지 못했어요") from exc
+    return await status(session, config)
+
+
+@router.post("/extension/check")
+async def check_extension(
+    body: LmsExtensionCheck,
+    session: Session,
+    config: Config,
+    authorization: Annotated[str | None, Header()] = None,
+) -> LmsExtensionUpdate:
+    async with sync_lock:
+        await paired(session, authorization)
+        build = await asyncio.to_thread(lms_extension.installed, config.data_dir)
+        await services.set_setting_quietly(
+            session,
+            "lms_extension_seen",
+            {"at": datetime.now(UTC).isoformat(), **body.model_dump()},
+        )
+        if not build:
+            return LmsExtensionUpdate()
+        manual = body.permissions != build["permissions"]
+        return LmsExtensionUpdate(
+            revision=build["revision"],
+            reload=not manual and body.revision != build["revision"],
+            manual_update=manual,
+        )
 
 
 @router.post("/connection", dependencies=[Depends(local_settings_request)])
@@ -196,6 +257,7 @@ async def connect(session: Session) -> LmsToken:
         await services.set_setting_quietly(
             session, TOKEN_KEY, hashlib.sha256(token.encode()).hexdigest()
         )
+        await services.set_setting_quietly(session, "lms_extension_seen", None)
     return LmsToken(token=token)
 
 
@@ -203,6 +265,7 @@ async def connect(session: Session) -> LmsToken:
 async def disconnect(session: Session) -> LmsStatus:
     async with sync_lock:
         await services.set_setting_quietly(session, TOKEN_KEY, None)
+        await services.set_setting_quietly(session, "lms_extension_seen", None)
     return LmsStatus(connected=False)
 
 

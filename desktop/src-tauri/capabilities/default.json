@@ -19,6 +19,7 @@
     "allow-hide-quick",
     "allow-open-main",
     "allow-open-attachment",
+    "allow-open-lms-extension",
     "allow-update-status",
     "allow-check-update",
     "allow-restart-to-update",

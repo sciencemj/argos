@@ -8,7 +8,11 @@ function display(status) {
     ? `수집 완료 · 새 항목 ${status.counts.created} · 변경 ${status.counts.updated} · 동일 ${status.counts.unchanged}${status.files ? `\n자료 파일 · 새 파일 ${status.files.created} · 변경 ${status.files.updated} · 동일 ${status.files.unchanged}` : ""}\n${new Date(status.at).toLocaleString()}${status.warnings?.length ? `\n일부 수집 실패:\n${status.warnings.join("\n")}` : ""}`
     : status.error ?? "연결을 저장했어요.";
 }
-const saved = await chrome.storage.local.get(["config", "status"]);
+function displayUpdate(value) {
+  document.getElementById("update").textContent = value?.manual
+    ? "확장 권한이 바뀌었어요. Argos 설정의 설치 도우미에서 업데이트 안내를 확인해 주세요." : "";
+}
+const saved = await chrome.storage.local.get(["config", "status", "extensionUpdate"]);
 if (saved.config) {
   server.value = saved.config.server;
   token.value = saved.config.token;
@@ -16,6 +20,7 @@ if (saved.config) {
   materials.checked = Boolean(saved.config.materials);
 }
 display(saved.status);
+displayUpdate(saved.extensionUpdate);
 async function send(message) {
   const buttons = [...document.querySelectorAll("button")];
   for (const button of buttons) button.disabled = true;
@@ -38,4 +43,7 @@ document.getElementById("disconnect").addEventListener("click", async () => {
   token.value = "";
   output.textContent = "확장 프로그램 연결을 해제했어요. Argos 설정에서도 해제하면 기존 코드가 폐기돼요.";
 });
-chrome.storage.onChanged.addListener((changes) => { if (changes.status) display(changes.status.newValue); });
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.status) display(changes.status.newValue);
+  if (changes.extensionUpdate) displayUpdate(changes.extensionUpdate.newValue);
+});

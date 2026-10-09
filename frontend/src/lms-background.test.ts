@@ -41,6 +41,8 @@ async function setup() {
         }),
       },
       onStartup: { addListener: vi.fn() },
+      onInstalled: { addListener: vi.fn() },
+      reload: vi.fn(),
     },
     tabs: {
       query: vi.fn(async () => [{ id: 7, active: true }]),
@@ -70,14 +72,16 @@ async function setup() {
       }),
   );
   vi.stubGlobal("fetch", fetch);
-  // @ts-expect-error The unpacked extension is plain JavaScript.
-  await import("../../integrations/learningx-extension/background.js");
+  const worker = await import(
+    // @ts-expect-error The unpacked extension is plain JavaScript.
+    "../../integrations/learningx-extension/background.js"
+  );
   function send(message: Message): Promise<Reply> {
     return new Promise((resolve) =>
       listener?.(message, { id: chrome.runtime.id }, resolve),
     );
   }
-  return { chrome, fetch, stored, send, getListener: () => listener };
+  return { chrome, fetch, stored, send, worker, getListener: () => listener };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -286,4 +290,123 @@ test("worker sends signed storage URLs only to paired local Argos and keeps them
       url.startsWith("http://127.0.0.1:18100/"),
     ),
   ).toBe(true);
+});
+
+test("managed extension checks updates with auto collection off and reloads only compatible revisions", async () => {
+  const { chrome, fetch, send, worker, stored } = await setup();
+  await send({
+    type: "configure",
+    server: "http://127.0.0.1:8100",
+    token: "a".repeat(43),
+    auto: false,
+  });
+  expect(chrome.alarms.create).toHaveBeenCalledWith("lms-extension-update", {
+    periodInMinutes: 5,
+  });
+  const build = { revision: "a".repeat(64), permissions: "b".repeat(64) };
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        revision: build.revision,
+        reload: false,
+        manual_update: false,
+      }),
+    ),
+  );
+  await worker.checkUpdate(build);
+  expect(chrome.runtime.reload).not.toHaveBeenCalled();
+  const [url, options] = fetch.mock.calls[0] as unknown as [
+    string,
+    RequestInit,
+  ];
+  expect(url).toBe("http://127.0.0.1:8100/api/v1/lms/extension/check");
+  expect(JSON.parse(String(options.body))).toEqual(build);
+  expect(options.credentials).toBe("omit");
+  expect(options.redirect).toBe("error");
+  expect(new Headers(options.headers).get("Authorization")).toBe(
+    `Bearer ${"a".repeat(43)}`,
+  );
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        revision: "c".repeat(64),
+        reload: true,
+        manual_update: false,
+      }),
+    ),
+  );
+  await worker.checkUpdate(build);
+  expect(chrome.runtime.reload).toHaveBeenCalledTimes(1);
+  fetch.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        revision: "d".repeat(64),
+        reload: false,
+        manual_update: true,
+      }),
+    ),
+  );
+  await worker.checkUpdate(build);
+  expect(chrome.runtime.reload).toHaveBeenCalledTimes(1);
+  expect(stored.extensionUpdate).toEqual({ manual: true });
+  fetch.mockRejectedValueOnce(new Error("Argos is closed"));
+  await worker.checkUpdate(build);
+  expect(chrome.runtime.reload).toHaveBeenCalledTimes(1);
+  await send({ type: "disconnect" });
+  expect(chrome.alarms.clear).toHaveBeenCalledWith("lms-extension-update");
+});
+
+test("update reload waits for an active collection and ignores unmanaged installations", async () => {
+  const { chrome, fetch, send, worker } = await setup();
+  await send({
+    type: "configure",
+    server: "http://127.0.0.1:8100",
+    token: "a".repeat(43),
+  });
+  await worker.checkUpdate();
+  expect(fetch).not.toHaveBeenCalled();
+  let finish!: (value: Response) => void;
+  fetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const check = worker.checkUpdate({
+    revision: "a".repeat(64),
+    permissions: "b".repeat(64),
+  });
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  let collected!: (value: never) => void;
+  chrome.scripting.executeScript.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        collected = resolve;
+      }),
+  );
+  const sync = send({ type: "sync" });
+  await vi.waitFor(() =>
+    expect(chrome.scripting.executeScript).toHaveBeenCalledTimes(1),
+  );
+  finish(
+    new Response(
+      JSON.stringify({
+        revision: "c".repeat(64),
+        reload: true,
+        manual_update: false,
+      }),
+    ),
+  );
+  await check;
+  expect(chrome.runtime.reload).not.toHaveBeenCalled();
+  collected([
+    {
+      result: {
+        payload: { account_id: "42", courses: [], items: [] },
+        warnings: [],
+      },
+    },
+  ] as never);
+  await sync;
+  expect(chrome.runtime.reload).not.toHaveBeenCalled();
 });

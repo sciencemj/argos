@@ -22,6 +22,7 @@ datas = [
     (str(ROOT / "frontend" / "dist"), "web"),
     (str(ROOT / "integrations" / "hermes" / "skills"), "integrations/hermes/skills"),
     (str(ROOT / "integrations" / "skills"), "integrations/skills"),
+    (str(ROOT / "integrations" / "learningx-extension"), "integrations/learningx-extension"),
     *collect_data_files("mcp"),
     *collect_data_files("icalendar"),
 ]
