@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   useConnectLms,
   useDisconnectLms,
+  useLmsCourseNames,
   useLmsStatus,
   usePrepareLmsExtension,
 } from "../api";
@@ -15,6 +16,7 @@ export function LmsSection() {
   const connect = useConnectLms();
   const disconnect = useDisconnectLms();
   const prepare = usePrepareLmsExtension();
+  const courseNames = useLmsCourseNames();
   const [token, setToken] = useState("");
   const [guide, setGuide] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
@@ -245,13 +247,47 @@ export function LmsSection() {
           "연결 코드를 재발급하면 기존 코드는 폐기돼요. 해제해도 가져온 학습 정보는 남아요.",
         )}
       </p>
+      <div className="flex flex-col gap-2 border-t border-line-soft pt-4">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 accent-[var(--ink)]"
+            checked={status.data?.clean_course_names ?? true}
+            disabled={!status.data || courseNames.isPending}
+            onChange={(event) => courseNames.mutate(event.target.checked)}
+          />
+          <span>
+            {tr("과목 이름 정리", "Tidy course names")}
+            <span className="block text-xs text-meta">
+              {tr(
+                "학기 코드·캠퍼스·영문 이름·분반 같은 부가 정보를 빼고 채널 이름을 지어요. 직접 바꾼 채널 이름은 그대로 둬요.",
+                "Names channels without term codes, campus, translated titles or section numbers. Channels you renamed keep their names.",
+              )}
+            </span>
+          </span>
+        </label>
+        {!!status.data?.courses?.length && (
+          <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs">
+            {status.data.courses.map((course) => (
+              <li key={course.channel_id} className="flex flex-wrap gap-x-2">
+                <span className="text-meta">{course.original}</span>
+                <span className="text-meta" aria-hidden>
+                  →
+                </span>
+                <span>{course.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <ErrorText
         error={
           actionError ??
           status.error ??
           prepare.error ??
           connect.error ??
-          disconnect.error
+          disconnect.error ??
+          courseNames.error
         }
       />
     </section>

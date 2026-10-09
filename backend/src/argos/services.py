@@ -20,6 +20,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos import attachments
+from argos.course_names import clean_course_name
 from argos.hub import hub
 from argos.models import (
     ActivityLog,
@@ -232,6 +233,111 @@ async def lms_source(session: AsyncSession, external_id: str) -> SourceLink | No
     )
 
 
+LMS_CLEAN_NAMES = "lms_clean_course_names"
+
+
+async def lms_clean_names(session: AsyncSession) -> bool:
+    return await get_setting(session, LMS_CLEAN_NAMES) is not False
+
+
+def _legacy_lms_name(original: str, channel_key: str) -> str:
+    # A suffix keeps same-name courses and accounts distinct without taking over an
+    # existing user-created channel.
+    return f"{original[:70]} · LMS {channel_key[:8]}"
+
+
+def _lms_name_candidates(original: str, channel_key: str, clean: bool) -> list[str]:
+    names: list[str] = []
+    if clean:
+        title, section = clean_course_name(original)
+        names.append(title[:100])
+        if section:
+            names.append(f"{title[:80]} ({section})")
+    return [*names, _legacy_lms_name(original, channel_key)]
+
+
+def _is_automatic_lms_name(name: str, original: str, channel_key: str) -> bool:
+    """True when Argos picked this name, under either setting; user renames stay."""
+    legacy = re.escape(_legacy_lms_name(original, channel_key))
+    return bool(re.fullmatch(rf"{legacy}( \(\d+\))?", name)) or name in _lms_name_candidates(
+        original, channel_key, clean=True
+    )
+
+
+async def _lms_channel_name(
+    session: AsyncSession, original: str, channel_key: str, clean: bool, own_id: str | None
+) -> str:
+    async def taken(name: str) -> bool:
+        query = select(Channel.id).where(Channel.name == name)
+        if own_id is not None:
+            query = query.where(Channel.id != own_id)
+        return await session.scalar(query) is not None
+
+    candidates = _lms_name_candidates(original, channel_key, clean)
+    for name in candidates:
+        if not await taken(name):
+            return name
+    index = 2
+    while await taken(f"{candidates[-1]} ({index})"):
+        index += 1
+    return f"{candidates[-1]} ({index})"
+
+
+async def _rename_lms_channel(
+    session: AsyncSession, channel: Channel, link: SourceLink, original: str, clean: bool
+) -> dict[str, Any] | None:
+    """Follow the course name and setting unless the user renamed the channel. Logs in
+    the caller's transaction and returns the snapshot to publish after commit."""
+    automatic = _is_automatic_lms_name(channel.name, link.container_name or "", link.uid or "")
+    link.container_name = original
+    if not automatic:
+        return None
+    name = await _lms_channel_name(session, original, link.uid or "", clean, channel.id)
+    if name == channel.name:
+        return None
+    before = snapshot(channel)
+    channel.name = name
+    await session.flush()
+    after = snapshot(channel)
+    _log(
+        session,
+        channel,
+        "updated",
+        "system:lms",
+        before={"name": before["name"]},
+        after={"name": name},
+    )
+    return after
+
+
+async def set_lms_clean_names(session: AsyncSession, enabled: bool, actor: str) -> None:
+    """Save the setting and rename every channel Argos named, in one transaction."""
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == LMS_CLEAN_NAMES))
+    if row is None:
+        session.add(AppSetting(key=LMS_CLEAN_NAMES, value=enabled))
+    else:
+        row.value = enabled
+    changes: list[tuple[Channel, dict[str, Any]]] = []
+    for link, channel in await lms_channels(session):
+        if renamed := await _rename_lms_channel(
+            session, channel, link, link.container_name or "", enabled
+        ):
+            changes.append((channel, renamed))
+    await session.commit()
+    for channel, fields in changes:
+        await _publish("object.updated", channel, fields)
+
+
+async def lms_channels(session: AsyncSession) -> list[tuple[SourceLink, Channel]]:
+    rows = await session.execute(
+        select(SourceLink, Channel)
+        .join(Channel, Channel.id == SourceLink.object_id)
+        .where(SourceLink.source == "learningx", SourceLink.object_type == "channel")
+        .order_by(Channel.name)
+    )
+    return [(link, channel) for link, channel in rows.tuples()]
+
+
 async def import_lms(
     session: AsyncSession,
     *,
@@ -268,20 +374,14 @@ async def import_lms(
         await record(area)
     channel_ids: dict[str | None, str] = {}
     channel_courses: list[dict[str, Any]] = [*courses, {"id": None, "name": "알림·메시지"}]
+    clean = await lms_clean_names(session)
     for course in channel_courses:
         course_id = course["id"]
         channel_key = key("channel", course_id, "")
         link = await link_for(channel_key)
         channel = await session.get(Channel, link.object_id) if link else None
         if channel is None:
-            # A suffix keeps same-name courses and accounts distinct without taking
-            # over an existing user-created channel.
-            base = f"{course['name'][:70]} · LMS {channel_key[:8]}"
-            name = base
-            index = 2
-            while await session.scalar(select(Channel.id).where(Channel.name == name)):
-                name = f"{base} ({index})"
-                index += 1
+            name = await _lms_channel_name(session, course["name"], channel_key, clean, None)
             channel = Channel(name=name, kind=ChannelKind.COURSE, area_id=area.id)
             await record(channel)
             if link is None:
@@ -298,6 +398,10 @@ async def import_lms(
                 session.add(link)
             else:
                 link.object_id = channel.id
+        else:
+            assert link is not None
+            if renamed := await _rename_lms_channel(session, channel, link, course["name"], clean):
+                changes.append(("object.updated", channel, renamed))
         channel_ids[course_id] = channel.id
 
     for item in items:

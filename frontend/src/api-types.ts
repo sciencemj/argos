@@ -1598,6 +1598,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/course-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Course Names */
+        put: operations["course_names_api_v1_lms_course_names_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lms/extension/prepare": {
         parameters: {
             query?: never;
@@ -2414,12 +2431,26 @@ export interface components {
              */
             language: "ko" | "en";
         };
+        /** LmsChannel */
+        LmsChannel: {
+            /** Channel Id */
+            channel_id: string;
+            /** Original */
+            original: string;
+            /** Name */
+            name: string;
+        };
         /** LmsCourse */
         LmsCourse: {
             /** Id */
             id: string;
             /** Name */
             name: string;
+        };
+        /** LmsCourseNames */
+        LmsCourseNames: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** LmsExtensionCheck */
         LmsExtensionCheck: {
@@ -2531,6 +2562,16 @@ export interface components {
              * @default false
              */
             extension_manual_update: boolean;
+            /**
+             * Clean Course Names
+             * @default true
+             */
+            clean_course_names: boolean;
+            /**
+             * Courses
+             * @default []
+             */
+            courses: components["schemas"]["LmsChannel"][];
         };
         /** LmsToken */
         LmsToken: {
@@ -6427,6 +6468,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    course_names_api_v1_lms_course_names_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsCourseNames"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -75,6 +75,18 @@ class LmsStatus(BaseModel):
     extension_seen_at: str | None = None
     extension_revision: str | None = None
     extension_manual_update: bool = False
+    clean_course_names: bool = True
+    courses: list["LmsChannel"] = []
+
+
+class LmsChannel(BaseModel):
+    channel_id: str
+    original: str
+    name: str
+
+
+class LmsCourseNames(BaseModel):
+    enabled: bool
 
 
 class LmsExtensionCheck(BaseModel):
@@ -212,7 +224,19 @@ async def status(session: Session, config: Config) -> LmsStatus:
         extension_manual_update=bool(
             build and seen and build["permissions"] != seen.get("permissions")
         ),
+        clean_course_names=await services.lms_clean_names(session),
+        courses=[
+            LmsChannel(channel_id=channel.id, original=link.container_name or "", name=channel.name)
+            for link, channel in await services.lms_channels(session)
+        ],
     )
+
+
+@router.put("/course-names", dependencies=[Depends(local_settings_request)])
+async def course_names(body: LmsCourseNames, session: Session, config: Config) -> LmsStatus:
+    async with sync_lock:
+        await services.set_lms_clean_names(session, body.enabled, "user")
+    return await status(session, config)
 
 
 @router.post("/extension/prepare", dependencies=[Depends(local_settings_request)])

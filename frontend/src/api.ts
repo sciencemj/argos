@@ -136,7 +136,7 @@ export function invalidateFor(
     approval: [["approvals"], ...feeds],
     agent_run: [["tasks"], ["task"], ...feeds], // job status lives on the card
     routine_check: [["routines"]],
-    channel: [["channels"], ["tasks"], ["notes"], ["materials"]],
+    channel: [["channels"], ["tasks"], ["notes"], ["materials"], ["lms"]],
     note_ref: [["notes"], ["settings", "vault"]],
     agent: [["agents"], ["channels"]],
     debate: [["debates"], ...feeds],
@@ -1206,6 +1206,15 @@ export function useConnectLms() {
   return useMutation({
     mutationFn: () => call(client.POST("/api/v1/lms/connection")),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["lms"] }),
+  });
+}
+
+export function useLmsCourseNames() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      call(client.PUT("/api/v1/lms/course-names", { body: { enabled } })),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
   });
 }
 

@@ -388,3 +388,58 @@ def test_storage_download_rejects_unknown_urls_redirects_and_bad_bytes(
         client.post("/api/v1/lms/materials/download", json=body, headers=headers).status_code == 422
     )
     assert not list(settings.attachments_dir.glob("*"))
+
+
+def lms_channels(client: TestClient) -> dict[str, str]:
+    courses = client.get("/api/v1/lms/status").json()["courses"]
+    return {course["original"]: course["name"] for course in courses}
+
+
+def test_course_names_are_cleaned_and_toggle_renames_only_automatic_names(
+    client: TestClient,
+) -> None:
+    headers = {"Authorization": f"Bearer {token(client)}"}
+    payload = batch()
+    payload["courses"] = [
+        {"id": "7", "name": "262R (서울-학부)컴파일러(COMPILERS)-02분반"},
+        {"id": "8", "name": "262R (서울-학부)컴파일러(COMPILERS)-01분반"},
+        {"id": "9", "name": "[2026-1] 자료구조 (01)"},
+    ]
+    assert client.post("/api/v1/lms/import", json=payload, headers=headers).status_code == 200
+    assert client.get("/api/v1/lms/status").json()["clean_course_names"] is True
+    assert lms_channels(client) == {
+        "262R (서울-학부)컴파일러(COMPILERS)-02분반": "컴파일러",
+        "262R (서울-학부)컴파일러(COMPILERS)-01분반": "컴파일러 (01분반)",
+        "[2026-1] 자료구조 (01)": "자료구조",
+        "알림·메시지": "알림·메시지",
+    }
+    # A name the user chose survives the toggle and later syncs.
+    channel = next(
+        c for c in client.get("/api/v1/channels").json()["channels"] if c["name"] == "자료구조"
+    )
+    client.patch(f"/api/v1/channels/{channel['id']}", json={"name": "자구"})
+
+    off = client.put("/api/v1/lms/course-names", json={"enabled": False})
+    assert off.status_code == 200
+    assert off.json()["clean_course_names"] is False
+    names = lms_channels(client)
+    assert names["[2026-1] 자료구조 (01)"] == "자구"
+    assert names["262R (서울-학부)컴파일러(COMPILERS)-02분반"].startswith(
+        "262R (서울-학부)컴파일러(COMPILERS)-02분반 · LMS "
+    )
+
+    client.put("/api/v1/lms/course-names", json={"enabled": True})
+    payload["courses"][0]["name"] = "262R (서울-학부)컴파일러2(COMPILERS)-02분반"
+    client.post("/api/v1/lms/import", json=payload, headers=headers)
+    names = lms_channels(client)
+    assert names["262R (서울-학부)컴파일러2(COMPILERS)-02분반"] == "컴파일러2"
+    assert names["[2026-1] 자료구조 (01)"] == "자구"
+
+
+def test_course_name_toggle_is_local_only(client: TestClient) -> None:
+    response = client.put(
+        "/api/v1/lms/course-names",
+        json={"enabled": False},
+        headers={"Origin": "https://lms.korea.ac.kr"},
+    )
+    assert response.status_code == 403

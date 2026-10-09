@@ -1,5 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, test, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { LmsSection } from "./LmsSettings";
 
 const mocks = vi.hoisted(() => ({
@@ -11,18 +17,26 @@ const mocks = vi.hoisted(() => ({
   },
   connect: { mutate: vi.fn(), isPending: false },
   disconnect: { mutate: vi.fn(), isPending: false },
+  courseNames: { mutate: vi.fn(), isPending: false },
 }));
 vi.mock("../api", () => ({
   useLmsStatus: () => mocks.status,
   usePrepareLmsExtension: () => mocks.prepare,
   useConnectLms: () => mocks.connect,
   useDisconnectLms: () => mocks.disconnect,
+  useLmsCourseNames: () => mocks.courseNames,
 }));
 vi.mock("../desktop", () => ({ inDesktopApp: () => false }));
 
+afterEach(cleanup);
+
 beforeEach(() => {
   localStorage.setItem("argos-language", "ko");
-  mocks.status.data = { connected: false };
+  mocks.status.data = {
+    connected: false,
+    clean_course_names: true,
+    courses: [],
+  };
   mocks.prepare.data = undefined;
   mocks.prepare.mutate.mockImplementation((_value, options) => {
     mocks.prepare.data = {
@@ -66,4 +80,27 @@ test("status distinguishes a minted code from a live connection and flags permis
   render(<LmsSection />);
   expect(screen.getByText(/확장 프로그램 연결 확인/)).toBeInTheDocument();
   expect(screen.getByText(/권한 구성이 바뀌었어요/)).toBeInTheDocument();
+});
+
+test("course name toggle shows original and channel names", () => {
+  mocks.status.data = {
+    connected: true,
+    clean_course_names: true,
+    courses: [
+      {
+        channel_id: "c1",
+        original: "262R (서울-학부)운영체제(OPERATING SYSTEMS)-02분반",
+        name: "운영체제",
+      },
+    ],
+  };
+  render(<LmsSection />);
+  expect(
+    screen.getByText("262R (서울-학부)운영체제(OPERATING SYSTEMS)-02분반"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("운영체제")).toBeInTheDocument();
+  const toggle = screen.getByRole("checkbox", { name: /과목 이름 정리/ });
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  expect(mocks.courseNames.mutate).toHaveBeenCalledWith(false);
 });
