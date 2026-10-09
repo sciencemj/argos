@@ -29,7 +29,7 @@ export function weekdaysLabel(weekdays: string): string {
 }
 
 /** Daily checklist on Home: tick today's routines, see the running streak. */
-export function RoutinePanel() {
+export function RoutinePanel({ className = "" }: { className?: string }) {
   const { data } = useRoutines();
   const check = useCheckRoutine();
   const create = useCreateRoutine();
@@ -52,7 +52,7 @@ export function RoutinePanel() {
   return (
     <section
       aria-label={tr("오늘의 루틴")}
-      className={`${card} flex flex-col gap-3 px-[22px] py-[18px]`}
+      className={`${card} flex flex-col gap-3 px-[22px] py-[18px] ${className}`}
     >
       <div className="flex items-baseline gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">

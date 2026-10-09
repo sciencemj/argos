@@ -589,6 +589,8 @@ class TodayOut(BaseModel):
     events: list[EventOut]
     due_tasks: list[TaskOut]
     inbox_count: int
+    done_this_week: int
+    done_last_week: int
 
 
 NOT_NULL_FIELDS = {
@@ -2660,6 +2662,8 @@ async def today(session: Session, config: Config) -> TodayOut:
         events=await _events_out(session, result["events"]),
         due_tasks=[TaskOut.model_validate(t) for t in result["due_tasks"]],
         inbox_count=result["inbox_count"],
+        done_this_week=result["done_this_week"],
+        done_last_week=result["done_last_week"],
     )
 
 

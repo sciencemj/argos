@@ -93,6 +93,25 @@ export const CalendarIcon = ({ size = 16 }: P) => (
   </Stroke>
 );
 
+export const ClockIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </Stroke>
+);
+
+export const ChevronLeftIcon = ({ size = 16 }: P) => (
+  <Stroke size={size} width={2}>
+    <path d="m15 6-6 6 6 6" />
+  </Stroke>
+);
+
+export const ChevronRightIcon = ({ size = 16 }: P) => (
+  <Stroke size={size} width={2}>
+    <path d="m9 6 6 6-6 6" />
+  </Stroke>
+);
+
 export const CloseIcon = ({ size = 16 }: P) => (
   <Stroke size={size}>
     <path d="M6 6l12 12M18 6 6 18" />

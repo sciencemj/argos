@@ -705,4 +705,16 @@ export const en: Record<string, string> = {
   "확장 프로그램에 입력할 연결 코드": "Connection code for the extension",
   "연결 코드를 재발급하면 기존 코드는 폐기돼요. 해제해도 가져온 학습 정보는 남아요.":
     "Replacing the code revokes the previous one. Disconnecting keeps imported learning data.",
+  "앞으로 7일": "Next 7 days",
+  "하루 안": "Within a day",
+  "이전 달": "Previous month",
+  "다음 달": "Next month",
+  지금: "Now",
+  "선택한 날": "Selected day",
+  지금으로: "Back to now",
+  "이번 주 완료": "Done this week",
+  "채널에 적은 메모는 여기서 분류돼요.":
+    "Notes you jot in channels get sorted here.",
+  "앞으로 7일 동안 일정과 마감이 없어요.":
+    "Nothing scheduled or due in the next 7 days.",
 };

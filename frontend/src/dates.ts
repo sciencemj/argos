@@ -15,6 +15,12 @@ export const inZone = (value: string | Date) =>
 
 export const nowInZone = () => TZDate.tz(zone);
 
+/** Midnight of an ISO calendar date ("2026-10-09") in the display zone. */
+export function dateInZone(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new TZDate(y, m - 1, d, zone);
+}
+
 /** Calendar days from today to `due` in the display zone: 0 = today, negative = overdue. */
 export function dday(due: string, now: Date = new Date()): number {
   return differenceInCalendarDays(inZone(due), inZone(now));

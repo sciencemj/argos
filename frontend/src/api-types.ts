@@ -3132,6 +3132,10 @@ export interface components {
             due_tasks: components["schemas"]["TaskOut"][];
             /** Inbox Count */
             inbox_count: number;
+            /** Done This Week */
+            done_this_week: number;
+            /** Done Last Week */
+            done_last_week: number;
         };
         /** ToolOut */
         ToolOut: {

@@ -452,3 +452,34 @@ async def test_routine_rules(session: AsyncSession) -> None:
     )
     await services.delete_routine(session, routine.id, "u")
     assert await services.list_routines(session, day=today, today=today) == []
+
+
+async def test_today_counts_tasks_finished_this_week_and_last(session: AsyncSession) -> None:
+    channel = await make_channel(session)
+    now = datetime(2026, 10, 9, 3, tzinfo=UTC)  # Friday 12:00 in Seoul
+    this_monday = datetime(2026, 10, 4, 15, tzinfo=UTC)  # Monday 00:00 in Seoul
+    tasks = [
+        await services.create_task(session, channel_id=channel.id, title=str(i), actor="u")
+        for i in range(4)
+    ]
+    for task in tasks:
+        await services.move_task(session, task.id, status=TaskStatus.DONE, actor="u")
+    # Reopening and finishing again in the same week counts once.
+    await services.move_task(session, tasks[0].id, status=TaskStatus.TODO, actor="u")
+    await services.move_task(session, tasks[0].id, status=TaskStatus.DONE, actor="u")
+    logs = (
+        await session.scalars(
+            select(ActivityLog).where(
+                ActivityLog.object_id.in_([tasks[2].id, tasks[3].id]),
+                ActivityLog.action != "created",
+            )
+        )
+    ).all()
+    for log in logs:
+        log.created_at = this_monday - timedelta(days=3 if log.object_id == tasks[2].id else 8)
+    await session.commit()
+
+    today = await services.get_today(session, now=now, tz=SEOUL, due_soon_days=3)
+
+    assert today["done_this_week"] == 2
+    assert today["done_last_week"] == 1

@@ -1602,7 +1602,27 @@ async def get_today(
     due_tasks = (await session.scalars(due_query)).all()
     count_query = select(func.count()).where(InboxItem.status.in_(OPEN_INBOX))
     inbox_count = (await session.execute(count_query)).scalar_one()
-    return {"events": events, "due_tasks": due_tasks, "inbox_count": inbox_count}
+    week_start = day_start - timedelta(days=day_start.weekday())
+    return {
+        "events": events,
+        "due_tasks": due_tasks,
+        "inbox_count": inbox_count,
+        "done_this_week": await _tasks_finished(session, week_start, week_start + timedelta(7)),
+        "done_last_week": await _tasks_finished(session, week_start - timedelta(7), week_start),
+    }
+
+
+async def _tasks_finished(session: AsyncSession, start: datetime, end: datetime) -> int:
+    """Tasks moved to done in [start, end), read from the activity log; a task finished
+    twice in the range counts once."""
+    query = select(func.count(func.distinct(ActivityLog.object_id))).where(
+        ActivityLog.object_type == "task",
+        ActivityLog.action.in_(("updated", "moved")),
+        func.json_extract(ActivityLog.after_json, "$.status") == TaskStatus.DONE.value,
+        ActivityLog.created_at >= start,
+        ActivityLog.created_at < end,
+    )
+    return (await session.execute(query)).scalar_one()
 
 
 # --- approvals (PLAN P5) ----------------------------------------------------------
