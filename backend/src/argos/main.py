@@ -5,10 +5,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from argos import caldav_sync, lms_extension, notify, onboarding, ops, services, usage, vault
+from argos import (
+    caldav_sync,
+    lms_extension,
+    notify,
+    onboarding,
+    ops,
+    remote,
+    services,
+    usage,
+    vault,
+)
 from argos.api import install_error_handlers, router, ws_router
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
@@ -70,10 +80,19 @@ def create_app(config: Settings = settings) -> FastAPI:
                 asyncio.to_thread(onboarding.refresh, app.state.settings)
             )
 
+        if app.state.settings.remote_autostart:
+            # "Open on the phone when the app starts": put the serve path back (in the
+            # background: the Tailscale CLI can be slow or waiting for a login).
+            app.state.remote_start = asyncio.create_task(
+                asyncio.to_thread(remote.Tailscale(app.state.settings).serve_on)
+            )
+
         stop_listening = hub.listen(on_change)
         async with mcp.session_manager.run():
             yield
         stop_listening()
+        if starting := getattr(app.state, "remote_start", None):
+            await asyncio.wait([starting], timeout=5)
         await app.state.vault_sync.stop()
         await app.state.usage.stop()
         await app.state.notifier.stop()
@@ -93,6 +112,7 @@ def create_app(config: Settings = settings) -> FastAPI:
         mcp.streamable_http_app(streamable_http_path="/mcp", host=config.host).routes
     )
     install_error_handlers(app)
+    app.add_middleware(remote.RemoteGate)  # Phase 14: requests through Tailscale serve
     if config.static_dir is not None:
         serve_frontend(app, config.static_dir)
     return app
@@ -105,7 +125,7 @@ def serve_frontend(app: FastAPI, root: Path) -> None:
     index = root / "index.html"
 
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    async def frontend(path: str) -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+    async def frontend(request: Request, path: str) -> Response:  # pyright: ignore[reportUnusedFunction]
         if path.split("/", 1)[0] in ("api", "ws", "mcp"):
             raise HTTPException(404)
         file = (root / path).resolve()
@@ -114,6 +134,10 @@ def serve_frontend(app: FastAPI, root: Path) -> None:
             hashed = path.startswith("assets/")
             cache = "public, max-age=31536000, immutable" if hashed else "no-cache"
             return FileResponse(file, headers={"Cache-Control": cache})
+        base: str | None = request.scope.get("state", {}).get("remote_base")
+        if base:  # opened through Tailscale serve under the remote path
+            html = remote.rewrite_index(index.read_text(encoding="utf-8"), base)
+            return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 

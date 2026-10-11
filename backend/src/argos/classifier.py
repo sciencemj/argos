@@ -661,6 +661,8 @@ OVERRIDABLE = (
     "weekly_review_weekday",
     "weekly_review_hour",
     "backup_keep",
+    "remote_allowed",
+    "remote_autostart",
 )
 
 

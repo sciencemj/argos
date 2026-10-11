@@ -43,6 +43,7 @@ from argos import (
     notify,
     onboarding,
     ops,
+    remote,
     services,
     usage,
     vault,
@@ -2220,6 +2221,84 @@ async def install_service(request: Request, config: Config, body: ServiceIn) -> 
 async def uninstall_service(request: Request, config: Config) -> OpsOut:
     await asyncio.to_thread(ops.uninstall_service, config)
     return await asyncio.to_thread(_ops_out, request, config)
+
+
+# --- phone access over Tailscale serve (PLAN Phase 14) -------------------------------------
+
+
+class RemoteOut(BaseModel):
+    installed: bool
+    running: bool
+    login: str | None
+    host: str | None
+    enabled: bool
+    proxy: str | None
+    target: str
+    url: str | None
+    allowed: list[str]
+    autostart: bool
+    problem: str | None
+    enable_link: str | None
+
+
+class RemoteSettingsIn(BaseModel):
+    allowed: list[str] = Field(max_length=20)
+    autostart: bool
+
+    @field_validator("allowed")
+    @classmethod
+    def _logins(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(v.strip().lower() for v in value if v.strip()))
+        if any(len(v) > 200 or " " in v for v in cleaned):
+            raise ValueError("Tailscale 계정은 공백 없는 로그인 이름이어야 해요")
+        return cleaned
+
+
+async def _save_remote(request: Request, session: AsyncSession, **values: Any) -> Settings:
+    """Account names stay out of the activity log (set quietly), then apply at once."""
+    for key, value in values.items():
+        await services.set_setting_quietly(session, key, value)
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
+    return request.app.state.settings
+
+
+@router.get("/remote")
+async def get_remote(config: Config) -> RemoteOut:
+    state = await asyncio.to_thread(lambda: remote.Tailscale(config).state())
+    return RemoteOut(**asdict(state))
+
+
+@router.post("/remote")
+async def enable_remote(request: Request, session: Session, config: Config) -> RemoteOut:
+    """Serve the app on the tailnet. The first time, this Mac's own Tailscale account
+    becomes the allowed one."""
+    state = await asyncio.to_thread(lambda: remote.Tailscale(config).state())
+    if not state.running:
+        return RemoteOut(**asdict(state))
+    if not config.remote_allowed and state.login:
+        config = await _save_remote(request, session, remote_allowed=[state.login.lower()])
+    state = await asyncio.to_thread(lambda: remote.Tailscale(config).serve_on())
+    return RemoteOut(**asdict(state))
+
+
+@router.delete("/remote")
+async def disable_remote(config: Config) -> RemoteOut:
+    state = await asyncio.to_thread(lambda: remote.Tailscale(config).serve_off())
+    return RemoteOut(**asdict(state))
+
+
+@router.put("/remote/settings")
+async def set_remote_settings(
+    request: Request, session: Session, body: RemoteSettingsIn
+) -> RemoteOut:
+    config = await _save_remote(
+        request, session, remote_allowed=body.allowed, remote_autostart=body.autostart
+    )
+    state = await asyncio.to_thread(lambda: remote.Tailscale(config).state())
+    return RemoteOut(**asdict(state))
 
 
 @router.get("/settings/jobs")

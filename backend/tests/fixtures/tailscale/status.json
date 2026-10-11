@@ -1,0 +1,19 @@
+{
+  "Version": "1.102.4-t3caf7d9e7-g084ee3b64",
+  "BackendState": "Running",
+  "Self": {
+    "ID": "nSELF",
+    "HostName": "macbook",
+    "DNSName": "macbook.example-tailnet.ts.net.",
+    "UserID": 1234567,
+    "Online": true
+  },
+  "User": {
+    "1234567": {
+      "ID": 1234567,
+      "LoginName": "owner@example.com",
+      "DisplayName": "Owner",
+      "ProfilePicURL": ""
+    }
+  }
+}

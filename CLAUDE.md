@@ -81,6 +81,9 @@ vitest, build), api-types 최신 여부.
   에이전트 스킬로 풀어 준다. `build_adapter`가 에이전트 → 어댑터를 고른다.
 - **`mcp_server.py`**: 같은 프로세스의 `/mcp`(Streamable HTTP). `?agent=` 또는 `X-Argos-Agent`로
   호출자 식별. 삭제 도구는 즉시 지우지 않고 approval을 만든다(사용자 승인 후 실행).
+- **`remote.py`**: 폰에서 열기(Phase 14). Tailscale CLI 래퍼(`status`/`serve --set-path`, 테스트는 fake)와
+  `RemoteGate` 미들웨어: serve로 온 요청은 `Tailscale-User-Login`이 `remote_allowed`에 있어야 하고, `/argos` 접두사를
+  떼고 처리한다. 빌드된 화면은 그 경로로 열리면 `rewrite_index`가 자산 주소와 `<meta name="argos-base">`를 고친다.
 - **데이터 경로**: `data_dir`(기본 `backend/data`, 앱은 Application Support) 기준 상대 경로. 새 경로 설정도
   `_inside_data_dir`에 넣는다.
 - **설정**: `config.py`의 `Settings`(env prefix `ARGOS_`, `backend/.env`) 위에 앱에서 바꾼 값

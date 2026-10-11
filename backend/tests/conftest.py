@@ -46,6 +46,22 @@ def no_real_launchd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ops, "plist_path", plist_path)
 
 
+@pytest.fixture(autouse=True)
+def no_real_tailscale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may run the developer's Tailscale CLI (it would change their serve
+    config). tests/test_remote.py installs a fake with tailscale_bin set."""
+    from argos import remote
+
+    def run(args: list[str], timeout: float) -> object:
+        raise OSError("no Tailscale in tests")
+
+    def find_cli(settings: Settings) -> str | None:
+        return settings.tailscale_bin
+
+    monkeypatch.setattr(remote, "_run", run)
+    monkeypatch.setattr(remote, "find_cli", find_cli)
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     # _env_file=None: tests must not pick up the developer's backend/.env (keys, models).

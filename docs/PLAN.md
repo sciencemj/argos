@@ -460,6 +460,25 @@ flowchart LR
 **완료 기준**: 스크린샷을 붙여 @Claude·@Codex·@Hermes·로컬 비전 모델에게 물으면 내용을 답하고, PDF를 붙이면
 내용을 요약하며, 데스크톱 앱에서 Finder 드래그와 빠른 입력 창 붙여넣기가 된다.
 
+### Phase 14. 폰에서 열기 (Tailscale, 추가 범위, 2026-10-11 사용자 요청)
+
+**목표**: 이 Mac에 Tailscale이 있으면 설정 버튼 하나로 같은 tailnet의 폰·아이패드에서 Argos를 연다(PWA).
+backlog "다른 기기(아이패드) 접속"을 대신한다.
+
+- 경로: `tailscale serve --bg --set-path /argos http://127.0.0.1:<port>/argos`. 경로 이름은 설정
+  (`remote_path`, 기본 `/argos`), 같은 주소에 다른 서비스도 올릴 수 있게 루트는 쓰지 않는다. 끄기는 이 경로만 지운다
+- 인증: serve가 붙이는 `Tailscale-User-Login`(바깥에서 넣은 값은 serve가 지움)이 허용 계정 목록에 있어야 한다.
+  목록 기본값은 켤 때 이 Mac에 로그인된 Tailscale 계정. 원격 경로로 왔는데 계정이 없으면(태그 기기 등) 거절,
+  이 Mac 안의 직접 요청(헤더 없음)은 지금처럼 허용
+- 백엔드는 원격 경로 접두사를 떼고 처리하고, 화면(index.html)에는 그 경로를 알려 준다(자산 주소·`<meta>`)
+- 설정 화면: Tailscale 감지·로그인 상태, 켜기/끄기, 주소와 QR 코드, HTTPS 인증서가 꺼진 tailnet이면 Tailscale 안내,
+  "앱을 켤 때 자동으로 열기" 토글(켜 두면 서버 시작 때 경로를 다시 건다)
+- Tailscale CLI는 PATH, `/Applications/Tailscale.app/Contents/MacOS/Tailscale` 순으로 찾고 `tailscale_bin`으로 바꿀 수 있다.
+  테스트는 fake 실행기로
+
+**완료 기준**: 데스크톱 앱 설정에서 켜면 표시된 주소(또는 QR)로 폰 Safari에서 Argos가 열리고 실시간 갱신이 되며,
+다른 Tailscale 계정 기기에서는 403, 토글을 켜 두면 앱을 다시 실행해도 폰에서 열린다.
+
 ---
 
 ## 7. 인터페이스 명세

@@ -42,6 +42,7 @@ import {
   OpsSection,
   UninstallSection,
 } from "./OpsSettings";
+import { RemoteSection } from "./RemoteSettings";
 import { ToolsSection } from "./Welcome";
 
 const OFF = "";
@@ -57,7 +58,11 @@ const GROUPS = [
     title: tr("입력과 알림"),
     hint: tr("정리 모델, 알림, 주간 리뷰"),
   },
-  { id: "links", title: tr("연결"), hint: tr("옵시디언, 애플 캘린더, LMS") },
+  {
+    id: "links",
+    title: tr("연결"),
+    hint: tr("옵시디언, 애플 캘린더, LMS, 폰"),
+  },
   {
     id: "work",
     title: tr("작업과 운영"),
@@ -181,6 +186,7 @@ export function SettingsPage() {
               <ICloudSection />
               <CalendarFeedSection />
               <LmsSection />
+              <RemoteSection />
             </>,
           )}
           {section(

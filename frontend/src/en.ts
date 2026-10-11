@@ -697,7 +697,6 @@ export const en: Record<string, string> = {
   "같은 첨부가 두 번 들어 있어요": "The same attachment is in there twice.",
   "생각난 걸 적거나 붙여넣고 Enter — 인박스로 가요 (/task, /event도 돼요)":
     "Type or paste, then Enter — it goes to the inbox (/task, /event work too)",
-  "옵시디언, 애플 캘린더, LMS": "Obsidian, Apple Calendar, LMS",
   "LearningX LMS": "LearningX LMS",
   "Chrome 확장 프로그램에서 로그인된 고려대 LMS의 과제·공지·메시지 요약을 가져와요. 출결은 현재 화면의 표를 가져와요.":
     "Import assignments, announcements and message previews from a signed-in Korea University LMS tab through the Chrome extension. Attendance is captured from the table on the current page.",
@@ -720,4 +719,28 @@ export const en: Record<string, string> = {
     "Notes you jot in channels get sorted here.",
   "앞으로 7일 동안 일정과 마감이 없어요.":
     "Nothing scheduled or due in the next 7 days.",
+  끄기: "Turn off",
+  "켜는 중…": "Turning on…",
+  "폰에서 열기": "Open on your phone",
+  "Tailscale로 폰·아이패드에서 Argos를 열어요. 이 Mac과 같은 Tailscale 계정(또는 아래에 추가한 계정)으로 로그인한 기기만 들어올 수 있고, 주소는 같은 tailnet 밖에서는 열리지 않아요.":
+    "Open Argos on your phone or iPad through Tailscale. Only devices signed in to the same Tailscale account as this Mac (or an account added below) can get in, and the address does not open outside your tailnet.",
+  "Tailscale 내려받기": "Download Tailscale",
+  "폰에서 Tailscale을 켜고 카메라로 QR을 찍거나 주소를 Safari로 여세요. 공유 → 홈 화면에 추가하면 앱처럼 열려요.":
+    "Turn on Tailscale on your phone, then scan the QR code or open the address in Safari. Share → Add to Home Screen opens it like an app.",
+  "앱을 켤 때 폰에서 열기도 켜기": "Turn on phone access when the app starts",
+  "Argos가 시작할 때마다 Tailscale 주소를 다시 걸어요. 끄기를 눌러도 이 설정은 그대로예요.":
+    "Argos sets up the Tailscale address again every time it starts. Turning it off above keeps this setting.",
+  "들어올 수 있는 Tailscale 계정": "Tailscale accounts allowed in",
+  "켜기를 누르면 이 Mac의 Tailscale 계정이 들어가요.":
+    "Turning it on adds this Mac's Tailscale account.",
+  "추가할 Tailscale 계정": "Tailscale account to add",
+  "폰에서 열 주소 QR 코드": "QR code for the phone address",
+  "이 Mac에서 Tailscale을 찾지 못했어요":
+    "Tailscale isn't installed on this Mac",
+  "Tailscale 상태를 읽지 못했어요. Tailscale 앱이 켜져 있는지 확인해 주세요":
+    "Couldn't read Tailscale's status. Check that the Tailscale app is running.",
+  "Tailscale에 로그인하고 연결해 주세요": "Sign in to Tailscale and connect",
+  "이 tailnet에서 HTTPS(Serve)를 먼저 켜야 해요. 아래 링크에서 켠 뒤 다시 눌러 주세요":
+    "Turn on HTTPS (Serve) for this tailnet first, using the link below, then try again.",
+  "옵시디언, 애플 캘린더, LMS, 폰": "Obsidian, Apple Calendar, LMS, phone",
 };

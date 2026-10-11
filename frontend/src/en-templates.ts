@@ -55,4 +55,8 @@ export const enTemplates: Record<string, string> = {
   "{0} 편집": "Edit {0}",
   '"{0}" 루틴과 체크 기록을 삭제할까요?':
     'Delete routine "{0}" and its check history?',
+  "Tailscale · {0}{1}": "Tailscale · {0}{1}",
+  "지금 이 주소는 다른 곳({0})을 가리켜요. 켜기를 누르면 이 Argos로 바꿔요.":
+    "This address points elsewhere now ({0}). Turning it on points it at this Argos.",
+  "{0} 빼기": "Remove {0}",
 };

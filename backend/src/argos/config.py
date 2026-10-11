@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # Address other devices use to reach Argos (e.g. the Tailscale serve URL); links such as
     # the calendar feed use it instead of whatever address the browser happened to open.
     public_url: str | None = None
+    # Phone access through Tailscale serve (PLAN Phase 14). The path on the tailnet address
+    # (the root stays free for other services); accounts allowed in (changed in the app,
+    # the first is this Mac's own account); serve again at start when `remote_autostart`.
+    remote_path: str = "/argos"
+    remote_allowed: list[str] = []
+    remote_autostart: bool = False
+    # What serve forwards to; unset = this server. `make dev` points it at Vite.
+    remote_target: str | None = None
+    tailscale_bin: str | None = None  # unset: PATH, then Tailscale.app's CLI
     # "Today" lists open tasks that are overdue or due within this many days.
     due_soon_days: int = 3
     # Kanban warns (never blocks) when In Progress holds more cards than this.

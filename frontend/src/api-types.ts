@@ -1178,6 +1178,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Remote */
+        get: operations["get_remote_api_v1_remote_get"];
+        put?: never;
+        /**
+         * Enable Remote
+         * @description Serve the app on the tailnet. The first time, this Mac's own Tailscale account
+         *     becomes the allowed one.
+         */
+        post: operations["enable_remote_api_v1_remote_post"];
+        /** Disable Remote */
+        delete: operations["disable_remote_api_v1_remote_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remote/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Remote Settings */
+        put: operations["set_remote_settings_api_v1_remote_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/jobs": {
         parameters: {
             query?: never;
@@ -2896,6 +2936,40 @@ export interface components {
             event?: components["schemas"]["EventOut"] | null;
             approval?: components["schemas"]["ApprovalOut"] | null;
             debate?: components["schemas"]["DebateOut"] | null;
+        };
+        /** RemoteOut */
+        RemoteOut: {
+            /** Installed */
+            installed: boolean;
+            /** Running */
+            running: boolean;
+            /** Login */
+            login: string | null;
+            /** Host */
+            host: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Proxy */
+            proxy: string | null;
+            /** Target */
+            target: string;
+            /** Url */
+            url: string | null;
+            /** Allowed */
+            allowed: string[];
+            /** Autostart */
+            autostart: boolean;
+            /** Problem */
+            problem: string | null;
+            /** Enable Link */
+            enable_link: string | null;
+        };
+        /** RemoteSettingsIn */
+        RemoteSettingsIn: {
+            /** Allowed */
+            allowed: string[];
+            /** Autostart */
+            autostart: boolean;
         };
         /** RoutineCheckIn */
         RoutineCheckIn: {
@@ -5448,6 +5522,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpsOut"];
+                };
+            };
+        };
+    };
+    get_remote_api_v1_remote_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteOut"];
+                };
+            };
+        };
+    };
+    enable_remote_api_v1_remote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteOut"];
+                };
+            };
+        };
+    };
+    disable_remote_api_v1_remote_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteOut"];
+                };
+            };
+        };
+    };
+    set_remote_settings_api_v1_remote_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoteSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

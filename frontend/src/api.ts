@@ -771,6 +771,36 @@ export function useRotateCalendarFeed() {
   });
 }
 
+// --- phone access over Tailscale serve (PLAN Phase 14) ------------------------------
+
+export type Remote = Schemas["RemoteOut"];
+
+export const useRemote = () =>
+  useQuery({
+    queryKey: ["remote"],
+    queryFn: () => call(client.GET("/api/v1/remote")),
+  });
+
+export function useRemoteSwitch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (on: boolean) =>
+      call(
+        on ? client.POST("/api/v1/remote") : client.DELETE("/api/v1/remote"),
+      ),
+    onSuccess: (data) => qc.setQueryData(["remote"], data),
+  });
+}
+
+export function useRemoteSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas["RemoteSettingsIn"]) =>
+      call(client.PUT("/api/v1/remote/settings", { body })),
+    onSuccess: (data) => qc.setQueryData(["remote"], data),
+  });
+}
+
 // --- iCloud calendars (PLAN Phase 7b) ----------------------------------------------
 
 export type ICloud = Schemas["ICloudOut"];

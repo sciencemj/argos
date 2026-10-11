@@ -11,7 +11,7 @@ migrate:
 # desktop app's (the one agents and other devices use), so both can run at once.
 dev: migrate
 	@trap 'kill $$(jobs -p) 2>/dev/null' EXIT INT TERM; \
-	(cd backend && ARGOS_PORT=8100 exec uv run uvicorn argos.main:app --reload --reload-dir src --host 127.0.0.1 --port 8100) & \
+	(cd backend && ARGOS_PORT=8100 ARGOS_REMOTE_TARGET=http://127.0.0.1:5273 exec uv run uvicorn argos.main:app --reload --reload-dir src --host 127.0.0.1 --port 8100) & \
 	(cd frontend && exec bun run dev) & \
 	wait
 

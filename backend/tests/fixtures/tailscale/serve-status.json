@@ -1,0 +1,16 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "macbook.example-tailnet.ts.net:443": {
+      "Handlers": {
+        "/other": {
+          "Proxy": "http://127.0.0.1:3000/other"
+        }
+      }
+    }
+  }
+}
