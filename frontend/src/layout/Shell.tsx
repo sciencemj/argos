@@ -79,7 +79,10 @@ export function Shell() {
         switcherOpen={switcherOpen}
         setSwitcherOpen={setSwitcherOpen}
       >
-        <main ref={main} className="flex min-h-0 min-w-0 grow flex-col">
+        <main
+          ref={main}
+          className="relative flex min-h-0 min-w-0 grow flex-col"
+        >
           <Outlet />
         </main>
       </MobileShell>
@@ -99,7 +102,12 @@ export function Shell() {
       <div data-tauri-drag-region className="window-drag" />
       <Rail areaId={areaId} onPickArea={setPickedArea} />
       <Sidebar areaId={areaId} onOpenSwitcher={() => setSwitcherOpen(true)} />
-      <main ref={main} className="flex min-h-0 min-w-0 flex-col bg-page">
+      {/* relative: absolutely positioned bits in a page (visually hidden inputs) are
+          clipped by the shell instead of growing the document and scrolling it. */}
+      <main
+        ref={main}
+        className="relative flex min-h-0 min-w-0 flex-col bg-page"
+      >
         {wide && threadId ? (
           <ThreadPanel messageId={threadId} wide />
         ) : (

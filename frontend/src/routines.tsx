@@ -80,7 +80,8 @@ export function RoutinePanel({ className = "" }: { className?: string }) {
             key={r.id}
             className="group flex items-center gap-2.5 rounded-xl px-1 py-1"
           >
-            <label className="flex grow cursor-pointer items-center gap-2.5">
+            {/* relative: the visually hidden checkbox stays in this row, not the document */}
+            <label className="relative flex grow cursor-pointer items-center gap-2.5">
               <input
                 type="checkbox"
                 className="peer sr-only"
