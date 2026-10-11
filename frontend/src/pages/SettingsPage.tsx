@@ -32,7 +32,7 @@ import {
 import { BASE } from "../base";
 import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
-import { LanguagePicker } from "../LanguagePicker";
+import { LanguagePicker, ThemePicker } from "../LanguagePicker";
 import { btn, card, ErrorText, field, label } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
 import { LmsSection } from "./LmsSettings";
@@ -147,7 +147,11 @@ export function SettingsPage() {
           ))}
         </nav>
         <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-10">
-          <div data-tauri-drag-region="deep" className="flex justify-end">
+          <div
+            data-tauri-drag-region="deep"
+            className="flex flex-wrap justify-end gap-x-5 gap-y-2"
+          >
+            <ThemePicker />
             <LanguagePicker />
           </div>
           <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink lg:hidden">

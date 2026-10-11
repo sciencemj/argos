@@ -198,6 +198,8 @@ export const en: Record<string, string> = {
   "연결 끊김 · 다시 시도 중": "Connection lost · Retrying",
   라이트: "Light",
   다크: "Dark",
+  화면: "Theme",
+  "화면 테마": "Theme",
   방금: "Just now",
   "사용량 자세히": "View usage details",
   "정보 없음": "No data",

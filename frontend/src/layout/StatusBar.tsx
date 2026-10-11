@@ -13,12 +13,7 @@ import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
 import { CheckIcon, MoonIcon, SunIcon } from "../icons";
 import type { LinkState } from "../realtime";
-import {
-  applyTheme,
-  readThemePref,
-  type ThemePref,
-  watchSystemTheme,
-} from "../theme";
+import { setThemePref, type ThemePref, useThemePref } from "../theme";
 
 const LINK_TEXT: Record<LinkState, string> = {
   open: tr("실시간 연결됨"),
@@ -248,16 +243,10 @@ function useNow(ms: number) {
 
 /** Bottom bar (Main design): default agent, plan usage, approvals, sync, theme. */
 export function StatusBar({ link }: { link: LinkState }) {
-  const [pref, setPref] = useState<ThemePref>(readThemePref);
+  const pref = useThemePref();
   const approvals = usePendingApprovals().data?.length ?? 0;
 
-  useEffect(() => watchSystemTheme(() => pref), [pref]);
-
-  const cycle = () => {
-    const next = NEXT[pref];
-    setPref(next);
-    applyTheme(next);
-  };
+  const cycle = () => setThemePref(NEXT[pref]);
 
   const now = useNow(30_000);
   const usage = useUsage().data;

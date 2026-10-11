@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 export type ThemePref = "system" | "light" | "dark";
 
 const KEY = "argos.theme";
@@ -24,11 +26,29 @@ export function applyTheme(pref: ThemePref) {
   }
 }
 
-export function watchSystemTheme(getPref: () => ThemePref): () => void {
-  const mq = media();
-  const onChange = () => {
-    if (getPref() === "system") applyTheme("system");
-  };
-  mq.addEventListener("change", onChange);
-  return () => mq.removeEventListener("change", onChange);
+// One shared preference for every control (status bar, settings).
+let current = readThemePref();
+const listeners = new Set<() => void>();
+
+export function setThemePref(pref: ThemePref) {
+  current = pref;
+  applyTheme(pref);
+  for (const l of listeners) l();
 }
+
+/** The saved preference; re-renders when any control changes it. */
+export function useThemePref(): ThemePref {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => current,
+  );
+}
+
+// While on "system", follow the OS switching between light and dark.
+if (typeof matchMedia === "function")
+  media().addEventListener("change", () => {
+    if (current === "system") applyTheme("system");
+  });

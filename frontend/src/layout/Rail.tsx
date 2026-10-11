@@ -5,7 +5,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
+import {
+  Link,
+  NavLink,
+  useLocation,
+  useMatch,
+  useNavigate,
+} from "react-router";
 import { type Area, useChannels, useCreateArea, useDeleteArea } from "../api";
 import { tr, tt } from "../i18n";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
@@ -80,9 +86,15 @@ export function Rail({
           style={{ top: pill.top }}
         />
       )}
-      <div className="flex size-[42px] shrink-0 items-center justify-center rounded-xl bg-step-5 text-on-dark">
+      <Link
+        to="/"
+        aria-label={tr("홈 · 오늘")}
+        title={tr("홈 · 오늘")}
+        onClick={() => onPickArea(null)}
+        className="flex size-[42px] shrink-0 items-center justify-center rounded-xl bg-step-5 text-on-dark transition-[scale] duration-200 ease-out active:scale-90"
+      >
         <DogIcon />
-      </div>
+      </Link>
       <div className="my-1 h-px w-6 bg-line" />
       <button
         type="button"

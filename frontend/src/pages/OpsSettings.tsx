@@ -278,14 +278,14 @@ export function OpsSection() {
           </span>
         </div>
         {service.desktop ? (
-          <p className="m-0 text-[12px] leading-relaxed text-text-3">
+          <p className="m-0 text-[12px] leading-relaxed [overflow-wrap:anywhere] text-text-3">
             {tr(
               '로그인하면 Argos 앱이 메뉴 막대에서 조용히 켜져요. 창을 닫아도 서버는 계속 돌아서 아이패드 접속·동기화·알림이 이어져요. 끄려면 메뉴 막대 아이콘의 "Argos 종료". 기록은',
             ) + " "}
             <code>{service.log}</code>.
           </p>
         ) : (
-          <p className="m-0 text-[12px] leading-relaxed text-text-3">
+          <p className="m-0 text-[12px] leading-relaxed [overflow-wrap:anywhere] text-text-3">
             {tr(
               "macOS의 launchd에 등록해 로그인하면 서버와 화면(make dev)을 켜고, 꺼지면 다시 켜요. 설정 파일은",
             ) + " "}
