@@ -91,8 +91,9 @@ make release VERSION=0.2.0   # 버전 올림 → 커밋 → 태그 v0.2.0 → �
 ## 다른 기기
 
 앱은 이 Mac 전용이다(`127.0.0.1`에만 열림). 아이패드 등 다른 기기 접속은 아직 없다(`docs/backlog.md`).
-개발할 때는 Tailscale serve로 개발 서버(5273)를 tailnet에 열어 쓰고(`tailscale serve --bg
-http://127.0.0.1:5273`), 그때 캘린더 구독 링크 주소는 `backend/.env`의 `ARGOS_PUBLIC_URL`로 준다.
+개발할 때는 Tailscale serve로 개발 서버(5273)를 tailnet의 `/argos` 경로에 열어 쓰고(`tailscale serve --bg
+--set-path /argos http://127.0.0.1:5273/argos`), 그때 캘린더 구독 링크 주소는 `backend/.env`의
+`ARGOS_PUBLIC_URL`(예: `https://<기기>.<tailnet>.ts.net/argos`)로 준다.
 
 ## 구조
 

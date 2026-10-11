@@ -45,7 +45,7 @@ import {
 } from "../api";
 import { channelLabel } from "../cards";
 import { dday, localInputToIso } from "../dates";
-import { tr, tt } from "../i18n";
+import { tr } from "../i18n";
 import { CheckIcon, PlusIcon } from "../icons";
 import { JobLine } from "../jobs";
 import {
@@ -191,9 +191,9 @@ export function KanbanTab() {
       optimistic: applyColumns(tasks.data, final),
     });
     if (status === "done" && before && before.status !== "done") {
-      toast(tt`완료했어요 · ${before.title}`, {
-        label: tr("되돌리기"),
-        run: () => undo.mutate({ id, status: before.status }),
+      toast(tr("완료했어요"), {
+        detail: before.title,
+        undo: () => undo.mutate({ id, status: before.status }),
       });
     }
   };
@@ -208,7 +208,7 @@ export function KanbanTab() {
 
   return (
     <>
-      <div className="flex items-center gap-1 px-8 pb-3.5">
+      <div className="flex items-center gap-1 px-8 max-md:px-4 pb-3.5">
         <span className="grow" />
         <span className="mr-2.5 text-[12px] text-meta">
           {tr("드래그로 이동 · 순서는 새로고침 후에도 유지")}
@@ -242,7 +242,7 @@ export function KanbanTab() {
             },
           }}
         >
-          <div className="grid min-h-0 grow grid-cols-[repeat(5,minmax(184px,1fr))] gap-3.5 overflow-x-auto px-8 pb-[22px]">
+          <div className="grid min-h-0 grow grid-cols-[repeat(5,minmax(184px,1fr))] gap-3.5 overflow-x-auto px-8 max-md:px-4 pb-[22px]">
             {STATUSES.map((s) => (
               <Column
                 key={s.id}

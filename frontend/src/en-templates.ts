@@ -3,7 +3,6 @@ export const enTemplates: Record<string, string> = {
   "{0} 종일": "{0} · all day",
   "{0} 다시 열기": "Reopen {0}",
   "{0} 완료 처리": "Mark {0} complete",
-  "완료했어요 · {0}": "Completed · {0}",
   "완료 · {0}초": "Done · {0}s",
   "{0} 응답 중단": "Stop {0}'s response",
   "{0}에게 메시지": "Message {0}",

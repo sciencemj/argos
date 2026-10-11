@@ -53,6 +53,12 @@ export const PlusIcon = ({ size = 16 }: P) => (
   </Stroke>
 );
 
+export const MenuIcon = ({ size = 18 }: P) => (
+  <Stroke size={size}>
+    <path d="M4 7h16M4 12h16M4 17h10" />
+  </Stroke>
+);
+
 export const SearchIcon = ({ size = 15 }: P) => (
   <Stroke size={size}>
     <circle cx="11" cy="11" r="7" />
@@ -109,6 +115,13 @@ export const ChevronLeftIcon = ({ size = 16 }: P) => (
 export const ChevronRightIcon = ({ size = 16 }: P) => (
   <Stroke size={size} width={2}>
     <path d="m9 6 6 6-6 6" />
+  </Stroke>
+);
+
+export const UndoIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
   </Stroke>
 );
 

@@ -1,3 +1,4 @@
+import { BASE } from "./base";
 import { en } from "./en";
 import { enTemplates } from "./en-templates";
 
@@ -19,7 +20,7 @@ export function language(): Language {
 }
 
 async function syncLanguage(next: Language) {
-  await fetch("/api/v1/settings/language", {
+  await fetch(`${BASE}/api/v1/settings/language`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language: next }),

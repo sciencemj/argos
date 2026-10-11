@@ -40,8 +40,9 @@ cd frontend && bunx vitest run src/dates.test.ts
 ```
 
 포트 8000은 데스크톱 앱(`docs/desktop.md`, 데이터는 `~/Library/Application Support/Argos`) 몫이다. 에이전트
-MCP 등록이 8000을 가리키므로 개발 서버는 8100/5273을 쓴다. Tailscale serve는 개발용으로 5273을 가리킨다
-(앱 기능 아님). 릴리스: `make release VERSION=x.y.z` → 태그 → `.github/workflows/release.yml`.
+MCP 등록이 8000을 가리키므로 개발 서버는 8100/5273을 쓴다. 개발 화면은 `/argos/` 아래(`http://127.0.0.1:5273/argos/`,
+`ARGOS_BASE_PATH`로 변경, 빌드는 항상 `/`). Tailscale serve는 개발용으로 그 경로를 연다:
+`tailscale serve --bg --set-path /argos http://127.0.0.1:5273/argos` (앱 기능 아님, 모바일 PWA 테스트용). 릴리스: `make release VERSION=x.y.z` → 태그 → `.github/workflows/release.yml`.
 
 개발 서버가 launchd로 떠 있을 수 있다(설정 → 백업과 자동 실행, `~/Library/LaunchAgents/app.argos.server.plist`가
 `make dev`를 실행, 기록은 `backend/data/logs/service.log`). 그때는 `make dev`를 또 띄우지 말고(포트 충돌) 코드

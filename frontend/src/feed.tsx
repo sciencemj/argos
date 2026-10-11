@@ -109,7 +109,7 @@ export function Feed({
   return (
     <>
       {pinned.length > 0 && (
-        <div className={`${FEED_COLUMN} mb-2 px-8`}>
+        <div className={`${FEED_COLUMN} mb-2 px-8 max-md:px-4`}>
           <div className="flex items-center gap-2 overflow-hidden rounded-full border border-line-soft bg-card px-4 py-2 text-[12.5px] text-text-3">
             <PinIcon size={13} />
             <span className="truncate">
@@ -124,7 +124,7 @@ export function Feed({
         className="flex min-h-0 grow flex-col overflow-y-auto"
       >
         <div
-          className={`${FEED_COLUMN} flex grow flex-col gap-[26px] px-8 pt-2 pb-[18px]`}
+          className={`${FEED_COLUMN} flex grow flex-col gap-[26px] px-8 max-md:px-4 pt-2 pb-[18px]`}
         >
           <div className="grow" />
           {messages.hasNextPage && (
@@ -811,7 +811,7 @@ export function Composer({
   const inputId = threadRootId ? "thread-reply" : "composer";
   return (
     <div
-      className={`relative ${narrow ? "px-5 pb-[18px]" : `${FEED_COLUMN} px-8 pb-6`}`}
+      className={`relative ${narrow ? "px-5 pb-[18px]" : `${FEED_COLUMN} px-8 max-md:px-4 pb-6`}`}
     >
       {options.length > 0 && (
         <div
@@ -895,55 +895,58 @@ export function Composer({
           }
           className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
         />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            aria-label={tr("파일 붙이기")}
-            title={tr("파일 붙이기")}
-            onClick={() => picker.current?.click()}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
-          >
-            <PaperclipIcon size={14} />
-          </button>
-          <input
-            ref={picker}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => {
-              files.add(Array.from(e.target.files ?? []));
-              e.target.value = ""; // the same file can be picked again
-            }}
-          />
-          {!dm &&
-            SLASH.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => insert(c)}
-                className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
-              >
-                {c}
-              </button>
-            ))}
-          {codeable && (
+        <div className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap">
+          {/* Phones: the chips scroll sideways in one row, the send button stays put. */}
+          <div className="flex min-w-0 grow flex-nowrap items-center gap-1.5 overflow-x-auto *:shrink-0 md:contents">
             <button
               type="button"
-              aria-pressed={coding}
-              title={channel.workspace_path ?? undefined}
-              onClick={() => setCoding((c) => !c)}
-              className="h-7 cursor-pointer rounded-full bg-inset px-[11px] text-[11.5px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
+              aria-label={tr("파일 붙이기")}
+              title={tr("파일 붙이기")}
+              onClick={() => picker.current?.click()}
+              className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
             >
-              {tr("코딩")}
+              <PaperclipIcon size={14} />
             </button>
-          )}
-          <span className="grow" />
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                files.add(Array.from(e.target.files ?? []));
+                e.target.value = ""; // the same file can be picked again
+              }}
+            />
+            {!dm &&
+              SLASH.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => insert(c)}
+                  className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
+                >
+                  {c}
+                </button>
+              ))}
+            {codeable && (
+              <button
+                type="button"
+                aria-pressed={coding}
+                title={channel.workspace_path ?? undefined}
+                onClick={() => setCoding((c) => !c)}
+                className="h-7 cursor-pointer rounded-full bg-inset px-[11px] text-[11.5px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
+              >
+                {tr("코딩")}
+              </button>
+            )}
+          </div>
+          <span className="grow max-md:hidden" />
           {post.error ? (
             <span role="alert" className="text-[12px] text-danger">
               {post.error.message}
             </span>
           ) : narrow ? null : (
-            <span className="text-[12px] text-meta">
+            <span className="text-[12px] text-meta max-md:hidden">
               {dm ? (
                 <>
                   {tr("받는 이 ·") + " "}

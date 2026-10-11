@@ -7,7 +7,7 @@ export function ApprovalsPage() {
   const { data, isSuccess } = usePendingApprovals();
   return (
     <div className="min-h-0 grow overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-9 pt-8 pb-8">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-9 max-md:px-4 pt-8 pb-8">
         <h1
           data-tauri-drag-region="deep"
           className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink"

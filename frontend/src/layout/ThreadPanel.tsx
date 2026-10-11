@@ -43,7 +43,8 @@ export function ThreadPanel({
         </span>
         <button
           type="button"
-          className={`${btn.ghost} h-8 text-[12.5px]`}
+          // Phones already show the thread full screen.
+          className={`${btn.ghost} h-8 text-[12.5px] max-md:hidden`}
           onClick={toggleWide}
           aria-pressed={wide}
         >

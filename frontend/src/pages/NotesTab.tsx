@@ -188,7 +188,7 @@ export function NotesTab() {
   }
 
   return (
-    <div className="grid min-h-0 grow grid-cols-[minmax(260px,340px)_1fr] gap-4 px-8 pb-[22px]">
+    <div className="grid min-h-0 grow grid-cols-[minmax(260px,340px)_1fr] gap-4 px-8 pb-[22px] max-md:grid-cols-1 max-md:px-4">
       <div className={`${card} flex min-h-0 flex-col gap-2 p-3`}>
         <input
           type="search"
@@ -257,7 +257,7 @@ function NoteReader({ noteId }: { noteId: string | null }) {
   return (
     <article
       aria-label={tr("노트")}
-      className={`${card} flex min-h-0 flex-col gap-3 overflow-y-auto px-8 py-6`}
+      className={`${card} flex min-h-0 flex-col gap-3 overflow-y-auto px-8 max-md:px-4 py-6`}
     >
       <ErrorText error={note.error} />
       {note.data && (
@@ -284,7 +284,7 @@ function NoteReader({ noteId }: { noteId: string | null }) {
 
 export function NoFolder() {
   return (
-    <div className="px-8 pb-[22px]">
+    <div className="px-8 pb-[22px] max-md:px-4">
       <div
         className={`${card} flex flex-col gap-1 px-6 py-8 text-center text-[13.5px] text-text-3`}
       >

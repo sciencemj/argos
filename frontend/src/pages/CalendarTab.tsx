@@ -121,7 +121,7 @@ export function CalendarTab() {
   };
 
   return (
-    <div className="flex min-h-0 grow flex-col px-8 pb-[22px]">
+    <div className="flex min-h-0 grow flex-col px-8 max-md:px-4 pb-[22px]">
       {(conflicts.data?.length ?? 0) > 0 && (
         <div
           role="alert"

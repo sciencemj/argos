@@ -1,4 +1,10 @@
-import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { ddayLabel, ddayTone } from "./dates";
 import { tr } from "./i18n";
@@ -170,4 +176,19 @@ export function useEnterOnChange(
       { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
     );
   }, [key, ref, from]);
+}
+
+// Phones get the single-column shell (drawer navigation, full-screen panels).
+const MOBILE_QUERY = "(max-width: 767px)";
+
+/** True while the viewport is phone-sized. */
+export function useIsMobile(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(MOBILE_QUERY);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  );
 }

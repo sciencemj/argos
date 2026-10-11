@@ -88,7 +88,7 @@ export function TodayPage() {
 
   return (
     <div className="min-h-0 grow overflow-y-auto">
-      <div className="flex w-full flex-col gap-[18px] px-9 pt-8 pb-[26px] max-sm:px-4">
+      <div className="flex w-full flex-col gap-[18px] px-9 pt-8 pb-[26px] max-md:px-4">
         <header data-tauri-drag-region="deep" className="flex flex-col gap-2">
           <div className="font-mono text-[12px] text-meta">
             {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
@@ -221,7 +221,7 @@ function Kpis({
   const nextToday =
     next && next.start < dayStart(now.getTime()) + DAY_MS ? next : undefined;
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[18px]">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[18px] max-md:grid-cols-2 max-md:gap-3">
       <Kpi
         icon={<CheckIcon size={20} />}
         label={tr("이번 주 완료")}
@@ -297,13 +297,15 @@ function Kpi({
   danger?: boolean;
 }) {
   return (
-    <div className={`${card} flex items-center gap-4 px-[22px] py-5`}>
-      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-inset text-text-2">
+    <div
+      className={`${card} flex items-center gap-4 px-[22px] py-5 max-md:px-4 max-md:py-3.5`}
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-inset text-text-2 max-md:hidden">
         {icon}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-[12px] text-meta">{label}</span>
-        <span className="text-[32px] leading-[1.15] font-light tracking-[-0.02em] text-ink">
+        <span className="text-[32px] leading-[1.15] font-light tracking-[-0.02em] text-ink max-md:text-[26px]">
           {value}
         </span>
         <span

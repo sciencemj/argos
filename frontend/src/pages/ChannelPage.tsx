@@ -101,10 +101,10 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
   }, [navigate, base, tabs]);
 
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5">
       <nav
         aria-label={tr("채널 탭")}
-        className="flex gap-0.5 rounded-full bg-inset p-[3px] text-[13.5px] whitespace-nowrap"
+        className="flex gap-0.5 rounded-full bg-inset p-[3px] text-[13.5px] whitespace-nowrap max-md:overflow-x-auto"
       >
         {tabs.map((t, i) => (
           <NavLink
@@ -126,7 +126,7 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
         ))}
       </nav>
       <span
-        className={`font-mono text-[11px] text-meta transition-opacity ${showKeys ? "opacity-100" : "opacity-0"}`}
+        className={`font-mono text-[11px] text-meta transition-opacity max-md:hidden ${showKeys ? "opacity-100" : "opacity-0"}`}
         aria-hidden={!showKeys}
       >
         {ALT}[ {ALT}
@@ -183,7 +183,7 @@ export function ChannelPage() {
     <>
       <header
         data-tauri-drag-region="deep"
-        className={`${column} flex flex-col gap-3 px-8 pt-[18px] pb-4`}
+        className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
       >
         <div className="flex items-center gap-3.5">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
@@ -205,7 +205,7 @@ export function ChannelPage() {
           <ChannelTabs channel={channel} space={space} />
           <span className="grow" />
           {settingsChannel?.vault_path && (
-            <span className="truncate text-[12.5px] text-meta">
+            <span className="truncate text-[12.5px] text-meta max-md:hidden">
               {tr("옵시디언")}{" "}
               <span className="font-mono">{settingsChannel.vault_path}/</span>
             </span>
@@ -262,11 +262,11 @@ function DMPage({ channel }: { channel: Channel }) {
     <>
       <header
         data-tauri-drag-region="deep"
-        className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 pt-[18px] pb-4`}
+        className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 max-md:px-4 pt-[18px] pb-4`}
       >
         <AgentAvatar id={agent?.name} size={36} />
-        <div className="flex grow flex-col">
-          <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+        <div className="flex min-w-0 grow flex-col">
+          <h1 className="m-0 truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink max-md:text-[22px]">
             {agent?.display_name ?? tr("에이전트")}
           </h1>
           {agent && !agent.available && (
@@ -276,7 +276,7 @@ function DMPage({ channel }: { channel: Channel }) {
         {list.length > 0 && (
           <select
             aria-label={tr("대화 고르기")}
-            className={`${field} w-auto max-w-[280px] truncate`}
+            className={`${field} w-auto max-w-[280px] truncate max-md:max-w-[120px]`}
             value={shown?.id ?? ""}
             onChange={(e) =>
               setPicked(e.target.value === current?.id ? null : e.target.value)
@@ -293,7 +293,8 @@ function DMPage({ channel }: { channel: Channel }) {
         )}
         <button
           type="button"
-          className={btn.outline}
+          aria-label={tr("새 대화")}
+          className={`${btn.outline} shrink-0 whitespace-nowrap max-md:px-2.5`}
           disabled={startSession.isPending}
           onClick={() =>
             startSession.mutate(channel.id, {
@@ -302,7 +303,7 @@ function DMPage({ channel }: { channel: Channel }) {
           }
         >
           <PlusIcon size={14} />
-          {tr("새 대화")}
+          <span className="max-md:hidden">{tr("새 대화")}</span>
         </button>
       </header>
       {sessions.isSuccess && (

@@ -28,7 +28,7 @@ export function ReviewPage() {
 
   return (
     <div className="min-h-0 grow overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-9 pt-8 pb-8">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-9 max-md:px-4 pt-8 pb-8">
         <div
           data-tauri-drag-region="deep"
           className="flex items-baseline gap-3"

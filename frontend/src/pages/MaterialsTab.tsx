@@ -21,7 +21,7 @@ export function MaterialsTab() {
     groups.set(m.folder, [...(groups.get(m.folder) ?? []), m]);
   }
   return (
-    <div className="flex min-h-0 grow flex-col gap-4 overflow-y-auto px-8 pb-[22px]">
+    <div className="flex min-h-0 grow flex-col gap-4 overflow-y-auto px-8 max-md:px-4 pb-[22px]">
       <ErrorText error={materials.error} />
       {materials.data?.length === 0 && (
         <div

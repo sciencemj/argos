@@ -100,6 +100,7 @@ export const en: Record<string, string> = {
   "노트로 저장함": "Saved as note",
   노트로: "To note",
   되돌리기: "Undo",
+  완료했어요: "Completed",
   "제목 [날짜] [시간] — 할 일": "Title [Date] [Time] — Task",
   "제목 날짜 [시작-끝] — 일정": "Title Date [Start-End] — Event",
   "내용 — 공부 노트": "Content — Study note",

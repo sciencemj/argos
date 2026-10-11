@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
+import { BASE } from "./base";
 import { language, t, tr } from "./i18n";
 
 type Schemas = components["schemas"];
@@ -37,7 +38,7 @@ export const STATUSES: { id: TaskStatus; label: string }[] = [
 ];
 
 export const client = createClient<paths>({
-  baseUrl: globalThis.location?.origin,
+  baseUrl: `${globalThis.location?.origin}${BASE}`,
 });
 
 function errorText(message: string): string {
@@ -446,7 +447,7 @@ export const usePostMessage = () =>
   );
 
 export const attachmentUrl = (id: string) =>
-  `/api/v1/attachments/${encodeURIComponent(id)}/content`;
+  `${BASE}/api/v1/attachments/${encodeURIComponent(id)}/content`;
 
 /** Uploads one file for the composer; its id goes with the message later. */
 export const uploadAttachment = (file: File) =>
@@ -917,7 +918,7 @@ export const useMaterials = (channelId: string) =>
   });
 
 export const vaultFileUrl = (path: string) =>
-  `/api/v1/vault/file?path=${encodeURIComponent(path)}`;
+  `${BASE}/api/v1/vault/file?path=${encodeURIComponent(path)}`;
 
 // --- plan usage (PLAN Phase 9) ------------------------------------------------------
 
@@ -981,7 +982,7 @@ export const useImportAgent = () =>
   );
 
 export const agentExportUrl = (name: string) =>
-  `/api/v1/agents/${encodeURIComponent(name)}/export`;
+  `${BASE}/api/v1/agents/${encodeURIComponent(name)}/export`;
 
 const debatePath = (id: string) => ({ params: { path: { debate_id: id } } });
 

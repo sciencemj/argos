@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
+import { BASE } from "./base";
 import { inDesktopApp } from "./desktop";
 import { syncCurrentLanguage } from "./i18n";
 import "./index.css";
@@ -25,32 +26,35 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createBrowserRouter([
-  { path: "/quick", element: <QuickCapture /> }, // the desktop app's capture window
-  { path: "/welcome", element: <WelcomePage /> }, // first-run setup
-  {
-    path: "/",
-    element: <Shell />,
-    children: [
-      { index: true, element: <TodayPage /> },
-      { path: "settings", element: <SettingsPage /> },
-      { path: "approvals", element: <ApprovalsPage /> },
-      { path: "notifications", element: <NotificationsPage /> },
-      { path: "review", element: <ReviewPage /> },
-      {
-        path: "c/:channelId",
-        element: <ChannelPage />,
-        children: [
-          { index: true, element: <FeedTab /> },
-          { path: "kanban", element: <KanbanTab /> },
-          { path: "calendar", element: <CalendarTab /> },
-          { path: "notes", element: <NotesTab /> },
-          { path: "materials", element: <MaterialsTab /> },
-        ],
-      },
-    ],
-  },
-]);
+const router = createBrowserRouter(
+  [
+    { path: "/quick", element: <QuickCapture /> }, // the desktop app's capture window
+    { path: "/welcome", element: <WelcomePage /> }, // first-run setup
+    {
+      path: "/",
+      element: <Shell />,
+      children: [
+        { index: true, element: <TodayPage /> },
+        { path: "settings", element: <SettingsPage /> },
+        { path: "approvals", element: <ApprovalsPage /> },
+        { path: "notifications", element: <NotificationsPage /> },
+        { path: "review", element: <ReviewPage /> },
+        {
+          path: "c/:channelId",
+          element: <ChannelPage />,
+          children: [
+            { index: true, element: <FeedTab /> },
+            { path: "kanban", element: <KanbanTab /> },
+            { path: "calendar", element: <CalendarTab /> },
+            { path: "notes", element: <NotesTab /> },
+            { path: "materials", element: <MaterialsTab /> },
+          ],
+        },
+      ],
+    },
+  ],
+  { basename: BASE || undefined },
+);
 
 // In the desktop app the window has no title bar: the traffic lights sit over the rail.
 if (inDesktopApp()) document.documentElement.dataset.desktop = "";

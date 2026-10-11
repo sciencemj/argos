@@ -29,6 +29,7 @@ import {
   useUsage,
   useVaultSettings,
 } from "../api";
+import { BASE } from "../base";
 import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
 import { LanguagePicker } from "../LanguagePicker";
@@ -118,7 +119,7 @@ export function SettingsPage() {
 
   return (
     <div ref={scroller} className="min-h-0 grow overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1120px] gap-12 px-9 pt-8 pb-16">
+      <div className="mx-auto flex w-full max-w-[1120px] gap-12 px-9 max-md:px-4 pt-8 pb-16">
         <nav
           aria-label={tr("설정 목차")}
           className="sticky top-8 hidden h-fit w-48 shrink-0 flex-col gap-1 lg:flex"
@@ -728,7 +729,7 @@ function CalendarFeedSection() {
   const rotate = useRotateCalendarFeed();
   const [copied, setCopied] = useState(false);
   const url = feed.data
-    ? (feed.data.url ?? `${location.origin}${feed.data.path}`)
+    ? (feed.data.url ?? `${location.origin}${BASE}${feed.data.path}`)
     : "";
 
   return (

@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { onAgentEvent } from "./agentStream";
 import { invalidateFor } from "./api";
+import { BASE } from "./base";
 import { desktopNotify, inDesktopApp } from "./desktop";
 
 export type LinkState = "connecting" | "open" | "closed";
@@ -52,7 +53,7 @@ export function useRealtime(): LinkState {
 
     const connect = () => {
       const scheme = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${scheme}://${location.host}/ws`);
+      ws = new WebSocket(`${scheme}://${location.host}${BASE}/ws`);
       setState("connecting");
       ws.onopen = () => {
         retry = 0;
