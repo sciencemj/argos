@@ -158,6 +158,16 @@ body {
     outline: 2px solid var(--cta);
     outline-offset: 2px;
   }
+
+  /* Vertical panes (sidebar, pages, panels) scroll without a visible bar: with a mouse
+     macOS shows bars always, a grey stripe beside every column. Wheel, trackpad and
+     keyboard still scroll; horizontal strips (timeline, board) keep theirs. */
+  .overflow-y-auto {
+    scrollbar-width: none;
+  }
+  .overflow-y-auto::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* FullCalendar: map its theme variables onto ours. */
