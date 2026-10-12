@@ -350,7 +350,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .slot{height:0;overflow:hidden}
 .slot .in{padding-bottom:8px;position:relative}
 .slot .phd{position:absolute;left:0;right:0;top:0;bottom:8px;border:1.5px dashed var(--w-line);border-radius:12px}
-.slot .kc{opacity:0;visibility:hidden}
+.slot .kc{opacity:0}
 
 /* connect grid */
 #grp{position:absolute;left:560px;top:180px;width:1390px;height:720px;transform-style:preserve-3d;opacity:0;visibility:hidden}
@@ -977,9 +977,9 @@ function build() {
   move(cK, wK, slot1, 39.0, 1.05, 0, 0);
   tl.to(a2c, { scale: 1, rotation: 0, boxShadow: '0 2px 3px -2px rgba(24,24,37,.12)', duration: .2 }, 40.05);
   tl.to(cK, { scale: 1, duration: .12 }, 40.1);
-  tl.set(slot1.querySelector('.kc'), { autoAlpha: 1 }, 40.25);
-  tl.set(slot1.querySelector('.phd'), { autoAlpha: 0 }, 40.25);
-  tl.set(a2c, { autoAlpha: 0 }, 40.25);
+  // The dragged card stays where it lands and the slot only reserves its space: swapping it for the
+  // slot's copy left the copy unpainted in Chrome's frame-by-frame capture.
+  tl.set(slot1.querySelector('.phd'), { opacity: 0 }, 40.25);
   collapse(a2, 40.3, .35);
   swap('#k-todo .n .a', '#k-todo .n .b', 40.3);
   swap('#k-prog .n .a', '#k-prog .n .b', 40.3);
@@ -997,9 +997,10 @@ function build() {
   let d2;
   tl.to(aluc, { x: () => { d2 = { x: pos(slot2, wK).x - pos(aluc, wK).x, y: pos(slot2, wK).y - 4 - pos(aluc, wK).y }; return d2.x; }, y: () => d2.y, duration: 1, ease: 'power3.inOut' }, 43.45);
   tl.to(aluc, { scale: 1, rotation: 0, duration: .2 }, 44.3);
-  tl.set(slot2.querySelector('.kc'), { autoAlpha: 1 }, 44.5);
-  tl.set(slot2.querySelector('.phd'), { autoAlpha: 0 }, 44.5);
-  tl.set(aluc, { autoAlpha: 0 }, 44.5);
+  tl.set(slot2.querySelector('.kc'), { opacity: 1 }, 44.5);
+  tl.set(slot2.querySelector('.phd'), { opacity: 0 }, 44.5);
+  tl.set(aluc, { opacity: 0, x: 0, y: 0 }, 44.5);
+  tl.set(alu, { zIndex: 'auto' }, 44.5);
   collapse(alu, 44.55, .35);
   swap('#k-prog .n .b', '#k-prog .n .a', 44.55);
   swap('#k-rev .n .a', '#k-rev .n .b', 44.55);
