@@ -252,6 +252,28 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .flyfile{position:absolute;left:0;top:0;z-index:55;display:flex;align-items:center;gap:9px;background:#fff;color:#181825;border-radius:12px;padding:8px 12px 8px 8px;font-size:12.5px;font-weight:600;box-shadow:0 20px 40px -14px rgba(0,0,0,.55);opacity:0;visibility:hidden}
 .flyfile .fic{background:#f7ecee;border-color:transparent;color:#a4545f}
 
+/* morning digest */
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:14px;flex:1;min-height:0}
+.dgrid .feed{min-width:0}
+.thread{background:var(--w-card);border:1px solid var(--w-soft);border-radius:16px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow:hidden;opacity:0;visibility:hidden}
+.th{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--w-soft);padding-bottom:9px}
+.th small{font-weight:400;color:var(--w-meta)}
+.th .x{margin-left:auto;color:var(--w-meta);font-weight:400}
+.dhead{font-size:15px;font-weight:600;margin-top:3px}
+.trep{display:inline-flex;align-items:center;gap:7px;margin-top:7px;font-size:12px;color:var(--w-text2);border:1px solid var(--w-soft);border-radius:999px;padding:3px 10px 3px 4px;background:var(--w-card);min-width:170px;height:26px}
+.trep .av{width:18px;height:18px;font-size:8px}
+.sw{position:relative;display:inline-block;min-width:110px;height:15px}
+.sw span{position:absolute;left:0;top:0;white-space:nowrap}
+.dg{font-size:12.5px;line-height:1.55;display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.dg b{font-weight:600;font-size:13px;margin-bottom:3px}
+.dg h4{margin:7px 0 1px;font-size:12.5px;font-weight:600}
+.dg div{padding-left:13px;position:relative;color:var(--w-text2)}
+.dg div::before{content:"•";position:absolute;left:2px;color:var(--w-meta)}
+#tg{position:absolute;right:56px;top:96px;width:440px;background:rgba(28,28,36,.94);color:#f2f2f5;border-radius:20px;padding:14px 16px;display:flex;gap:12px;box-shadow:0 30px 60px -20px rgba(0,0,0,.5);opacity:0;visibility:hidden;font-size:14px;line-height:1.45;z-index:5}
+#tg i{width:38px;height:38px;border-radius:10px;background:#2aa3de;color:#fff;display:grid;place-items:center;font:700 15px var(--sans);font-style:normal;flex:none}
+#tg b{display:block;font-size:13px}
+#tg b small{color:#a6a6b2;font-weight:400;margin-left:6px}
+
 /* LMS notices */
 .av.sys{background:var(--w-text);color:var(--w-page)}
 .ncard{max-width:600px;margin-top:6px;padding:12px 16px;border-radius:20px;display:flex;flex-direction:column}
@@ -461,15 +483,19 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <div class="cap" id="cap3"><div class="eb">03 — AGENTS</div><h2><span class="ln"><span>Ask every agent</span></span><span class="ln"><span><em>at once.</em></span></span></h2><p>Hermes, Claude, Codex and local models. Attach slides or a screenshot, @mention them, and answers stream in live.</p></div>
       <div class="cap" id="cap4"><div class="eb">04 — KANBAN &amp; JOBS</div><h2><span class="ln"><span>Move the cards.</span></span><span class="ln"><span><em>Hand off</em> the work.</span></span></h2><p>One /job line and an agent works in your project folder while the card moves itself from In progress to Review.</p></div>
       <div class="cap" id="cap5"><div class="eb">05 — SCHOOL LMS</div><h2><span class="ln"><span>Long notices,</span></span><span class="ln"><span>read <em>short.</em></span></span></h2><p>Assignments, announcements and materials come in from LearningX. Assignments become tasks with their deadline, and AI sums up long notices in a few lines.</p></div>
-      <div class="cap" id="cap6"><div class="eb">06 — CONNECTED</div><h2><span class="ln"><span>Calendar, Obsidian,</span></span><span class="ln"><span>and your <em>phone.</em></span></span></h2><p>Reads and writes your calendar and vault. Capture anywhere with ⌘⇧Space, open it on your phone through Tailscale, and deletions always wait for your approval.</p></div>
+      <div class="cap" id="cap6"><div class="eb">06 — MORNING DIGEST</div><h2><span class="ln"><span>Every morning,</span></span><span class="ln"><span>a <em>head start.</em></span></span></h2><p>The agent you pick gathers today's events, deadlines and new LMS posts into a briefing in #today, and sends the same text to your messenger. Reply in the thread to keep talking.</p></div>
+      <div class="cap" id="cap7"><div class="eb">07 — CONNECTED</div><h2><span class="ln"><span>Calendar, Obsidian,</span></span><span class="ln"><span>and your <em>phone.</em></span></span></h2><p>Reads and writes your calendar and vault. Capture anywhere with ⌘⇧Space, open it on your phone through Tailscale, and deletions always wait for your approval.</p></div>
 
       <div class="persp">
         <div class="wwrap" id="wr-today"><div class="win tok" id="w-today"></div></div>
         <div class="wwrap" id="wr-feed"><div class="win tok" id="w-feed"></div></div>
         <div class="wwrap" id="wr-kan"><div class="win tok" id="w-kan"></div></div>
         <div class="wwrap" id="wr-lms"><div class="win tok" id="w-lms"></div></div>
+        <div class="wwrap" id="wr-dig"><div class="win tok" id="w-dig"></div></div>
         <div id="grp" class="tok"></div>
       </div>
+
+      <div id="tg"><i>T</i><div><b>Hermes<small>Telegram · now</small></b>[Argos] Just one class today: Operating Systems at 13:00. Next deadline: Week 3 quiz review, tomorrow 10:00.</div></div>
 
       <!-- outro -->
       <div id="pill"><svg><use href="#dog"/></svg></div>
@@ -486,7 +512,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <!-- chrome -->
       <div class="corner" id="brand"><span class="mini-logo"><svg><use href="#dog"/></svg></span>Argos</div>
       <div class="corner" id="tagTR">Personal study &amp; project dashboard</div>
-      <div class="corner" id="lbl"><span>01 / 06 · Today</span><span>02 / 06 · Capture in chat</span><span>03 / 06 · Agents</span><span>04 / 06 · Kanban &amp; jobs</span><span>05 / 06 · School LMS</span><span>06 / 06 · Connected</span></div>
+      <div class="corner" id="lbl"><span>01 / 07 · Today</span><span>02 / 07 · Capture in chat</span><span>03 / 07 · Agents</span><span>04 / 07 · Kanban &amp; jobs</span><span>05 / 07 · School LMS</span><span>06 / 07 · Morning digest</span><span>07 / 07 · Connected</span></div>
       <div class="corner" id="tagBR">On your Mac · tailnet only</div>
     </div>
   </div>
@@ -494,7 +520,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
     <button id="bPlay" type="button" aria-label="Pause">❚❚</button>
     <button id="bRestart" type="button">Restart</button>
     <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Playback position">
-    <span class="time" id="time">00:00 / 01:12</span>
+    <span class="time" id="time">00:00 / 01:21</span>
     <span class="hint">Space: play/pause · ← →: jump 2s · drag the bar to any scene</span>
   </div>
 </div>
@@ -691,6 +717,26 @@ $('#w-lms').innerHTML = shell('S', 'ai', chanHead('Feed', 'intro-to-ai', 'LMS co
         <div class="nfoot"><span>Saved to the Resources tab</span><span class="r">Open in LMS ↗</span></div></div></div></div></div>
   </div>`);
 
+/* ---------- morning digest ---------- */
+$('#w-dig').innerHTML = shell('H', 'today', `
+  <div class="chead"><h1><span class="h">#</span>today</h1></div>
+  <div class="subrow"><span>System channel · deadline alerts and the morning digest</span><span>Morning digest · daily 07:00 · Hermes</span></div>
+  <div class="dgrid">
+    <div class="feed">
+      <div class="msg"><span class="av sys">A</span><div><div class="who">Argos <span class="badge">System</span><small>Yesterday 21:00</small></div><div class="txt">Deadline alert · <b>Week 3 quiz review</b> is due the day after tomorrow at 10:00.</div></div></div>
+      <div class="rev" id="d-root"><div class="msg"><span class="av sys">A</span><div><div class="who">Argos <span class="badge">System</span><small>07:00</small></div>
+        <div class="dhead">☀️ Morning digest · Oct 13</div>
+        <span class="trep"><span class="av h">H</span><span class="sw"><span id="d-r1">Hermes is writing…</span><span id="d-r2" style="opacity:0;visibility:hidden">1 reply · Hermes</span></span></span></div></div></div>
+    </div>
+    <div class="thread" id="d-thread"><div class="th">Thread <small>☀️ Morning digest</small><span class="x">✕</span></div>
+      <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">Agent</span><small class="sw"><span id="d-s1">Writing…</span><span id="d-s2" style="opacity:0;visibility:hidden">Done · 11s</span></small></div>
+        <div class="dg" id="d-lines"><b>Just one class today: Operating Systems at 13:00. The next deadline is the Week 3 quiz review, tomorrow 10:00.</b><h4>Today</h4><div>13:00–14:15 Operating Systems lecture</div><div>Lab 3 · ALU design is waiting for review (Codex job done)</div><h4>New from the LMS</h4><div>Intro to AI · Homework 2, due Sat 10/17 23:59</div><div>Intro to AI · Midterm Wed 10/21 13:00, chapters 3–7</div><h4>To tidy up</h4><div>2 undated tasks, 2 unsorted inbox notes</div></div></div></div>
+    </div>
+  </div>
+  <div class="toast" id="d-toast"><span class="okdot" style="background:var(--w-cta);color:#000">☀</span>Your morning digest is ready</div>`);
+
+$('#w-dig .area span').textContent = '2026.10.13'; // the digest is the next morning
+
 /* ---------- connect grid ---------- */
 const cev = (t, s, cls = '') => `<div class="cev ${cls}"><span class="t">${t}</span>${s}</div>`;
 const days = [['Mon', '10/12', [cev('10:30', 'Comp Arch lecture'), cev('13:00', 'AI lecture'), cev('19:00', 'KUBIG NLP')], 'today'],
@@ -791,7 +837,7 @@ function build() {
   };
 
   const streakL = $('#streakL'), streakD = $('#streakD');
-  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-1800px 0px', duration: 72, ease: 'none' }, 0);
+  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-2000px 0px', duration: 81, ease: 'none' }, 0);
   gsap.set('#wipe', { xPercent: -50, yPercent: -50, scale: 0 });
   gsap.set('#pill', { xPercent: -50, yPercent: -50 });
   gsap.set('.wwrap', { transformOrigin: '0% 50%' });
@@ -1041,16 +1087,37 @@ function build() {
   capOut('#cap5', 57.3);
   tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 57.3);
 
-  scene(12.0);
+  /* ===== s5c morning digest 58.2 – 67.2 (main time) ===== */
+  scene(0);
+  const wrD = $('#wr-dig'), wD = $('#w-dig');
+  label(5, 58.5);
+  tl.fromTo(wrD, { autoAlpha: 0, y: 560, rotationX: 50, rotationZ: 10, rotationY: 0, scale: .8 },
+    { autoAlpha: 1, y: 0, rotationX: 8, rotationZ: 0, rotationY: -12, scale: .9, duration: 1.6, ease: 'expo.out' }, 58.2);
+  capIn('#cap6', 58.7);
+  reveal('#d-root', 59.6, .5);
+  tl.fromTo('#d-root .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 59.65);
+  tl.fromTo('#d-toast', { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .4, immediateRender: false }, 59.9);
+  tl.to('#d-toast', { autoAlpha: 0, y: 10, duration: .3 }, 61.4);
+  tl.to(wrD, { rotationX: 3, rotationY: -5, scale: .95, y: -10, duration: 2.4, ease: 'sine.inOut' }, 59.8);
+  tl.fromTo('#d-thread', { autoAlpha: 0, x: 40 }, { autoAlpha: 1, x: 0, duration: .5, immediateRender: false }, 60.3);
+  tl.fromTo($$('#d-lines > *'), { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: .3, stagger: .32 }, 60.9);
+  swap('#d-s1', '#d-s2', 64.0);
+  swap('#d-r1', '#d-r2', 64.0);
+  tl.fromTo('#tg', { autoAlpha: 0, y: -40, scale: .96 }, { autoAlpha: 1, y: 0, scale: 1, duration: .55, ease: 'back.out(1.6)', immediateRender: false }, 64.3);
+  tl.to('#tg', { autoAlpha: 0, y: -30, duration: .4, ease: 'power2.in' }, 66.4);
+  capOut('#cap6', 66.2);
+  tl.to(wrD, { autoAlpha: 0, scale: .6, rotationX: 40, rotationZ: 12, y: 280, duration: .9, ease: 'power3.in' }, 66.3);
 
-  /* ===== s6 connect 46.1 – 52.6 (+12) ===== */
+  scene(21.0);
+
+  /* ===== s6 connect 46.1 – 52.6 (+21) ===== */
   const grp = $('#grp'), cG = grp.querySelector('.cursor'), gcards = $$('#grp > .gcard, #grp > .phone');
-  label(5, 46.2);
+  label(6, 46.2);
   tl.fromTo(grp, { autoAlpha: 0, rotationX: 58, rotationZ: -22, scale: .62, y: 320 },
     { autoAlpha: 1, rotationX: 26, rotationZ: -9, scale: .8, y: 0, duration: 1.6, ease: 'expo.out' }, 46.1);
   tl.fromTo(gcards, { y: 90, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .9, stagger: .08, ease: 'expo.out', immediateRender: false }, 46.15);
   tl.to(grp, { rotationX: 16, rotationZ: -5, scale: .83, duration: 5.2, ease: 'sine.inOut' }, 47.6);
-  capIn('#cap6', 46.6);
+  capIn('#cap7', 46.6);
   ['#g-k1', '#g-k2', '#g-k3'].forEach((k, i) => tl.to(k, { y: 3, boxShadow: '0 0 0 var(--w-line)', backgroundColor: '#fff3ea', duration: .12 }, 47.4 + i * .14));
   ['#g-k1', '#g-k2', '#g-k3'].forEach((k) => tl.to(k, { y: 0, boxShadow: '0 3px 0 var(--w-line)', backgroundColor: '#ffffff', duration: .2 }, 48.05));
   tl.to('#g-qph', { autoAlpha: 0, duration: .1 }, 48.1);
@@ -1071,14 +1138,14 @@ function build() {
   collapse('#g-afull', 51.3, .4);
   reveal('#g-adone', 51.35, .4);
   tl.to(cG, { autoAlpha: 0, duration: .3 }, 52.0);
-  capOut('#cap6', 52.0);
+  capOut('#cap7', 52.0);
   tl.to(gcards, { x: (i, el) => 695 - (el.offsetLeft + el.offsetWidth / 2), y: (i, el) => 360 - (el.offsetTop + el.offsetHeight / 2),
     scale: .12, autoAlpha: 0, rotation: (i) => (i % 2 ? 12 : -12), duration: .8, stagger: .035, ease: 'power3.in' }, 52.1);
   tl.to(grp, { rotationX: 0, rotationZ: 0, duration: .8, ease: 'power3.in' }, 52.1);
   tl.to(streakL, { autoAlpha: 0, duration: .8 }, 52.3);
   label(-1, 52.3);
 
-  /* ===== s7 outro 52.8 – 60 (+12) ===== */
+  /* ===== s7 outro 52.8 – 60 (+21) ===== */
   tl.fromTo('#pill', { autoAlpha: 0, scale: .15 }, { autoAlpha: 1, scale: 1, duration: .6, ease: 'back.out(1.6)', immediateRender: false }, 52.8);
   tl.to('#pill', { width: 196, height: 196, borderRadius: 46, duration: .75, ease: 'expo.inOut' }, 53.6);
   tl.to('#pill svg', { opacity: 1, duration: .5 }, 54.1);
