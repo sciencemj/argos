@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import (
     JSON,
@@ -199,6 +199,27 @@ class Message(Record):
     # On a thread root: agents answer in coding mode (files, shell, network) in the
     # channel's project folder.
     coding: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+SummaryState = Literal["pending", "done", "skipped", "failed"]
+
+
+class LmsNotice(Record):
+    """An LMS notice behind a system message (PLAN Phase 15a): the original text the
+    card shows under "원문 보기" and the AI summary once it is written."""
+
+    __tablename__ = "lms_notice"
+
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("message.id", ondelete="CASCADE"), unique=True
+    )
+    kind: Mapped[str | None] = mapped_column(String(20))  # None: imported before 15a
+    title: Mapped[str] = mapped_column(String(500))
+    text: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(String(2000))
+    summary: Mapped[str | None] = mapped_column(Text)
+    summary_state: Mapped[str] = mapped_column(String(10))  # SummaryState
+    summary_hash: Mapped[str | None] = mapped_column(String(64))  # sha256 of summarized text
 
 
 class Attachment(Record):

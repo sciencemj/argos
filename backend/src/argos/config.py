@@ -111,6 +111,8 @@ class Settings(BaseSettings):
     notify_interval_minutes: int = 15  # 0 turns the checks off
     notify_digest_hour: int = 9  # daily roundups (stale inbox, undated tasks) after this hour
     notify_hermes_target: str | None = None  # e.g. "discord" or "discord:#general"
+    # LMS notices at least this long (characters) get an AI summary; 0 turns it off.
+    lms_summary_min_chars: int = 300
     hermes_bin: str = "hermes"
     inbox_stale_hours: int = 24
     undated_after_days: int = 3

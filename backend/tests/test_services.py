@@ -490,3 +490,25 @@ async def test_today_counts_tasks_finished_this_week_and_last(session: AsyncSess
 
     assert today["done_this_week"] == 2
     assert today["done_last_week"] == 1
+
+
+async def test_lms_notice_belongs_to_a_message(session: AsyncSession) -> None:
+    from argos.models import AuthorType, LmsNotice, Message
+
+    channel = await make_channel(session)
+    message = Message(channel_id=channel.id, author_type=AuthorType.SYSTEM, body="공지")
+    session.add(message)
+    await session.flush()
+    session.add(
+        LmsNotice(
+            message_id=message.id,
+            kind="announcement",
+            title="공지",
+            text="본문",
+            url="https://lms.example/1",
+            summary_state="skipped",
+        )
+    )
+    await session.commit()
+    notice = await session.scalar(select(LmsNotice).where(LmsNotice.message_id == message.id))
+    assert notice is not None and notice.summary is None
