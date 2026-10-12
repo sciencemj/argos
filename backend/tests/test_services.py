@@ -467,16 +467,23 @@ async def test_today_counts_tasks_finished_this_week_and_last(session: AsyncSess
     # Reopening and finishing again in the same week counts once.
     await services.move_task(session, tasks[0].id, status=TaskStatus.TODO, actor="u")
     await services.move_task(session, tasks[0].id, status=TaskStatus.DONE, actor="u")
+    # Logs get the wall-clock time, so pin every move to a time relative to `now`.
+    finished_at = {
+        tasks[0].id: now - timedelta(hours=1),
+        tasks[1].id: now - timedelta(hours=1),
+        tasks[2].id: this_monday - timedelta(days=3),
+        tasks[3].id: this_monday - timedelta(days=8),
+    }
     logs = (
         await session.scalars(
             select(ActivityLog).where(
-                ActivityLog.object_id.in_([tasks[2].id, tasks[3].id]),
+                ActivityLog.object_id.in_(list(finished_at)),
                 ActivityLog.action != "created",
             )
         )
     ).all()
     for log in logs:
-        log.created_at = this_monday - timedelta(days=3 if log.object_id == tasks[2].id else 8)
+        log.created_at = finished_at[log.object_id]
     await session.commit()
 
     today = await services.get_today(session, now=now, tz=SEOUL, due_soon_days=3)
