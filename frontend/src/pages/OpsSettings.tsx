@@ -249,7 +249,7 @@ export function NotifySection() {
           </select>
           <button
             type="button"
-            className={btn}
+            className={btn.outline}
             disabled={sendDigest.isPending}
             onClick={() => sendDigest.mutate()}
           >
