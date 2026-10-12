@@ -30,9 +30,13 @@ from argos.models import (
     AuthorType,
     Channel,
     ChannelKind,
+    Event,
     InboxItem,
     InboxStatus,
+    LmsNotice,
+    Message,
     Notification,
+    SourceLink,
     Task,
     TaskStatus,
 )
@@ -106,6 +110,35 @@ async def deadline_candidates(
     return found
 
 
+async def stale_inbox(session: AsyncSession, now: datetime, settings: Settings) -> list[InboxItem]:
+    """Inbox items left unsorted for longer than `inbox_stale_hours`."""
+    return list(
+        (
+            await session.scalars(
+                select(InboxItem).where(
+                    InboxItem.status.in_(OPEN_INBOX),
+                    InboxItem.created_at < now - timedelta(hours=settings.inbox_stale_hours),
+                )
+            )
+        ).all()
+    )
+
+
+async def undated_tasks(session: AsyncSession, now: datetime, settings: Settings) -> list[Task]:
+    """Open tasks without a due date, older than `undated_after_days`."""
+    return list(
+        (
+            await session.scalars(
+                select(Task).where(
+                    Task.status.in_([TaskStatus.TODO, TaskStatus.IN_PROGRESS]),
+                    Task.due_at.is_(None),
+                    Task.created_at < now - timedelta(days=settings.undated_after_days),
+                )
+            )
+        ).all()
+    )
+
+
 async def roundup_candidates(
     session: AsyncSession, now: datetime, settings: Settings
 ) -> list[Candidate]:
@@ -116,14 +149,7 @@ async def roundup_candidates(
         return []
     day = local.date().isoformat()
     found: list[Candidate] = []
-    stale = (
-        await session.scalars(
-            select(InboxItem).where(
-                InboxItem.status.in_(OPEN_INBOX),
-                InboxItem.created_at < now - timedelta(hours=settings.inbox_stale_hours),
-            )
-        )
-    ).all()
+    stale = await stale_inbox(session, now, settings)
     if stale:
         sample = " / ".join(i.raw_text.strip()[:30] for i in stale[:3])
         stale_title = (
@@ -140,15 +166,7 @@ async def roundup_candidates(
                 "inbox",
             )
         )
-    undated = (
-        await session.scalars(
-            select(Task).where(
-                Task.status.in_([TaskStatus.TODO, TaskStatus.IN_PROGRESS]),
-                Task.due_at.is_(None),
-                Task.created_at < now - timedelta(days=settings.undated_after_days),
-            )
-        )
-    ).all()
+    undated = await undated_tasks(session, now, settings)
     if undated:
         sample = " / ".join(t.title[:30] for t in undated[:3])
         found.append(
@@ -688,4 +706,139 @@ def briefing_markdown(data: dict[str, Any]) -> str:
         lines += ["", "## 루틴"]
         lines += [f"- [{'x' if r['done'] else ' '}] {r['title']}" for r in routines]
     lines += ["", f"인박스 {data['open_inbox']}개"]
+    return "\n".join(lines)
+
+
+# --- morning digest (PLAN Phase 15b) ----------------------------------------------------
+
+DIGEST_TASKS = 15
+DIGEST_LMS = 10
+DIGEST_PREVIEW = 200  # characters of an unsummarized LMS notice
+
+
+def _overlaps(events: list[Event]) -> list[list[str]]:
+    """Pairs of today's timed events that overlap, in start order."""
+    timed = sorted(
+        (e for e in events if not e.all_day and e.starts_at and e.ends_at),
+        key=lambda e: cast(datetime, e.starts_at),
+    )
+    pairs: list[list[str]] = []
+    for i, a in enumerate(timed):
+        for b in timed[i + 1 :]:
+            if cast(datetime, b.starts_at) < cast(datetime, a.ends_at):
+                pairs.append([a.title, b.title])
+    return pairs
+
+
+async def morning_digest_data(
+    session: AsyncSession, now: datetime, settings: Settings
+) -> dict[str, Any]:
+    """What the morning digest is written from: the briefing, the last day's LMS news and
+    things to tidy up. Capped so the prompt stays small."""
+    data = await briefing(session, now, settings)
+    data["due_tasks"] = data["due_tasks"][:DIGEST_TASKS]
+    names = {c.id: c.name for c in (await session.scalars(select(Channel))).all()}
+    since = now - timedelta(hours=24)
+    news: list[tuple[datetime, dict[str, Any]]] = []
+    rows = await session.execute(
+        select(LmsNotice, Message.channel_id)
+        .join(Message, Message.id == LmsNotice.message_id)
+        .where(LmsNotice.created_at >= since, LmsNotice.created_at <= now)
+    )
+    for notice, channel_id in rows.tuples():
+        summary = notice.summary if notice.summary_state == "done" else None
+        item = {
+            "channel": names.get(channel_id),
+            "kind": notice.kind,
+            "title": notice.title,
+            "summary": summary,
+            "text": None if summary else notice.text[:DIGEST_PREVIEW],
+        }
+        news.append((notice.created_at, item))
+    assignments = await session.scalars(
+        select(Task)
+        .join(SourceLink, SourceLink.object_id == Task.id)
+        .where(
+            SourceLink.source == "learningx",
+            SourceLink.object_type == "task",
+            Task.created_at >= since,
+            Task.created_at <= now,
+        )
+    )
+    for task in assignments.all():
+        due = task.due_at.astimezone(settings.zoneinfo).isoformat() if task.due_at else None
+        item = {
+            "channel": names.get(task.channel_id),
+            "kind": "assignment",
+            "title": task.title,
+            "due_at": due,
+        }
+        news.append((task.created_at, item))
+    news.sort(key=lambda pair: pair[0], reverse=True)
+    data["lms"] = [item for _, item in news[:DIGEST_LMS]]
+    today = await services.get_today(
+        session, now=now, tz=settings.zoneinfo, due_soon_days=settings.due_soon_days
+    )
+    data["attention"] = {
+        "overlaps": _overlaps(list(today["events"])),
+        "overdue": sum(1 for t in data["due_tasks"] if t["overdue"]),
+        "undated": len(await undated_tasks(session, now, settings)),
+        "stale_inbox": len(await stale_inbox(session, now, settings)),
+    }
+    return data
+
+
+DIGEST_PROMPT = {
+    "ko": (
+        "아래 데이터만으로 오늘 아침 브리핑을 써라. 첫 줄은 오늘 가장 중요한 것 한 문장. 그다음 "
+        "`## 오늘`, `## 새 LMS 소식`, `## 챙길 것` 순서로 쓰고 비어 있는 섹션은 빼라. 데이터에 "
+        "없는 일정이나 마감은 지어내지 마라. 전체 20줄 이내, 한국어로."
+    ),
+    "en": (
+        "Write this morning's briefing from the data below only. First line: the one most "
+        "important thing today. Then `## Today`, `## New from the LMS`, `## To tidy up`, "
+        "leaving out empty sections. Do not invent events or deadlines that are not in the "
+        "data. At most 20 lines, in English."
+    ),
+}
+
+
+def digest_prompt(data: dict[str, Any], language: str) -> str:
+    instructions = DIGEST_PROMPT.get(language, DIGEST_PROMPT["ko"])
+    return f"{instructions}\n\n{json.dumps(data, ensure_ascii=False)}"
+
+
+def digest_markdown(data: dict[str, Any], reason: str | None, language: str) -> str:
+    """The digest without an agent: the same data as a plain list."""
+    en = language == "en"
+    lines: list[str] = []
+    if reason:
+        failed = (
+            f"Could not write the AI digest ({reason})"
+            if en
+            else f"AI 요약을 만들지 못했어요 ({reason})"
+        )
+        lines += [failed, ""]
+    lines.append(briefing_markdown(data))
+    news = cast(list[dict[str, Any]], data.get("lms") or [])
+    if news:
+        lines += ["", "## New from the LMS" if en else "## 새 LMS 소식"]
+        for item in news:
+            where = f" (#{item['channel']})" if item.get("channel") else ""
+            lines.append(f"- {item['title']}{where}")
+            if item.get("summary"):
+                lines += [f"  {line}" for line in str(item["summary"]).splitlines()]
+    attention = cast(dict[str, Any], data.get("attention") or {})
+    tidy = [
+        f"Overlapping: {a} / {b}" if en else f"시간 겹침: {a} / {b}"
+        for a, b in attention.get("overlaps", [])
+    ]
+    if attention.get("undated"):
+        count = attention["undated"]
+        tidy.append(f"{count} tasks without a date" if en else f"날짜 없는 할 일 {count}개")
+    if attention.get("stale_inbox"):
+        count = attention["stale_inbox"]
+        tidy.append(f"{count} Inbox items waiting" if en else f"오래된 인박스 {count}개")
+    if tidy:
+        lines += ["", "## To tidy up" if en else "## 챙길 것", *(f"- {t}" for t in tidy)]
     return "\n".join(lines)
