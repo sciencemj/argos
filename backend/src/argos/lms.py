@@ -78,6 +78,8 @@ class LmsStatus(BaseModel):
     extension_manual_update: bool = False
     clean_course_names: bool = True
     courses: list["LmsChannel"] = []
+    summary_min_chars: int = 300  # 0: no AI summaries of notices
+    summary_available: bool = False  # an Inbox classifier model is set up
 
 
 class LmsChannel(BaseModel):
@@ -88,6 +90,10 @@ class LmsChannel(BaseModel):
 
 class LmsCourseNames(BaseModel):
     enabled: bool
+
+
+class LmsSummarySetting(BaseModel):
+    min_chars: int = Field(ge=0, le=20000)
 
 
 class LmsExtensionCheck(BaseModel):
@@ -212,7 +218,7 @@ class LmsMaterialDownload(LmsMaterialUpload):
 
 
 @router.get("/status", dependencies=[Depends(local_settings_request)])
-async def status(session: Session, config: Config) -> LmsStatus:
+async def status(request: Request, session: Session, config: Config) -> LmsStatus:
     build = await asyncio.to_thread(lms_extension.installed, config.data_dir)
     seen: dict[str, str] = await services.get_setting(session, "lms_extension_seen") or {}
     return LmsStatus(
@@ -230,24 +236,38 @@ async def status(session: Session, config: Config) -> LmsStatus:
             LmsChannel(channel_id=channel.id, original=link.container_name or "", name=channel.name)
             for link, channel in await services.lms_channels(session)
         ],
+        summary_min_chars=await services.lms_summary_min_chars(
+            session, config.lms_summary_min_chars
+        ),
+        summary_available=request.app.state.summarizer is not None,
     )
 
 
 @router.put("/course-names", dependencies=[Depends(local_settings_request)])
-async def course_names(body: LmsCourseNames, session: Session, config: Config) -> LmsStatus:
+async def course_names(
+    body: LmsCourseNames, request: Request, session: Session, config: Config
+) -> LmsStatus:
     async with sync_lock:
         await services.set_lms_clean_names(session, body.enabled, "user")
-    return await status(session, config)
+    return await status(request, session, config)
+
+
+@router.put("/summary", dependencies=[Depends(local_settings_request)])
+async def summary_setting(
+    body: LmsSummarySetting, request: Request, session: Session, config: Config
+) -> LmsStatus:
+    await services.set_lms_summary_min_chars(session, body.min_chars, "user")
+    return await status(request, session, config)
 
 
 @router.post("/extension/prepare", dependencies=[Depends(local_settings_request)])
-async def prepare_extension(session: Session, config: Config) -> LmsStatus:
+async def prepare_extension(request: Request, session: Session, config: Config) -> LmsStatus:
     async with sync_lock:
         try:
             await asyncio.to_thread(lms_extension.prepare, config.data_dir)
         except (OSError, ValueError) as exc:
             raise HTTPException(500, "확장 프로그램 파일을 준비하지 못했어요") from exc
-    return await status(session, config)
+    return await status(request, session, config)
 
 
 @router.post("/extension/check")

@@ -1655,6 +1655,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Summary Setting */
+        put: operations["summary_setting_api_v1_lms_summary_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lms/extension/prepare": {
         parameters: {
             query?: never;
@@ -2583,6 +2600,24 @@ export interface components {
             /** Item Ids */
             item_ids: string[];
         };
+        /** LmsNoticeOut */
+        LmsNoticeOut: {
+            /** Kind */
+            kind: string | null;
+            /** Title */
+            title: string;
+            /** Text */
+            text: string;
+            /** Url */
+            url: string;
+            /** Summary */
+            summary: string | null;
+            /**
+             * Summary State
+             * @enum {string}
+             */
+            summary_state: "pending" | "done" | "skipped" | "failed";
+        };
         /** LmsStatus */
         LmsStatus: {
             /** Connected */
@@ -2612,6 +2647,21 @@ export interface components {
              * @default []
              */
             courses: components["schemas"]["LmsChannel"][];
+            /**
+             * Summary Min Chars
+             * @default 300
+             */
+            summary_min_chars: number;
+            /**
+             * Summary Available
+             * @default false
+             */
+            summary_available: boolean;
+        };
+        /** LmsSummarySetting */
+        LmsSummarySetting: {
+            /** Min Chars */
+            min_chars: number;
         };
         /** LmsToken */
         LmsToken: {
@@ -2936,6 +2986,7 @@ export interface components {
             event?: components["schemas"]["EventOut"] | null;
             approval?: components["schemas"]["ApprovalOut"] | null;
             debate?: components["schemas"]["DebateOut"] | null;
+            lms_notice?: components["schemas"]["LmsNoticeOut"] | null;
         };
         /** RemoteOut */
         RemoteOut: {
@@ -6653,6 +6704,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LmsCourseNames"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_setting_api_v1_lms_summary_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsSummarySetting"];
             };
         };
         responses: {

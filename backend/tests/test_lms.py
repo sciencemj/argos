@@ -462,3 +462,30 @@ def test_import_queues_long_notices_for_summary(client: TestClient) -> None:
     while not fake.calls and time.time() < deadline:
         time.sleep(0.05)
     assert len(fake.calls) == 1
+
+
+def test_messages_carry_the_lms_notice_card(client: TestClient) -> None:
+    headers = {"Authorization": f"Bearer {token(client)}"}
+    client.post("/api/v1/lms/import", json=batch(), headers=headers)
+    channels = client.get("/api/v1/channels").json()["channels"]
+    course = next(c for c in channels if c["name"] == "알고리즘")
+    items = client.get(f"/api/v1/channels/{course['id']}/messages").json()["items"]
+    cards = [m["ref"]["lms_notice"] for m in items if m["ref"].get("lms_notice")]
+    assert cards == [
+        {
+            "kind": "announcement",
+            "title": "공지",
+            "text": "[링크](javascript:alert(1))",
+            "url": "https://lms.korea.ac.kr/courses/7/discussion_topics/11",
+            "summary": None,
+            "summary_state": "skipped",
+        }
+    ]
+
+
+def test_summary_setting_round_trip(client: TestClient) -> None:
+    status = client.get("/api/v1/lms/status").json()
+    assert (status["summary_min_chars"], status["summary_available"]) == (300, False)
+    status = client.put("/api/v1/lms/summary", json={"min_chars": 0}).json()
+    assert status["summary_min_chars"] == 0
+    assert client.put("/api/v1/lms/summary", json={"min_chars": -1}).status_code == 422

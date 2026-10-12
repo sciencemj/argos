@@ -70,6 +70,7 @@ from argos.models import (
     Event,
     InboxItem,
     InboxStatus,
+    LmsNotice,
     Message,
     NoteRef,
     Notification,
@@ -395,6 +396,15 @@ class DebateOut(Out):
     summary: str | None = None  # the moderator's summary text, once written
 
 
+class LmsNoticeOut(Out):
+    kind: str | None
+    title: str
+    text: str
+    url: str
+    summary: str | None
+    summary_state: Literal["pending", "done", "skipped", "failed"]
+
+
 class RefOut(BaseModel):
     """The object a message renders as a card (PLAN P4); at most one is set."""
 
@@ -403,6 +413,7 @@ class RefOut(BaseModel):
     event: EventOut | None = None
     approval: ApprovalOut | None = None
     debate: DebateOut | None = None
+    lms_notice: LmsNoticeOut | None = None  # an LMS notice (by message, not ref_id)
 
 
 class AttachmentOut(Out):
@@ -720,6 +731,14 @@ async def _messages_out(
     `directory`) in a few small queries."""
     counts = await services.reply_counts(session, [m.id for m in messages])
     files = await services.attachments_for(session, [m.id for m in messages])
+    notices = {
+        n.message_id: LmsNoticeOut.model_validate(n)
+        for n in (
+            await session.scalars(
+                select(LmsNotice).where(LmsNotice.message_id.in_([m.id for m in messages]))
+            )
+        ).all()
+    }
     by_type: dict[str, set[str]] = {}
     for m in messages:
         if m.ref_type and m.ref_id:
@@ -774,6 +793,8 @@ async def _messages_out(
         item.attachments = _attachments_out(files.get(m.id, []), directory)
         if m.ref_type and m.ref_id and (ref := refs.get((m.ref_type, m.ref_id))):
             item.ref = RefOut.model_validate({m.ref_type: ref})
+        if notice := notices.get(m.id):
+            item.ref.lms_notice = notice
         if m.run_id:
             item.run = runs.get(m.run_id)
         if m.id in replies_by_root:
