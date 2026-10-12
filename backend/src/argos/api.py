@@ -2162,6 +2162,18 @@ async def notify_test(config: Config, body: NotifyTarget) -> dict[str, str | Non
     return {"error": None}
 
 
+class DigestStarted(BaseModel):
+    message_id: str  # the #today thread root the digest is written into
+
+
+@router.post("/notify/digest")
+async def send_digest_now(request: Request) -> DigestStarted:
+    """The settings' "지금 보내기": a morning digest right away, even when it is off or
+    today's went out already; the scheduled one still comes."""
+    notifier: notify.Notifier = request.app.state.notifier
+    return DigestStarted(message_id=await notifier.digest.start(datetime.now(UTC), manual=True))
+
+
 @router.post("/review/weekly", status_code=status.HTTP_201_CREATED)
 async def make_weekly_review(session: Session, config: Config) -> MessageOut:
     """This week's review now, into #today (the automatic one still comes on its day)."""

@@ -55,7 +55,9 @@ def create_app(config: Settings = settings) -> FastAPI:
         if config.caldav_poll_minutes > 0:
             app.state.calendar_sync.start()
 
-        app.state.notifier = notify.Notifier(app.state.sessionmaker, lambda: app.state.settings)
+        app.state.notifier = notify.Notifier(
+            app.state.sessionmaker, lambda: app.state.settings, runner=app.state.runner
+        )
         app.state.notifier.start()
         app.state.lms_summaries = LmsSummaries(
             app.state.sessionmaker, lambda: app.state.summarizer, lambda: app.state.settings

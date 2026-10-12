@@ -7,15 +7,17 @@ key. Notices show in the app (list, badge, browser notification) and, when the u
 turns it on, go to a messenger through `hermes send` (no LLM involved)."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
 import shutil
+import uuid
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI
@@ -23,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import services
+from argos.agents import Turn
 from argos.config import Settings
 from argos.hub import hub
 from argos.models import (
@@ -36,10 +39,14 @@ from argos.models import (
     LmsNotice,
     Message,
     Notification,
+    RunStatus,
     SourceLink,
     Task,
     TaskStatus,
 )
+
+if TYPE_CHECKING:
+    from argos.runner import Runner
 
 log = logging.getLogger(__name__)
 
@@ -581,6 +588,7 @@ class Notifier:
         sessionmaker: async_sessionmaker[AsyncSession],
         settings: Callable[[], Settings],
         send: Callable[[Settings, str, str], Any] = hermes_send,
+        runner: "Runner | None" = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._settings = settings
@@ -588,6 +596,7 @@ class Notifier:
         self._loop: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self.last_run: datetime | None = None
+        self.digest = MorningDigest(sessionmaker, settings, runner, lambda: self.send)
 
     async def run(self, now: datetime | None = None) -> list[Notification]:
         """One pass: new notices, the weekly review when due, messenger delivery."""
@@ -606,6 +615,8 @@ class Notifier:
                     fresh.append(review)
                 if config.notify_hermes_target and fresh:
                     await self._deliver(session, fresh, config)
+                # Under the lock: two passes never both start today's digest.
+                await self.digest.start_if_due(session, now)
             self.last_run = now
             return fresh
 
@@ -638,9 +649,10 @@ class Notifier:
                 await self._loop
             except asyncio.CancelledError:
                 pass
+        await self.digest.stop()
 
 
-# --- morning briefing (for other tools) --------------------------------------------------
+# --- morning briefing (for other tools)--------------------------------------------------
 
 
 async def briefing(session: AsyncSession, now: datetime, settings: Settings) -> dict[str, Any]:
@@ -842,3 +854,139 @@ def digest_markdown(data: dict[str, Any], reason: str | None, language: str) -> 
     if tidy:
         lines += ["", "## To tidy up" if en else "## 챙길 것", *(f"- {t}" for t in tidy)]
     return "\n".join(lines)
+
+
+DIGEST_LATEST_HOUR = 12  # a "morning" digest that would land after noon is skipped
+
+
+class MorningDigest:
+    """A #today thread the chosen agent writes the day's briefing into, then the same
+    text to the messenger. Falls back to the plain list when the agent can't answer,
+    so a digest always arrives."""
+
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        settings: Callable[[], Settings],
+        runner: "Runner | None",
+        send: Callable[[], Callable[[Settings, str, str], Any]],
+    ) -> None:
+        self._sessionmaker = sessionmaker
+        self._settings = settings
+        self._runner = runner
+        self._send = send  # read at send time: tests swap Notifier.send
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    def due(self, now: datetime) -> bool:
+        config = self._settings()
+        hour = now.astimezone(config.zoneinfo).hour
+        return config.morning_digest_enabled and (
+            config.morning_digest_hour <= hour < DIGEST_LATEST_HOUR
+        )
+
+    def _key(self, now: datetime) -> str:
+        return f"digest:{now.astimezone(self._settings().zoneinfo).date().isoformat()}"
+
+    async def start_if_due(self, session: AsyncSession, now: datetime) -> None:
+        if not self.due(now):
+            return
+        if await session.scalar(select(Notification.id).where(Notification.key == self._key(now))):
+            return
+        await self.start(now, session=session)
+
+    async def start(
+        self, now: datetime, *, manual: bool = False, session: AsyncSession | None = None
+    ) -> str:
+        """Posts the thread root and its notice now (so the day's key is taken), writes
+        the digest in the background; returns the root message id."""
+        config = self._settings()
+        local = now.astimezone(config.zoneinfo)
+        key = self._key(now) + (f":manual:{uuid.uuid4().hex[:8]}" if manual else "")
+        en = config.language == "en"
+        heading = (
+            f"☀️ Morning digest · {local:%b} {local.day}"
+            if en
+            else f"☀️ {local.month}월 {local.day}일({WEEKDAY_KO[local.weekday()]}) 아침 요약"
+        )
+        async with contextlib.AsyncExitStack() as stack:
+            db = session or await stack.enter_async_context(self._sessionmaker())
+            today = await db.scalar(
+                select(Channel).where(Channel.name == "today", Channel.kind == ChannelKind.SYSTEM)
+            )
+            assert today is not None  # seed_defaults always makes #today
+            root = await services.create_message(
+                db, channel_id=today.id, body=heading, author_type=AuthorType.SYSTEM,
+                actor="system",
+            )  # fmt: skip
+            title = "Your morning digest is ready" if en else "아침 요약이 도착했어요"
+            [notice] = await record(
+                db, [Candidate(key, "morning_digest", title, None, "message", root.id, today.id)]
+            )
+        task = asyncio.create_task(self._write(notice.id, root.id, now))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return root.id
+
+    async def _write(self, notice_id: str, root_id: str, now: datetime) -> None:
+        config = self._settings()
+        en = config.language == "en"
+        try:
+            async with self._sessionmaker() as session:
+                data = await morning_digest_data(session, now, config)
+                agent = await services.find_agent(
+                    session, config.morning_digest_agent or config.default_agent
+                )
+                root = await services.get_message(session, root_id)
+            text: str | None = None
+            reason = "no agent to write it" if en else "쓸 에이전트를 찾을 수 없어요"
+            if agent is not None and self._runner is not None:
+                async with self._sessionmaker() as session:
+                    # Replies in the thread go on with the same agent.
+                    await services.update_message(
+                        session, root_id, {"sticky_agent_id": agent.id}, "system"
+                    )
+                    run, reply = await services.start_run(
+                        session, agent=agent, channel_id=root.channel_id, trigger=root,
+                        reply_thread_root_id=root_id, actor="system", kind="digest",
+                    )  # fmt: skip
+                await self._runner.run_turn(
+                    run.id, agent, reply.id,
+                    [Turn("user", digest_prompt(data, config.language))],
+                    "Morning digest" if en else "아침 요약",
+                    f"morning-{data['date']}", no_tools=True,
+                )  # fmt: skip
+                async with self._sessionmaker() as session:
+                    finished = await services.get_run(session, run.id)
+                    answer = (await services.get_message(session, reply.id)).body.strip()
+                if finished.status == RunStatus.DONE and answer:
+                    text = answer
+                else:
+                    reason = finished.error or ("empty answer" if en else "답이 비어 있어요")
+            if text is None:
+                text = digest_markdown(data, reason, config.language)
+                async with self._sessionmaker() as session:
+                    await services.create_message(
+                        session, channel_id=root.channel_id, body=text,
+                        author_type=AuthorType.SYSTEM, thread_root_id=root_id, actor="system",
+                    )  # fmt: skip
+        except Exception:
+            log.exception("morning digest failed")
+            return
+        if config.notify_hermes_target:
+            error = await self._send()(config, config.notify_hermes_target, text)
+            async with self._sessionmaker() as session:
+                notice = await session.get(Notification, notice_id)
+                if notice is not None:
+                    notice.sent_at = None if error else datetime.now(UTC)
+                    notice.send_error = error
+                    await session.commit()
+
+    async def wait(self) -> None:
+        """Until the digests being written are done (tests, shutdown)."""
+        while self._tasks:
+            await asyncio.gather(*list(self._tasks), return_exceptions=True)
+
+    async def stop(self) -> None:
+        for task in list(self._tasks):
+            task.cancel()
+        await asyncio.gather(*list(self._tasks), return_exceptions=True)

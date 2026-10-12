@@ -1062,6 +1062,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notify/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Digest Now
+         * @description The settings' "지금 보내기": a morning digest right away, even when it is off or
+         *     today's went out already; the scheduled one still comes.
+         */
+        post: operations["send_digest_now_api_v1_notify_digest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/review/weekly": {
         parameters: {
             query?: never;
@@ -2201,6 +2222,11 @@ export interface components {
          * @enum {string}
          */
         DebateStatus: "running" | "done" | "cancelled" | "error";
+        /** DigestStarted */
+        DigestStarted: {
+            /** Message Id */
+            message_id: string;
+        };
         /** DisconnectIn */
         DisconnectIn: {
             /**
@@ -5388,6 +5414,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_digest_now_api_v1_notify_digest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestStarted"];
                 };
             };
         };
