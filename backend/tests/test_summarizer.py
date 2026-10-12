@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -170,3 +171,83 @@ async def test_start_requeues_pending_and_processes(settings: Settings) -> None:
     await worker.join()
     await worker.stop()
     assert (await state(maker, notice_id)).summary_state == "done"
+
+
+async def test_summary_racing_an_open_import_is_dropped(settings: Settings) -> None:
+    """The import changes the text in a transaction still open while the worker saves."""
+    maker, notice_id = await seeded(settings)
+    flushed = asyncio.Event()
+
+    async def importer() -> None:
+        async with maker() as session:
+            row = await session.get(LmsNotice, notice_id)
+            assert row is not None
+            row.text = LONG + " 날짜 변경"
+            await session.flush()  # holds the write lock, like import_lms mid-batch
+            flushed.set()
+            await asyncio.sleep(0.3)
+            await session.commit()
+
+    async def worker() -> None:
+        await flushed.wait()
+        async with maker() as session:
+            assert not await services.save_summary(session, notice_id, LONG, "- 옛 요약")
+
+    await asyncio.gather(importer(), worker())
+    row = await state(maker, notice_id)
+    assert (row.summary_state, row.summary) == ("pending", None)
+
+
+async def test_unexpected_error_marks_failed_for_a_retry(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+
+    class Broken(FakeSummarizer):
+        async def summarize(self, title: str, text: str, language: str) -> str:
+            raise RuntimeError("database is locked")
+
+    fake = Broken()
+    await LmsSummaries(maker, lambda: fake, lambda: settings).process(notice_id)
+    assert (await state(maker, notice_id)).summary_state == "failed"
+
+
+async def test_turned_off_summaries_skip_queued_work(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+    async with maker() as session:
+        await services.set_lms_summary_min_chars(session, 0, "user")
+    fake = FakeSummarizer()
+    worker = LmsSummaries(maker, lambda: fake, lambda: settings)
+    await worker.process(notice_id)
+    assert fake.calls == []
+    assert (await state(maker, notice_id)).summary_state == "skipped"
+
+
+async def test_start_does_not_queue_when_turned_off(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+    async with maker() as session:
+        await services.set_lms_summary_min_chars(session, 0, "user")
+    fake = FakeSummarizer()
+    worker = LmsSummaries(maker, lambda: fake, lambda: settings)
+    await worker.start()
+    await worker.join()
+    await worker.stop()
+    assert fake.calls == []
+    assert (await state(maker, notice_id)).summary_state == "pending"
+
+
+def test_reasoning_effort_only_for_ollama_or_when_set(settings: Settings) -> None:
+    ollama = build_summarizer(settings.model_copy(update={"classifier_model": "qwen"}))
+    hermes = build_summarizer(
+        settings.model_copy(update={"classifier_model": "m", "classifier_provider": "hermes"})
+    )
+    tuned = build_summarizer(
+        settings.model_copy(
+            update={
+                "classifier_model": "m",
+                "classifier_provider": "hermes",
+                "classifier_reasoning_effort": "low",
+            }
+        )
+    )
+    assert isinstance(ollama, OpenAISummarizer) and ollama.extra == {"reasoning_effort": "none"}
+    assert isinstance(hermes, OpenAISummarizer) and hermes.extra == {}
+    assert isinstance(tuned, OpenAISummarizer) and tuned.extra == {"reasoning_effort": "low"}

@@ -12,11 +12,11 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
-from sqlalchemy import func, or_, select
+from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos import attachments
@@ -280,38 +280,76 @@ async def pending_summaries(session: AsyncSession) -> list[str]:
     )
 
 
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+async def _settle_summary(
+    session: AsyncSession, notice_id: str, text: str, changes: dict[str, Any]
+) -> LmsNotice | None:
+    """Writes `changes` only while the notice still waits for a summary of `text`.
+    One conditional UPDATE, so an import changing the text in an open transaction
+    can't slip between the check and the write (SQLite runs it after that commit)."""
+    result = await session.execute(
+        update(LmsNotice)
+        .where(
+            LmsNotice.id == notice_id,
+            LmsNotice.summary_state == "pending",
+            LmsNotice.text == text,
+        )
+        .values(**changes, updated_at=utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    if cast(CursorResult[Any], result).rowcount != 1:
+        await session.commit()  # nothing was written; ends the transaction without expiring
+        return None
+    notice = await _get(session, LmsNotice, notice_id)
+    await session.refresh(notice)
+    _log(session, notice, "updated", "system:lms", after=changes)
+    return notice
+
+
 async def save_summary(session: AsyncSession, notice_id: str, text: str, summary: str) -> bool:
-    """False when the notice changed while it was being summarized: that summary is stale."""
-    notice = await session.get(LmsNotice, notice_id)
+    """False when the notice changed while it was being summarized: that summary is stale.
+    The card row and the message body change in one transaction."""
+    done = {"summary": summary, "summary_state": "done", "summary_hash": _text_hash(text)}
+    notice = await _settle_summary(session, notice_id, text, done)
     if notice is None:
         return False
-    await session.refresh(notice)
-    if notice.summary_state != "pending" or notice.text != text:
-        return False
     message = await _get(session, Message, notice.message_id)
-    await _update(
-        session, message, {"body": lms_body(notice.title, text, notice.url, summary)}, "system:lms"
-    )
-    await _update(
+    await session.refresh(message)
+    before = snapshot(message)
+    message.body = lms_body(notice.title, text, notice.url, summary)
+    await session.flush()
+    after = snapshot(message)
+    _log(
         session,
-        notice,
-        {
-            "summary": summary,
-            "summary_state": "done",
-            "summary_hash": hashlib.sha256(text.encode()).hexdigest(),
-        },
+        message,
+        "updated",
         "system:lms",
+        before={"body": before["body"]},
+        after={"body": after["body"]},
     )
+    notice_fields = snapshot(notice)
+    await session.commit()
+    await _publish("object.updated", message, after)
+    await _publish("object.updated", notice, notice_fields)
     return True
 
 
+async def mark_summary(
+    session: AsyncSession, notice_id: str, text: str, state: SummaryState
+) -> None:
+    """`failed` (tried again on the next sync) or `skipped` (summaries turned off)."""
+    notice = await _settle_summary(session, notice_id, text, {"summary_state": state})
+    if notice is not None:
+        fields = snapshot(notice)
+        await session.commit()
+        await _publish("object.updated", notice, fields)
+
+
 async def fail_summary(session: AsyncSession, notice_id: str, text: str) -> None:
-    notice = await session.get(LmsNotice, notice_id)
-    if notice is None:
-        return
-    await session.refresh(notice)
-    if notice.summary_state == "pending" and notice.text == text:
-        await _update(session, notice, {"summary_state": "failed"}, "system:lms")
+    await mark_summary(session, notice_id, text, "failed")
 
 
 async def backfill_lms_notices(session: AsyncSession) -> int:
@@ -373,7 +411,8 @@ async def _sync_lms_notice(
         await record(notice)
         return notice.id if state == "pending" else None
     before = snapshot(notice)
-    if notice.text != item["text"]:
+    stale = notice.summary_state == "done" and notice.summary_hash != _text_hash(item["text"])
+    if notice.text != item["text"] or stale:
         fields |= {"summary": None, "summary_hash": None, "summary_state": state}
     elif notice.summary_state == "failed" and state == "pending":
         fields["summary_state"] = "pending"

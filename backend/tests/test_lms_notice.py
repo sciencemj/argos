@@ -141,6 +141,18 @@ async def test_backfill_creates_skipped_notices_for_old_messages(session: AsyncS
     assert await services.backfill_lms_notices(session) == 0
 
 
+async def test_done_summary_of_other_text_is_redone(session: AsyncSession) -> None:
+    """A summary saved for text the notice no longer has (a lost race) heals on the next sync."""
+    await run_import(session)
+    row = await notice(session)
+    row.summary_state, row.summary, row.summary_hash = "done", "- 옛 요약", "0" * 64
+    await session.commit()
+    result = await run_import(session)  # same text as stored
+    row = await notice(session)
+    assert result["summarize"] == [row.id]
+    assert (row.summary_state, row.summary) == ("pending", None)
+
+
 async def test_summary_min_chars_setting(session: AsyncSession) -> None:
     assert await services.lms_summary_min_chars(session, 300) == 300
     await services.set_lms_summary_min_chars(session, 0, "user")

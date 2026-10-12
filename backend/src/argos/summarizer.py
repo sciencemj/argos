@@ -56,9 +56,15 @@ def parse_bullets(content: str) -> str:
 
 
 class OpenAISummarizer:
-    def __init__(self, client: AsyncOpenAI, model: str) -> None:
+    def __init__(
+        self, client: AsyncOpenAI, model: str, *, reasoning_effort: str | None = None
+    ) -> None:
         self._client = client
         self.model = model
+        # Only sent when asked for: some backends reject the field.
+        self.extra: dict[str, str] = (
+            {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
+        )
 
     async def summarize(self, title: str, text: str, language: str) -> str:
         try:
@@ -69,7 +75,7 @@ class OpenAISummarizer:
                     {"role": "user", "content": f"{title}\n\n{text[:MAX_SOURCE_CHARS]}"},
                 ],
                 temperature=0,
-                extra_body={"reasoning_effort": "none"},
+                extra_body=self.extra,
             )
             content = response.choices[0].message.content or ""
         except Exception as exc:
@@ -92,7 +98,10 @@ def build_summarizer(settings: Settings) -> Summarizer | None:
     client = AsyncOpenAI(
         base_url=base_url, api_key=api_key, timeout=settings.classifier_timeout, max_retries=1
     )
-    return OpenAISummarizer(client, model)
+    effort = settings.classifier_reasoning_effort  # the classifier's rule (build_classifier)
+    if effort is None and settings.classifier_provider == "ollama":
+        effort = "none"
+    return OpenAISummarizer(client, model, reasoning_effort=effort)
 
 
 class LmsSummaries:
@@ -118,6 +127,10 @@ class LmsSummaries:
         for notice_id in ids:
             self._queue.put_nowait(notice_id)
 
+    async def _enabled(self, session: AsyncSession) -> bool:
+        default = self._settings().lms_summary_min_chars
+        return await services.lms_summary_min_chars(session, default) > 0
+
     async def process(self, notice_id: str) -> None:
         summarizer = self._summarizer()
         async with self._sessionmaker() as session:
@@ -125,22 +138,34 @@ class LmsSummaries:
             if notice is None or notice.summary_state != "pending":
                 return
             title, text = notice.title, notice.text
+            if not await self._enabled(session):  # turned off after it was queued
+                await services.mark_summary(session, notice_id, text, "skipped")
+                return
             if summarizer is None:  # the classifier was turned off meanwhile
                 await services.fail_summary(session, notice_id, text)
                 return
             try:
                 summary = await summarizer.summarize(title, text, self._settings().language)
-            except SummaryError as exc:
-                log.warning("LMS summary failed: %s", exc)
-                await services.fail_summary(session, notice_id, text)
-                return
-            await services.save_summary(session, notice_id, text, summary)
+                await services.save_summary(session, notice_id, text, summary)
+            except Exception as exc:
+                # Anything (the model, a locked database) leaves it failed, so the next
+                # sync tries again instead of the card waiting until a restart.
+                if isinstance(exc, SummaryError):
+                    log.warning("LMS summary failed: %s", exc)
+                else:
+                    log.exception("LMS summary failed")
+                await session.rollback()
+                try:
+                    await services.fail_summary(session, notice_id, text)
+                except Exception:
+                    log.exception("could not mark the LMS summary failed")
 
     async def start(self) -> None:
         """Cards for older LMS messages, then the notices left waiting at shutdown."""
         async with self._sessionmaker() as session:
             await services.backfill_lms_notices(session)
-            self.enqueue(await services.pending_summaries(session))
+            if await self._enabled(session):
+                self.enqueue(await services.pending_summaries(session))
 
         async def loop() -> None:
             while True:
