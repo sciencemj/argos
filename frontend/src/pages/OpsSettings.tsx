@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  useAgents,
   useBackupKeep,
   useBackupNow,
   useInstallService,
@@ -8,6 +9,7 @@ import {
   useOps,
   usePrepareUninstall,
   useSaveNotify,
+  useSendDigest,
   useTestNotify,
   useUninstallService,
 } from "../api";
@@ -33,6 +35,8 @@ const WEEKDAYS = [
   tr("일"),
 ];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+// The digest is skipped after noon, so later hours would never send.
+const MORNING_HOURS = HOURS.filter((h) => h < 12);
 
 /** Notices and the weekly review (where they go, when). PLAN Phase 11. */
 export function NotifySection() {
@@ -40,6 +44,8 @@ export function NotifySection() {
   const save = useSaveNotify();
   const test = useTestNotify();
   const targets = useNotifyTargets(Boolean(current.data?.hermes_available));
+  const agents = useAgents();
+  const sendDigest = useSendDigest();
   const [permission, setPermission] = useState(
     "Notification" in window ? Notification.permission : "unsupported",
   );
@@ -55,6 +61,12 @@ export function NotifySection() {
       weekly_review_weekday:
         patch.weekly_review_weekday ?? data.weekly_review_weekday,
       weekly_review_hour: patch.weekly_review_hour ?? data.weekly_review_hour,
+      morning_digest_enabled:
+        patch.morning_digest_enabled ?? data.morning_digest_enabled,
+      morning_digest_hour:
+        patch.morning_digest_hour ?? data.morning_digest_hour,
+      morning_digest_agent:
+        patch.morning_digest_agent ?? data.morning_digest_agent,
     });
   const known = targets.data?.some((t) => t.target === data.hermes_target);
 
@@ -186,7 +198,68 @@ export function NotifySection() {
           </select>
         </div>
       </div>
-      <ErrorText error={save.error ?? test.error ?? targets.error} />
+      <div className="flex flex-col gap-2">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 accent-[var(--ink)]"
+            checked={data.morning_digest_enabled}
+            onChange={(e) =>
+              change({ morning_digest_enabled: e.target.checked })
+            }
+          />
+          <span>
+            {tr("아침 요약", "Morning digest")}
+            <span className="block text-xs text-meta">
+              {tr(
+                "매일 아침 일정·마감·LMS 소식·챙길 것을 고른 에이전트가 정리해 오늘 채널과 메신저로 보내요. 정오가 지나면 그날은 건너뛰어요.",
+                "Each morning the chosen agent sums up events, deadlines, LMS news and things to tidy up, in Today and the messenger. Skipped after noon.",
+              )}
+            </span>
+          </span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-text">
+          <select
+            aria-label={tr("아침 요약 시각", "Morning digest time")}
+            className={`${field} min-w-24 flex-1`}
+            value={data.morning_digest_hour}
+            onChange={(e) =>
+              change({ morning_digest_hour: Number(e.target.value) })
+            }
+          >
+            {MORNING_HOURS.map((h) => (
+              <option key={h} value={h}>
+                {h}
+                {tr("시")}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={tr("아침 요약 에이전트", "Morning digest agent")}
+            className={`${field} min-w-32 flex-1`}
+            value={data.morning_digest_agent}
+            onChange={(e) => change({ morning_digest_agent: e.target.value })}
+          >
+            <option value="">{tr("기본 에이전트", "Default agent")}</option>
+            {(agents.data ?? []).map((a) => (
+              <option key={a.name} value={a.name}>
+                {a.display_name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={btn}
+            disabled={sendDigest.isPending}
+            onClick={() => sendDigest.mutate()}
+          >
+            {tr("지금 보내기", "Send now")}
+          </button>
+        </div>
+      </div>
+      <ErrorText
+        error={save.error ?? test.error ?? targets.error ?? sendDigest.error}
+      />
     </section>
   );
 }

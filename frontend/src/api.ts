@@ -1103,6 +1103,10 @@ export const useTestNotify = () =>
 export const useMakeReview = () =>
   useWrite("message", () => call(client.POST("/api/v1/review/weekly")));
 
+/** Settings' "지금 보내기": a morning digest right away (PLAN Phase 15b). */
+export const useSendDigest = () =>
+  useWrite("message", () => call(client.POST("/api/v1/notify/digest")));
+
 export const useAnalytics = () =>
   useQuery({
     queryKey: ["analytics"],
