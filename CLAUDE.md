@@ -74,6 +74,10 @@ vitest, build), api-types 최신 여부.
 - **`attachments.py`**: 채팅 첨부(Phase 13). 파일은 `data_dir/attachments/<id>`(이름은 DB에만), 종류는 내용으로
   판별. `Turn.attachments` → `split_attachments`/`with_attachments`(agents.py)가 이미지·PDF 파트와 본문 텍스트로
   나누고 어댑터가 백엔드별 형식으로 보낸다. 미전송 업로드는 서버 시작 때 24시간 지나면 정리.
+- **`summarizer.py`**: LMS 알림 요약(Phase 15a). `import_lms`가 메시지마다 `lms_notice`(종류·원문·URL·요약 상태)를
+  쓰고 요약할 id를 돌려주면 `LmsSummaries` 워커가 분류기의 채팅 모델(`classifier_title_model` 우선)로 하나씩
+  요약해 `services.save_summary`로 저장. 처리 중 원문이 바뀐 요약은 버리고, 실패는 다음 동기화에 재시도.
+  피드는 `ref.lms_notice`를 `lmsNotice.tsx` 카드로 그린다.
 - **`agents.py`**: 어댑터 `stream(transcript, context, session)`가 `Token`/`Status`/`Failure`를 낸다.
   Hermes(게이트웨이 Responses API + `conversation`), Claude(claude-agent-sdk, uuid5 세션 +
   `get_session_info`로 resume 판단), Codex(`codex app-server` JSON-RPC, 전용 `CODEX_HOME`에 auth.json·skills·AGENTS.md만

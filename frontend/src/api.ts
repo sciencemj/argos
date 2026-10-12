@@ -1251,6 +1251,17 @@ export function useLmsCourseNames() {
   });
 }
 
+export function useLmsSummarySetting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (minChars: number) =>
+      call(
+        client.PUT("/api/v1/lms/summary", { body: { min_chars: minChars } }),
+      ),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
+
 export function useDisconnectLms() {
   const qc = useQueryClient();
   return useMutation({

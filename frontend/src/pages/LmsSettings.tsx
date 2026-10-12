@@ -4,6 +4,7 @@ import {
   useDisconnectLms,
   useLmsCourseNames,
   useLmsStatus,
+  useLmsSummarySetting,
   usePrepareLmsExtension,
 } from "../api";
 import { fmt } from "../dates";
@@ -17,6 +18,7 @@ export function LmsSection() {
   const disconnect = useDisconnectLms();
   const prepare = usePrepareLmsExtension();
   const courseNames = useLmsCourseNames();
+  const summarySetting = useLmsSummarySetting();
   const [token, setToken] = useState("");
   const [guide, setGuide] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
@@ -280,6 +282,33 @@ export function LmsSection() {
           </ul>
         )}
       </div>
+      <div className="flex flex-col gap-2 border-t border-line-soft pt-4">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1 accent-[var(--ink)]"
+            checked={(status.data?.summary_min_chars ?? 300) > 0}
+            disabled={!status.data || summarySetting.isPending}
+            onChange={(event) =>
+              summarySetting.mutate(event.target.checked ? 300 : 0)
+            }
+          />
+          <span>
+            {tr("알림 AI 요약", "AI notice summaries")}
+            <span className="block text-xs text-meta">
+              {status.data?.summary_available
+                ? tr(
+                    "300자 이상인 LMS 알림을 인박스 분류 모델이 몇 줄로 요약해요. 원문은 카드에서 볼 수 있어요.",
+                    "The Inbox classifier model sums up LMS notices of 300+ characters. The original stays on the card.",
+                  )
+                : tr(
+                    "인박스 분류 모델을 설정하면 긴 LMS 알림을 요약해요.",
+                    "Set up an Inbox classifier model to summarize long LMS notices.",
+                  )}
+            </span>
+          </span>
+        </label>
+      </div>
       <ErrorText
         error={
           actionError ??
@@ -287,7 +316,8 @@ export function LmsSection() {
           prepare.error ??
           connect.error ??
           disconnect.error ??
-          courseNames.error
+          courseNames.error ??
+          summarySetting.error
         }
       />
     </section>

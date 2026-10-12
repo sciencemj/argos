@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   connect: { mutate: vi.fn(), isPending: false },
   disconnect: { mutate: vi.fn(), isPending: false },
   courseNames: { mutate: vi.fn(), isPending: false },
+  summary: { mutate: vi.fn(), isPending: false, error: null },
 }));
 vi.mock("../api", () => ({
   useLmsStatus: () => mocks.status,
@@ -25,6 +26,7 @@ vi.mock("../api", () => ({
   useConnectLms: () => mocks.connect,
   useDisconnectLms: () => mocks.disconnect,
   useLmsCourseNames: () => mocks.courseNames,
+  useLmsSummarySetting: () => mocks.summary,
 }));
 vi.mock("../desktop", () => ({ inDesktopApp: () => false }));
 
@@ -103,4 +105,22 @@ test("course name toggle shows original and channel names", () => {
   expect(toggle).toBeChecked();
   fireEvent.click(toggle);
   expect(mocks.courseNames.mutate).toHaveBeenCalledWith(false);
+});
+
+test("the summary toggle turns notice summaries off and says when no model is set", () => {
+  mocks.status.data = {
+    connected: true,
+    clean_course_names: true,
+    courses: [],
+    summary_min_chars: 300,
+    summary_available: false,
+  };
+  render(<LmsSection />);
+  expect(
+    screen.getByText("인박스 분류 모델을 설정하면 긴 LMS 알림을 요약해요."),
+  ).toBeInTheDocument();
+  const toggle = screen.getByRole("checkbox", { name: /알림 AI 요약/ });
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  expect(mocks.summary.mutate).toHaveBeenCalledWith(0);
 });

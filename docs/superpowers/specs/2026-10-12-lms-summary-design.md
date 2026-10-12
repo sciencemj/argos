@@ -24,20 +24,21 @@ LMS에서 온 알림(과제 외 항목)이 지금은 `제목\n\n원문\n\nURL` �
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | `message_id` | FK message.id, unique, CASCADE | 알림 메시지 |
-| `kind` | str(20) | `announcement`/`activity`/`conversation`/`attendance`/`material` |
+| `kind` | str(20), null | `announcement`/`activity`/`conversation`/`attendance`/`material`, 백필 행은 null |
 | `title` | str(500) | 원래 제목(escape 전) |
 | `text` | Text | 원문(escape 전) |
 | `url` | str(2000) | LMS 주소 |
 | `summary` | Text, null | `- ` 불릿 줄들 |
 | `summary_state` | str(10) | `pending`/`done`/`skipped`/`failed` |
-| `summary_hash` | str(64), null | 요약한 원문의 `lms_hash` |
+| `summary_hash` | str(64), null | 요약한 원문의 sha256 |
 
-`Message.body`는 계속 평문을 둔다: 요약이 있으면 `제목\n\n요약`, 없으면 지금 형식. 검색·에이전트 컨텍스트·MCP는
-body만 읽으면 되므로 바뀌지 않는다.
+`Message.body`는 계속 평문을 둔다: 요약이 있으면 `제목\n\n요약\n\nURL`, 없으면 지금 형식(`services.lms_body`).
+검색·에이전트 컨텍스트·MCP는 body만 읽으면 되므로 바뀌지 않는다.
 
-기존 알림 백필(마이그레이션): `source_link`가 `learningx`이고 `object_type == "message"`인 메시지의 body를
-`제목\n\n원문\n\nURL`로 나누고 Markdown escape를 되돌려 `lms_notice` 행을 만든다. kind는 `external_id`
-(`lms_key` 형식)에서 읽는다. 상태는 `skipped`. 형식이 맞지 않는 body는 건너뛴다(카드 없이 지금처럼 표시).
+기존 알림 백필(서버 시작 때 `services.backfill_lms_notices`, 멱등): `source_link`가 `learningx`이고
+`object_type == "message"`인데 notice가 없는 메시지의 body를 `제목\n\n원문\n\nURL`로 나누고 Markdown escape를
+되돌려 `lms_notice` 행을 만든다. `lms_key`가 해시라 종류를 알 수 없어 kind는 null(카드 배지 "LMS"). 상태는
+`skipped`. 형식이 맞지 않는 body는 건너뛴다(카드 없이 지금처럼 표시).
 
 ## 흐름
 
@@ -47,8 +48,8 @@ body만 읽으면 되므로 바뀌지 않는다.
    `pending`, 아니면 `skipped`. 원문이 바뀌면 summary를 비우고 다시 결정한다.
 3. `import_lms`는 결과에 새로 `pending`이 된 notice id 목록을 담아 돌려주고, API 핸들러(`lms.import_data`)가
    `app.state.lms_summaries` 워커 큐에 넣는다.
-4. 워커(`LmsSummaryWorker`)가 하나씩 꺼내 `Summarizer.summarize`를 부른다. 그사이 원문이 또 바뀌었으면
-   (`lms_hash` 불일치) 버린다. 성공하면 `services`의 `_update`로 notice의 `summary`·`summary_state=done`·
+4. 워커(`summarizer.LmsSummaries`)가 하나씩 꺼내 `Summarizer.summarize`를 부른다. 그사이 원문이 또 바뀌었으면
+   (`services.save_summary`가 원문을 비교) 버린다. 성공하면 `services`의 `_update`로 notice의 `summary`·`summary_state=done`·
    `summary_hash`와 메시지 body를 갱신한다(actor `system:lms`). 실패하면 `failed`.
 5. `failed`는 다음 `import_lms`에서 그 항목이 다시 오면(내용이 같아도) `pending`으로 되돌려 재시도한다.
 6. 서버 시작 시 워커 `start()`가 남은 `pending`을 큐에 넣는다. 종료 시 `stop()`이 태스크를 취소한다.
@@ -71,17 +72,18 @@ body만 읽으면 되므로 바뀌지 않는다.
 - `MessageOut.ref`에 `lms_notice: LmsNoticeOut | None`(`kind, title, text, url, summary, summary_state`).
   메시지 목록 조회에서 함께 읽는다. `make api-types` 실행.
 - `api.ts`의 `invalidateFor`에 `lms_notice` → 메시지 쿼리 무효화.
-- `cards.tsx`에 `LmsNoticeCard`. `feed.tsx`의 `MessageItem`은 `ref.lms_notice`가 있으면 body 대신 카드를 그린다.
+- `lmsNotice.tsx`에 `LmsNoticeCard`(훅 없는 단독 컴포넌트라 테스트하기 쉽게). `feed.tsx`의 `MessageItem`은 `ref.lms_notice`가 있으면 body 대신 카드를 그린다.
   - 헤더: 종류 배지(과제 외 5종의 한국어 이름, `tr()`로) + 제목. 과목 이름은 채널과 겹치므로 넣지 않는다.
   - 본문: `done`이면 요약 불릿, `pending`이면 원문 앞 3줄 + "요약 중…", `skipped`·`failed`면 원문 전체.
     모두 텍스트로 렌더링(Markdown 아님), 원문의 URL만 링크로.
   - 하단: 요약이 있을 때만 `원문 보기` 토글(펼침 상태는 저장하지 않음), `LMS에서 열기 ↗` 링크.
-  - 색은 `index.css` 토큰만. `docs/design/lms-notice.dc.html`(라이트/다크) 캔버스 추가.
+  - 색은 `index.css` 토큰만. `docs/design/LmsNotice.dc.html`·`LmsNoticeDark.dc.html` 캔버스 추가.
 
 ## 설정
 
-- `Settings.lms_summary_min_chars: int = 300`. 0이면 요약 끔. `OVERRIDABLE`에 추가해 설정 화면 LMS 섹션에서
-  바꾼다(숫자 입력, "요약 끄기"는 0).
+- `Settings.lms_summary_min_chars: int = 300`(env 기본값) 위에 `app_setting.lms_summary_min_chars`. "과목 이름 정리"와
+  같은 방식으로 LMS 설정의 "알림 AI 요약" 토글(켜면 300, 끄면 0), `PUT /api/v1/lms/summary`. `LmsStatus`에
+  `summary_min_chars`, `summary_available`(분류기 설정 여부).
 
 ## 오류 처리
 
