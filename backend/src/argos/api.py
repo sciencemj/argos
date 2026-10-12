@@ -1235,9 +1235,20 @@ async def create_agent(session: Session, config: Config, body: AgentIn) -> Agent
 
 
 @router.patch("/agents/{name}")
-async def update_agent(session: Session, config: Config, name: str, body: AgentIn) -> AgentOut:
+async def update_agent(
+    request: Request, session: Session, config: Config, name: str, body: AgentIn
+) -> AgentOut:
     agent = await _custom_agent(session, name)
-    return await _save_agent(session, config, body, agent.id)
+    saved = await _save_agent(session, config, body, agent.id)
+    await _reload_settings(request, session)  # a rename moves the morning digest's agent
+    return saved
+
+
+async def _reload_settings(request: Request, session: AsyncSession) -> None:
+    overrides = await services.get_settings_overrides(session)
+    request.app.state.settings = classifier.apply_overrides(
+        request.app.state.base_settings, overrides
+    )
 
 
 class AgentModelIn(BaseModel):
@@ -1257,8 +1268,9 @@ async def set_agent_model(
 
 
 @router.delete("/agents/{name}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent(session: Session, name: str) -> None:
+async def delete_agent(request: Request, session: Session, name: str) -> None:
     await services.delete_agent(session, (await _custom_agent(session, name)).id, USER)
+    await _reload_settings(request, session)  # the morning digest may have used it
 
 
 @router.get("/agents/{name}/export", response_class=Response)
@@ -2126,15 +2138,22 @@ async def get_notify_settings(request: Request, config: Config) -> NotifySetting
 async def put_notify_settings(
     request: Request, session: Session, body: NotifySettingsIn
 ) -> NotifySettingsOut:
+    # Check before writing anything: a refused request must leave every setting as it was.
+    agent_name = (body.morning_digest_agent or "").strip()
+    current = request.app.state.settings.morning_digest_agent
+    if (
+        body.morning_digest_agent is not None
+        and agent_name
+        and agent_name != current
+        and await services.find_agent(session, agent_name) is None
+    ):
+        raise services.InvalidError("등록되지 않은 에이전트예요")
     target = (body.hermes_target or "").strip() or None
     await services.set_setting(session, "notify_hermes_target", target, USER)
     await services.set_setting(session, "weekly_review_weekday", body.weekly_review_weekday, USER)
     await services.set_setting(session, "weekly_review_hour", body.weekly_review_hour, USER)
     if body.morning_digest_agent is not None:
-        name = body.morning_digest_agent.strip()
-        if name and await services.find_agent(session, name) is None:
-            raise services.InvalidError("등록되지 않은 에이전트예요")
-        await services.set_setting(session, "morning_digest_agent", name, USER)
+        await services.set_setting(session, "morning_digest_agent", agent_name, USER)
     if body.morning_digest_enabled is not None:
         await services.set_setting(
             session, "morning_digest_enabled", body.morning_digest_enabled, USER

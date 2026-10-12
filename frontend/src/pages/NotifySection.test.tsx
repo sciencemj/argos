@@ -86,3 +86,17 @@ test("send now asks for a digest", () => {
   fireEvent.click(screen.getByRole("button", { name: "지금 보내기" }));
   expect(mocks.send.mutate).toHaveBeenCalled();
 });
+
+test("an agent that is gone shows as deleted, and the default can be picked", () => {
+  mocks.settings.data = { ...mocks.settings.data, morning_digest_agent: "old" };
+  render(<NotifySection />);
+  const picker = screen.getByLabelText(
+    "아침 요약 에이전트",
+  ) as HTMLSelectElement;
+  expect(picker.value).toBe("old");
+  expect(screen.getByRole("option", { name: "old (삭제됨)" })).toBeTruthy();
+  fireEvent.change(picker, { target: { value: "" } });
+  expect(mocks.save.mutate).toHaveBeenLastCalledWith(
+    expect.objectContaining({ morning_digest_agent: "" }),
+  );
+});

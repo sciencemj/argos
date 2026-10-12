@@ -266,3 +266,105 @@ def test_send_now_does_not_block_the_morning_digest(app: TestClient) -> None:
     app.portal.call(state(app).notifier.digest.wait)  # type: ignore[union-attr]
     check(app, seoul(app, 8))
     assert ready_count(app) == 2
+
+
+def started_run(client: TestClient) -> str:
+    """Waits until the digest's agent run is going; returns its id."""
+    runner = state(client).runner
+    for _ in range(100):
+        if runner.running():
+            return runner.running()[0]
+        client.portal.call(asyncio.sleep, 0.02)  # type: ignore[union-attr]
+    raise AssertionError("the digest run never started")
+
+
+def no_fallback(client: TestClient) -> bool:
+    _root, *replies = digest_thread(client)
+    return all(m["author_type"] != "system" for m in replies)
+
+
+def test_shutdown_mid_digest_sends_nothing(app: TestClient) -> None:
+    hold = asyncio.Event()
+    state(app).runner.adapter_factory = fake_agents(hermes=FakeAgent("hermes", ["반"], hold=hold))
+    sent = sends(app)
+    notifier = state(app).notifier
+    app.portal.call(notifier.run, seoul(app, 7, 5))  # type: ignore[union-attr]
+    started_run(app)
+    app.portal.call(notifier.digest.stop)  # type: ignore[union-attr]
+    assert sent == [] and no_fallback(app)
+
+
+def test_stop_button_cancels_the_digest(app: TestClient) -> None:
+    hold = asyncio.Event()
+    state(app).runner.adapter_factory = fake_agents(hermes=FakeAgent("hermes", ["반"], hold=hold))
+    sent = sends(app)
+    notifier = state(app).notifier
+    app.portal.call(notifier.run, seoul(app, 7, 5))  # type: ignore[union-attr]
+    run_id = started_run(app)
+    assert app.post(f"/api/v1/runs/{run_id}/cancel").status_code == 202
+    app.portal.call(notifier.digest.wait)  # type: ignore[union-attr]
+    assert sent == [] and no_fallback(app)
+
+
+NOTIFY_BASE = {"hermes_target": None, "weekly_review_weekday": 6, "weekly_review_hour": 20}
+BRIEF: dict[str, Any] = {
+    "name": "brief",
+    "display_name": "브리핑",
+    "avatar": "☀",
+    "backend": "ollama",
+    "model": "qwen3",
+    "system_prompt": "짧게 쓴다.",
+    "tools": [],
+}
+
+
+def test_deleting_the_digest_agent_clears_the_choice(app: TestClient) -> None:
+    assert app.post("/api/v1/agents", json=BRIEF).status_code == 201
+    chosen = NOTIFY_BASE | {"morning_digest_agent": "brief"}
+    assert app.put("/api/v1/settings/notify", json=chosen).status_code == 200
+    assert app.delete("/api/v1/agents/brief").status_code == 204
+    refreshed = app.get("/api/v1/settings/notify").json()
+    assert refreshed["morning_digest_agent"] == ""
+    # The screen reloads these settings when agents change (invalidateFor "agent") and
+    # saves the rest as before.
+    again = NOTIFY_BASE | {"morning_digest_agent": "", "weekly_review_hour": 21}
+    saved = app.put("/api/v1/settings/notify", json=again)
+    assert saved.status_code == 200 and saved.json()["weekly_review_hour"] == 21
+
+
+def test_renaming_the_digest_agent_follows_it(app: TestClient) -> None:
+    assert app.post("/api/v1/agents", json=BRIEF).status_code == 201
+    app.put("/api/v1/settings/notify", json=NOTIFY_BASE | {"morning_digest_agent": "brief"})
+    assert app.patch("/api/v1/agents/brief", json={"name": "morning"}).status_code == 200
+    assert app.get("/api/v1/settings/notify").json()["morning_digest_agent"] == "morning"
+
+
+def test_unknown_agent_is_refused_before_anything_is_saved(app: TestClient) -> None:
+    bad = NOTIFY_BASE | {"hermes_target": "discord", "morning_digest_agent": "nobody"}
+    assert app.put("/api/v1/settings/notify", json=bad).status_code == 422
+
+    async def stored() -> Any:  # the database, not the settings held in memory
+        async with state(app).sessionmaker() as session:
+            return await services.get_setting(session, "notify_hermes_target")
+
+    assert app.portal.call(stored) is None  # type: ignore[union-attr]
+
+
+async def test_backfilled_lms_cards_are_not_news(session: AsyncSession, settings: Settings) -> None:
+    await lms(session, "a1", LONG)
+    notice = await session.scalar(select(LmsNotice))
+    assert notice is not None
+    notice.kind = None  # a card made by 15a's backfill for an old message
+    await session.commit()
+    data = await notify.morning_digest_data(session, NOW + timedelta(minutes=1), settings)
+    assert data["lms"] == []
+
+
+async def test_empty_day_digest_list_follows_the_language(
+    session: AsyncSession, settings: Settings
+) -> None:
+    data = await notify.morning_digest_data(session, NOW, settings)
+    english = notify.digest_markdown(data, None, "en")
+    assert english == "Nothing scheduled or due today."
+    korean = notify.digest_markdown(data, None, "ko")
+    assert korean == "오늘은 일정도 마감도 없어요."

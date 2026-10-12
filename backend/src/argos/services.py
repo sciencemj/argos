@@ -2033,7 +2033,11 @@ async def update_agent(
     if agent.is_builtin:
         raise ConflictError("기본 에이전트는 바꿀 수 없어요")
     changes = await _check_agent_fields(session, changes, known_tools, agent_id=agent.id)
-    return await _update(session, agent, changes, actor)
+    old_name = agent.name
+    agent = await _update(session, agent, changes, actor)
+    if agent.name != old_name:
+        await follow_digest_agent(session, old_name, agent.name, actor)
+    return agent
 
 
 async def set_agent_model(
@@ -2063,7 +2067,15 @@ async def delete_agent(session: AsyncSession, agent_id: str, actor: str) -> None
             await delete_channel(session, channel.id, actor, force=True)
         else:
             await _update(session, channel, {"default_agent_id": None}, actor)
+    await follow_digest_agent(session, agent.name, None, actor)
     await _delete(session, agent, actor)
+
+
+async def follow_digest_agent(session: AsyncSession, old: str, new: str | None, actor: str) -> None:
+    """The morning digest's agent follows a rename; a deleted one falls back to the
+    default agent (an empty setting). Callers reload the app settings."""
+    if await get_setting(session, "morning_digest_agent") == old:
+        await set_setting(session, "morning_digest_agent", new or "", actor)
 
 
 async def set_agent_channels(

@@ -140,7 +140,8 @@ export function invalidateFor(
     routine_check: [["routines"]],
     channel: [["channels"], ["tasks"], ["notes"], ["materials"], ["lms"]],
     note_ref: [["notes"], ["settings", "vault"]],
-    agent: [["agents"], ["channels"]],
+    // A deleted or renamed agent also moves the morning digest's choice.
+    agent: [["agents"], ["channels"], ["settings", "notify"]],
     debate: [["debates"], ...feeds],
     lms_notice: feeds, // the card behind an LMS message (its summary arrives later)
     notification: [["notifications"]],

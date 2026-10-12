@@ -755,7 +755,12 @@ async def morning_digest_data(
     rows = await session.execute(
         select(LmsNotice, Message.channel_id)
         .join(Message, Message.id == LmsNotice.message_id)
-        .where(LmsNotice.created_at >= since, LmsNotice.created_at <= now)
+        .where(
+            LmsNotice.created_at >= since,
+            LmsNotice.created_at <= now,
+            # Cards the 15a backfill made for old messages carry no kind: not news.
+            LmsNotice.kind.is_not(None),
+        )
     )
     for notice, channel_id in rows.tuples():
         summary = notice.summary if notice.summary_state == "done" else None
@@ -821,7 +826,8 @@ def digest_prompt(data: dict[str, Any], language: str) -> str:
 
 
 def digest_markdown(data: dict[str, Any], reason: str | None, language: str) -> str:
-    """The digest without an agent: the same data as a plain list."""
+    """The digest without an agent: the same data as a plain list, in the user's
+    language, leaving out what is empty."""
     en = language == "en"
     lines: list[str] = []
     if reason:
@@ -831,7 +837,22 @@ def digest_markdown(data: dict[str, Any], reason: str | None, language: str) -> 
             else f"AI 요약을 만들지 못했어요 ({reason})"
         )
         lines += [failed, ""]
-    lines.append(briefing_markdown(data))
+    today: list[str] = []
+    for e in cast(list[dict[str, Any]], data["events"]):
+        at = ("All day" if en else "종일") if e["all_day"] else str(e["starts_at"] or "")[11:16]
+        where = f" (#{e['channel']})" if e["channel"] else ""
+        today.append(f"- {at} {e['title']}{where}")
+    for t in cast(list[dict[str, Any]], data["due_tasks"]):
+        due = str(t["due_at"] or "")[5:16].replace("T", " ")
+        late = (" (overdue)" if en else " (지남)") if t["overdue"] else ""
+        today.append(f"- {'Due' if en else '마감'} {due} {t['title']}{late}")
+    for r in cast(list[dict[str, Any]], data["routines"]):
+        today.append(f"- [{'x' if r['done'] else ' '}] {r['title']}")
+    if data.get("open_inbox"):
+        count = data["open_inbox"]
+        today.append(f"- {count} in the Inbox" if en else f"- 인박스 {count}개")
+    if today:
+        lines += ["## Today" if en else "## 오늘", *today]
     news = cast(list[dict[str, Any]], data.get("lms") or [])
     if news:
         lines += ["", "## New from the LMS" if en else "## 새 LMS 소식"]
@@ -853,7 +874,9 @@ def digest_markdown(data: dict[str, Any], reason: str | None, language: str) -> 
         tidy.append(f"{count} Inbox items waiting" if en else f"오래된 인박스 {count}개")
     if tidy:
         lines += ["", "## To tidy up" if en else "## 챙길 것", *(f"- {t}" for t in tidy)]
-    return "\n".join(lines)
+    if not (today or news or tidy):
+        lines.append("Nothing scheduled or due today." if en else "오늘은 일정도 마감도 없어요.")
+    return "\n".join(lines).strip()
 
 
 DIGEST_LATEST_HOUR = 12  # a "morning" digest that would land after noon is skipped
@@ -949,15 +972,25 @@ class MorningDigest:
                         session, agent=agent, channel_id=root.channel_id, trigger=root,
                         reply_thread_root_id=root_id, actor="system", kind="digest",
                     )  # fmt: skip
+                current = asyncio.current_task()
+                assert current is not None
+                # The stop button and shutdown cancel this task like a chat run.
+                self._runner.track(run.id, cast(asyncio.Task[None], current))
                 await self._runner.run_turn(
                     run.id, agent, reply.id,
                     [Turn("user", digest_prompt(data, config.language))],
                     "Morning digest" if en else "아침 요약",
                     f"morning-{data['date']}", no_tools=True,
                 )  # fmt: skip
+                # The runner ends a cancelled run quietly; a stop or a restart is not a
+                # failure to report, so no fallback and nothing to the messenger.
+                if current.cancelling():
+                    raise asyncio.CancelledError
                 async with self._sessionmaker() as session:
                     finished = await services.get_run(session, run.id)
                     answer = (await services.get_message(session, reply.id)).body.strip()
+                if finished.status == RunStatus.CANCELLED:
+                    return
                 if finished.status == RunStatus.DONE and answer:
                     text = answer
                 else:

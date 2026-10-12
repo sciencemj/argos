@@ -310,6 +310,12 @@ class Runner:
     def running(self) -> list[str]:
         return list(self._tasks)
 
+    def track(self, run_id: str, task: asyncio.Task[None]) -> None:
+        """A run driven from elsewhere (the morning digest): the stop button and shutdown
+        cancel `task` like the runner's own."""
+        self._tasks[run_id] = task
+        task.add_done_callback(lambda _t: self._tasks.pop(run_id, None))
+
     async def respond(
         self, session: AsyncSession, trigger: Message, agents: list[Agent]
     ) -> list[str]:

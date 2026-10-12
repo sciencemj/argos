@@ -241,6 +241,15 @@ export function NotifySection() {
             onChange={(e) => change({ morning_digest_agent: e.target.value })}
           >
             <option value="">{tr("기본 에이전트", "Default agent")}</option>
+            {agents.data &&
+              data.morning_digest_agent &&
+              !agents.data.some(
+                (a) => a.name === data.morning_digest_agent,
+              ) && (
+                <option value={data.morning_digest_agent}>
+                  {data.morning_digest_agent} {tr("(삭제됨)", "(deleted)")}
+                </option>
+              )}
             {(agents.data ?? []).map((a) => (
               <option key={a.name} value={a.name}>
                 {a.display_name}
