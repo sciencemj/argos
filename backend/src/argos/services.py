@@ -8,7 +8,7 @@ import re
 import secrets
 import tomllib
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -43,12 +43,14 @@ from argos.models import (
     Event,
     InboxItem,
     InboxStatus,
+    LmsNotice,
     Message,
     Record,
     Routine,
     RoutineCheck,
     RunStatus,
     SourceLink,
+    SummaryState,
     Task,
     TaskStatus,
     new_id,
@@ -225,6 +227,176 @@ def lms_hash(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+LMS_ESCAPE = r"([\\`*_{}\[\]<>#|!~])"
+
+
+def _lms_escape(value: str) -> str:
+    return re.sub(LMS_ESCAPE, r"\\\1", value)
+
+
+def lms_body(title: str, text: str, url: str, summary: str | None = None) -> str:
+    """The message body behind an LMS card: what search, agents and MCP read.
+    Markdown punctuation is escaped so LMS text stays text in Argos' renderer."""
+    middle = summary if summary is not None else _lms_escape(text)
+    return f"{_lms_escape(title)}\n\n{middle}\n\n{url}"
+
+
+def split_lms_body(body: str) -> tuple[str, str, str] | None:
+    """Undo lms_body (without a summary) for messages imported before lms_notice."""
+    parts = body.split("\n\n")
+    if len(parts) < 3 or not parts[-1].startswith(("http://", "https://")):
+        return None
+
+    def plain(value: str) -> str:
+        return re.sub(r"\\" + LMS_ESCAPE, r"\1", value)
+
+    return plain(parts[0]), plain("\n\n".join(parts[1:-1])), parts[-1]
+
+
+def summary_state(text: str, min_chars: int) -> SummaryState:
+    return "pending" if min_chars > 0 and len(text.strip()) >= min_chars else "skipped"
+
+
+async def lms_summary_min_chars(session: AsyncSession, default: int) -> int:
+    value = await get_setting(session, "lms_summary_min_chars")
+    return default if value is None else int(value)
+
+
+async def set_lms_summary_min_chars(session: AsyncSession, value: int, actor: str) -> None:
+    if value < 0:
+        raise InvalidError("요약 기준 글자 수는 0 이상이어야 해요")
+    await set_setting(session, "lms_summary_min_chars", value, actor)
+
+
+async def pending_summaries(session: AsyncSession) -> list[str]:
+    return list(
+        (
+            await session.scalars(
+                select(LmsNotice.id)
+                .where(LmsNotice.summary_state == "pending")
+                .order_by(LmsNotice.created_at)
+            )
+        ).all()
+    )
+
+
+async def save_summary(session: AsyncSession, notice_id: str, text: str, summary: str) -> bool:
+    """False when the notice changed while it was being summarized: that summary is stale."""
+    notice = await session.get(LmsNotice, notice_id)
+    if notice is None:
+        return False
+    await session.refresh(notice)
+    if notice.summary_state != "pending" or notice.text != text:
+        return False
+    message = await _get(session, Message, notice.message_id)
+    await _update(
+        session, message, {"body": lms_body(notice.title, text, notice.url, summary)}, "system:lms"
+    )
+    await _update(
+        session,
+        notice,
+        {
+            "summary": summary,
+            "summary_state": "done",
+            "summary_hash": hashlib.sha256(text.encode()).hexdigest(),
+        },
+        "system:lms",
+    )
+    return True
+
+
+async def fail_summary(session: AsyncSession, notice_id: str, text: str) -> None:
+    notice = await session.get(LmsNotice, notice_id)
+    if notice is None:
+        return
+    await session.refresh(notice)
+    if notice.summary_state == "pending" and notice.text == text:
+        await _update(session, notice, {"summary_state": "failed"}, "system:lms")
+
+
+async def backfill_lms_notices(session: AsyncSession) -> int:
+    """Cards for LMS messages imported before Phase 15a. Idempotent; never summarizes.
+    Display rows for messages already on screen, so no activity log or events."""
+    rows = (
+        await session.scalars(
+            select(Message)
+            .join(
+                SourceLink,
+                (SourceLink.object_id == Message.id)
+                & (SourceLink.source == "learningx")
+                & (SourceLink.object_type == "message"),
+            )
+            .outerjoin(LmsNotice, LmsNotice.message_id == Message.id)
+            .where(LmsNotice.id.is_(None))
+        )
+    ).all()
+    made = 0
+    for message in rows:
+        if (parts := split_lms_body(message.body)) is None:
+            continue
+        title, text, url = parts
+        session.add(
+            LmsNotice(
+                message_id=message.id,
+                kind=None,
+                title=title[:500],
+                text=text,
+                url=url[:2000],
+                summary_state="skipped",
+            )
+        )
+        made += 1
+    await session.commit()
+    return made
+
+
+async def _sync_lms_notice(
+    session: AsyncSession,
+    message: Message,
+    item: dict[str, Any],
+    min_chars: int,
+    changes: list[tuple[str, Record, dict[str, Any]]],
+    record: Callable[[Record], Awaitable[None]],
+) -> str | None:
+    """Keeps the card row in step with the LMS item; returns its id when it needs a
+    summary. A failed summary is tried again whenever the item comes back."""
+    fields: dict[str, Any] = {
+        "kind": item["kind"],
+        "title": item["title"][:500],
+        "text": item["text"],
+        "url": item["url"],
+    }
+    state = summary_state(item["text"], min_chars)
+    notice = await session.scalar(select(LmsNotice).where(LmsNotice.message_id == message.id))
+    if notice is None:
+        notice = LmsNotice(message_id=message.id, summary_state=state, **fields)
+        await record(notice)
+        return notice.id if state == "pending" else None
+    before = snapshot(notice)
+    if notice.text != item["text"]:
+        fields |= {"summary": None, "summary_hash": None, "summary_state": state}
+    elif notice.summary_state == "failed" and state == "pending":
+        fields["summary_state"] = "pending"
+    for key, value in fields.items():
+        setattr(notice, key, value)
+    await session.flush()
+    after = snapshot(notice)
+    diff = {k for k in after if after[k] != before[k] and k != "updated_at"}
+    if diff:
+        _log(
+            session,
+            notice,
+            "updated",
+            "system:lms",
+            before={k: before[k] for k in diff},
+            after={k: after[k] for k in diff},
+        )
+        changes.append(("object.updated", notice, after))
+    # Back in the queue when it newly waits (failed → pending) or its text changed.
+    requeue = notice.summary_state == "pending" and ("summary_state" in diff or "text" in diff)
+    return notice.id if requeue else None
+
+
 async def lms_source(session: AsyncSession, external_id: str) -> SourceLink | None:
     return await session.scalar(
         select(SourceLink).where(
@@ -344,15 +516,18 @@ async def import_lms(
     account_id: str,
     courses: Sequence[dict[str, Any]],
     items: Sequence[dict[str, Any]],
-) -> dict[str, int]:
+    summary_min_chars: int = 0,
+) -> dict[str, Any]:
     """Commit an extension batch once; absent items never mean remote deletion.
 
     Remote edits refresh titles, descriptions and dates, preserving local task status
     and ordering. LMS bodies are plain text, not executable HTML or Markdown.
+    Notices of at least `summary_min_chars` (0: none) come back under "summarize".
     """
     actor = "system:lms"
     now = utcnow()
     counts = {"created": 0, "updated": 0, "unchanged": 0}
+    summarize: list[str] = []
     changes: list[tuple[str, Record, dict[str, Any]]] = []
 
     async def record(obj: Record) -> None:
@@ -410,10 +585,7 @@ async def import_lms(
         link = await link_for(external_id)
         model = Task if item["kind"] == "assignment" else Message
         obj = await session.get(model, link.object_id) if link else None
-        # Escape Markdown punctuation so LMS text stays text in Argos' renderer.
-        plain = re.sub(r"([\\`*_{}\[\]<>#|!~])", r"\\\1", item["text"])
-        title = re.sub(r"([\\`*_{}\[\]<>#|!~])", r"\\\1", item["title"])
-        body = f"{title}\n\n{plain}\n\n{item['url']}"
+        body = lms_body(item["title"], item["text"], item["url"])
         fields: dict[str, Any] = (
             {"title": item["title"], "description": body, "due_at": item["due_at"]}
             if model is Task
@@ -464,6 +636,12 @@ async def import_lms(
         link.last_synced_at = now
         link.local_updated_at = obj.updated_at
         link.container = item["url"]
+        if isinstance(obj, Message) and (
+            notice_id := await _sync_lms_notice(
+                session, obj, item, summary_min_chars, changes, record
+            )
+        ):
+            summarize.append(notice_id)
     # Bookkeeping belongs to this same transaction, including the last successful sync.
     setting = await session.scalar(select(AppSetting).where(AppSetting.key == "lms_last_sync"))
     if setting is None:
@@ -473,7 +651,7 @@ async def import_lms(
     await session.commit()
     for type_, obj, fields in changes:
         await _publish(type_, obj, fields)
-    return counts
+    return {**counts, "summarize": summarize}
 
 
 async def lms_material_needed(
