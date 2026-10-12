@@ -23,7 +23,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/be817be5-32c7-442e-8ed3-124973faf8ec
+https://github.com/user-attachments/assets/e36ed35e-504d-4c7c-a37b-80cc5cc38346
 
 Latest intro video (81 s): [English](docs/promo/argos-intro.en.mp4) · [한국어](docs/promo/argos-intro.ko.mp4)
 

@@ -25,7 +25,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/ad35eda4-b87a-409b-872d-1024cefb6cea
+https://github.com/user-attachments/assets/9ffcdd54-7323-4b26-95ae-ca2dd97151c5
 
 최신 소개 영상(81초): [한국어](docs/promo/argos-intro.ko.mp4) · [English](docs/promo/argos-intro.en.mp4)
 
