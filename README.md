@@ -25,6 +25,8 @@
 
 https://github.com/user-attachments/assets/be817be5-32c7-442e-8ed3-124973faf8ec
 
+Latest intro video (81 s): [English](docs/promo/argos-intro.en.mp4) · [한국어](docs/promo/argos-intro.ko.mp4)
+
 Argos gives every course and project its own channel with a chat-style feed, a kanban board and a
 calendar. Write things down the way you would text a friend — *"quiz on Friday"*, *"send the API draft
 before the meeting"* — and Argos files them as tasks, events or notes. Your AI agents (Hermes, Claude
@@ -44,15 +46,22 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 - **Feed first**: plain messages land in the inbox and are sorted by a local model (Ollama) or Hermes into
   tasks, events and notes; slash commands (`/task`, `/event`, `/note`, `/ask`, `/job`, `/debate`) skip the guessing.
 - **Kanban** with WIP warnings and drag and drop, **calendar** (week and month) with recurring events,
-  **Today** with deadlines, schedule, inbox and daily routines.
+  **Today** with weekly progress, the next 7 days of events and deadlines, a month calendar, the inbox
+  and daily routines.
 - **Obsidian vault**: full-text search, notes per channel, checkbox tasks synced both ways (Tasks and
   Dataview syntax), with backups before every edit.
 - **Calendars**: an ICS feed for any calendar app and two-way iCloud (CalDAV) sync.
+- **School LMS (LearningX)**: a browser extension brings in assignments, announcements and materials.
+  Assignments become tasks with their deadline, and long notices show up in the feed as cards summed up by AI
+  ([setup](docs/lms-extension.md)).
 - **Notices and weekly review**: deadline and stale-inbox notices in the app, as macOS notifications
   or through Hermes to your messenger; weekly reviews are available on the Review page.
+- **Morning digest**: at the hour you pick, the agent you choose gathers today's events, deadlines and new
+  LMS posts into a briefing in a #today thread and sends the same text to your messenger. Reply to keep talking.
 
 **Work with agents**
 - **Hermes, Claude Code, Codex and local models** in threads and 1:1 chats; `@mention` any of them.
+- **Attachments**: paste, drop or pick images, PDFs and text files, and agents read them.
 - **Coding jobs**: `/job` on a card runs Claude Code or Codex in an allowed folder and reports back on
   the card (todo → in progress → review).
 - **Custom agents** with their own prompt, model and tool whitelist, importable as YAML, and
@@ -64,6 +73,8 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 **Desktop app**
 - Menu bar app: closing the window keeps sync, jobs and notices running.
 - **Quick capture** anywhere with <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>, straight into the inbox.
+- **Open on your phone**: with Tailscale on this Mac, one switch in Settings opens Argos on phones and iPads
+  in your tailnet (PWA). Only Tailscale accounts you allow get in, and it never opens outside your tailnet.
 - **First-run setup** that finds your agent tools and connects them (MCP + an `argos` skill) in one click.
 - **Korean and English interface**: choose a language during setup or in Settings. Argos uses your device's preferred language on first launch and remembers your choice.
 - **Automatic updates**, signed and checked against the public key built into the app.
