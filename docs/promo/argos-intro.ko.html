@@ -184,6 +184,98 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .menu div .h{color:var(--w-hash);margin-right:4px}
 .menu .hl{background:var(--w-inset)}
 .menu small{display:block;font-size:10.5px;color:var(--w-meta);padding:4px 9px 2px}
+.thead p{margin:5px 0 0;font-size:12.5px;color:var(--w-text2)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.kpi{background:var(--w-card);border:1px solid var(--w-soft);border-radius:15px;padding:10px 12px;display:flex;gap:11px;align-items:center;min-width:0}
+.kpi .ic{width:34px;height:34px;border-radius:10px;background:var(--w-inset);display:grid;place-items:center;flex:none}
+.kpi .ic svg{width:16px;height:16px;stroke:var(--w-text2);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.kpi small{display:block;font-size:10.5px;color:var(--w-meta)}
+.kpi b,.kpi em{display:block;position:relative;white-space:nowrap}
+.kpi b{font-size:24px;font-weight:500;line-height:1.15;height:28px;font-variant-numeric:tabular-nums}
+.kpi em{font-style:normal;font-size:10.5px;color:var(--w-meta);height:14px}
+.kpi em.red{color:var(--w-danger)}
+.kpi b span,.kpi em span{position:absolute;left:0;top:0}
+.trow{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(0,1fr);gap:10px;margin-bottom:10px}
+.brow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:1;min-height:0}
+.legend{display:flex;gap:10px;font-size:10.5px;color:var(--w-meta);align-items:center}
+.legend span{display:flex;align-items:center;gap:4px}
+.tl7 .hdr{display:grid;grid-template-columns:92px repeat(7,minmax(0,1fr));font:10px var(--mono);color:var(--w-meta);padding:2px 0 6px;border-bottom:1px solid var(--w-soft)}
+.tl7 .hdr .on{color:var(--w-text);font-weight:600}
+.tl7 .lane{display:grid;grid-template-columns:92px 1fr;border-bottom:1px solid var(--w-soft);height:44px}
+.tl7 .lane>b{font-size:12px;font-weight:500;align-self:center}
+.tl7 .lane>b .h{color:var(--w-hash);font-weight:400;margin-right:3px}
+.track{position:relative;background-image:linear-gradient(to right,var(--w-soft) 1px,transparent 1px);background-size:calc(100% / 7) 100%}
+.track .shade{position:absolute;left:0;top:0;bottom:0;width:calc(100% / 7);background:var(--w-inset)}
+.track .nowv{position:absolute;top:0;bottom:0;width:1.5px;background:var(--w-text);transform-origin:50% 0}
+.i7{position:absolute;display:flex;align-items:center;gap:5px;font-size:10.5px;white-space:nowrap;color:var(--w-text2)}
+.pb{width:13px;height:6px;border-radius:3px;background:var(--w-meta);opacity:.75;flex:none}
+.dia{width:7px;height:7px;background:var(--w-text);transform:rotate(45deg);flex:none}
+.dia.hot{background:var(--w-danger)}
+.mcal h3{justify-content:center;gap:0}
+.mcal h3 .nav{color:var(--w-meta);font-size:13px;position:absolute;top:14px}
+.mgrid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:3px;font-size:11px;text-align:center}
+.mgrid .dw{font-size:9.5px;color:var(--w-meta);height:18px}
+.mgrid span{height:24px;width:24px;margin:0 auto;display:grid;place-items:center;position:relative;border-radius:50%}
+.mgrid .mut{color:var(--w-hash)}
+.mgrid .dot::after{content:"";position:absolute;bottom:-1px;left:50%;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--w-meta)}
+.mgrid .td{background:var(--w-text);color:var(--w-page);font-weight:600}
+.mgrid .sel{box-shadow:inset 0 0 0 1.5px var(--w-text)}
+.nowbox{position:relative;flex:1}
+.nowbox>div{position:absolute;inset:0}
+.clock{font:500 38px var(--mono);letter-spacing:-.02em;line-height:1.1}
+.clock i{font-style:normal}
+.nowbox small{display:block;font-size:11.5px;color:var(--w-text2);margin:3px 0 10px}
+.hrs{background:var(--w-inset);border-radius:10px;padding:6px 8px;font:10px var(--mono);color:var(--w-meta);display:grid;grid-template-columns:22px 1fr;row-gap:9px;align-items:center}
+.hrs i{height:1.5px;background:var(--w-text);position:relative}
+.hrs i::before{content:"";position:absolute;left:0;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--w-text)}
+.hrs .blk{background:var(--w-card);border:1px solid var(--w-soft);border-radius:6px;padding:2px 6px;font:11px var(--sans);color:var(--w-text)}
+.sday{display:flex;flex-direction:column;gap:6px}
+.sday div{display:grid;grid-template-columns:40px 1fr;gap:6px;align-items:center;background:var(--w-inset);border-radius:9px;padding:7px 9px;font-size:12px}
+.sday time{font:10.5px var(--mono);color:var(--w-meta)}
+.sday u{text-decoration:none;font-size:11.5px;color:var(--w-text2);text-align:right;display:block;margin-top:2px}
+.chk{position:relative}
+.chk b{position:absolute;inset:-1px;border-radius:50%;background:var(--w-text);color:var(--w-page);display:grid;place-items:center;font-size:11px;opacity:0}
+.dl .strike{position:relative}
+.dl .strike::after{content:"";position:absolute;left:0;top:55%;height:1.5px;width:var(--sw,0%);background:var(--w-meta)}
+
+/* attachments */
+.clip-btn{width:28px;height:28px;border-radius:50%;border:1px solid var(--w-soft);display:grid;place-items:center;color:var(--w-text2)}
+.clip-btn svg,.fic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.atrow{height:0;overflow:hidden}
+.atch{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--w-soft);background:var(--w-inset);border-radius:12px;padding:4px 10px 4px 5px;font-size:12px;margin-bottom:8px}
+.atch small{display:block;font-size:10.5px;color:var(--w-meta)}
+.fic{width:28px;height:28px;border-radius:8px;background:var(--w-card);border:1px solid var(--w-soft);display:grid;place-items:center;color:var(--w-danger);font:700 8.5px var(--mono)}
+.fcard{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--w-soft);background:var(--w-card);border-radius:14px;padding:7px 12px 7px 8px;font-size:12.5px;margin-top:7px}
+.fcard small{font:10.5px var(--mono);color:var(--w-meta);margin-left:14px}
+.drop{position:absolute;inset:0;border-radius:15px;border:1.5px dashed var(--w-cta);background:color-mix(in srgb,var(--w-cta) 12%,var(--w-card));display:grid;place-items:center;font-size:13px;font-weight:600;color:var(--w-text);opacity:0;visibility:hidden;z-index:5}
+.comp{position:relative}
+.flyfile{position:absolute;left:0;top:0;z-index:55;display:flex;align-items:center;gap:9px;background:#fff;color:#181825;border-radius:12px;padding:8px 12px 8px 8px;font-size:12.5px;font-weight:600;box-shadow:0 20px 40px -14px rgba(0,0,0,.55);opacity:0;visibility:hidden}
+.flyfile .fic{background:#f7ecee;border-color:transparent;color:#a4545f}
+
+/* LMS notices */
+.av.sys{background:var(--w-text);color:var(--w-page)}
+.ncard{max-width:600px;margin-top:6px;padding:12px 16px;border-radius:20px;display:flex;flex-direction:column}
+.ncard>*+*{margin-top:8px}
+.ncard>.rev{margin-top:0}
+.ncard>.rev>*{margin-top:8px}
+.kind{border-radius:999px;background:var(--w-inset);padding:1px 8px;font-size:10.5px;font-weight:500;color:var(--w-text2);flex:none}
+.nh{display:flex;gap:8px;align-items:baseline}
+.nh b{font-weight:500;font-size:13.5px}
+.ncard ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px;font-size:13px;line-height:1.5}
+.nraw{font-size:13px;color:var(--w-text2);line-height:1.55;margin:0}
+.npend{font-size:11.5px;color:var(--w-meta);display:flex;gap:8px;align-items:center;margin-top:4px}
+.npend .loading{width:90px;margin:0}
+.norig{border-top:1px solid var(--w-soft);padding-top:8px;font-size:12px;color:var(--w-meta);line-height:1.6}
+.nfoot{display:flex;gap:14px;font-size:11.5px;color:var(--w-text2);align-items:center}
+.nfoot .r{margin-left:auto}
+.nfoot .tg{position:relative;width:80px;height:16px}
+.nfoot .tg span{position:absolute;left:0;top:0;white-space:nowrap}
+.ntask{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--w-text2);margin-top:6px}
+.syncb{display:flex;align-items:center;gap:10px;align-self:center;border:1px solid var(--w-soft);background:var(--w-card);border-radius:999px;padding:6px 14px;font-size:12px;margin:4px 0 8px;position:relative;min-width:330px;height:32px}
+.syncb .pr{width:70px;height:4px;border-radius:2px;background:var(--w-soft);overflow:hidden;position:relative;flex:none}
+.syncb .pr b{position:absolute;inset:0;background:var(--w-text);transform-origin:0 50%;transform:scaleX(0)}
+.syncb .st{position:relative;flex:1;height:16px}
+.syncb .st span{position:absolute;left:0;top:0;white-space:nowrap}
 
 /* channel header / feed */
 .chead{display:flex;align-items:center;justify-content:space-between}
@@ -195,6 +287,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .tab{padding:5px 13px;border-radius:8px;font-size:12.5px;color:var(--w-text2)}
 .tab.on{background:var(--w-card);color:var(--w-text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .feed{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+.feed>*{flex-shrink:0}
 .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;padding:8px 0}
 .msg>.av{width:30px;height:30px;font-size:11px}
 .who{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
@@ -306,6 +399,14 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .pit .t{display:block;font:9.5px var(--mono);color:var(--w-meta);margin-bottom:1px}
 .pbar{position:absolute;left:14px;right:14px;bottom:12px;display:flex;justify-content:center}
 .pbar span{font:500 9.5px var(--mono);color:var(--w-meta);border:1px solid var(--w-soft);border-radius:999px;padding:3px 9px;background:var(--w-card)}
+.ptop{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--w-text2);margin:-4px 0 12px}
+.ptop b{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--w-text)}
+.ptop b svg{width:15px;height:15px;background:#000;border-radius:4px;padding:1px}
+.pk{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.pk div{background:var(--w-card);border:1px solid var(--w-soft);border-radius:11px;padding:6px 9px}
+.pk small{display:block;font-size:9px;color:var(--w-meta)}
+.pk b{font-size:18px;font-weight:500}
+.pk b.red{color:var(--w-danger)}
 
 /* outro */
 #pill{position:absolute;left:960px;top:540px;width:440px;height:128px;border-radius:64px;background:#000;display:grid;place-items:center;opacity:0;visibility:hidden;box-shadow:0 40px 80px -30px rgba(0,0,0,.5)}
@@ -350,19 +451,23 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
         <div class="chip" style="left:760px;top:130px"><i style="background:#6e5fa8">H</i>Hermes</div>
         <div class="chip" style="left:1060px;top:860px"><i style="background:#3f6fa6">Cx</i>Codex</div>
         <div class="chip" style="left:560px;top:880px"><i style="background:#181825">⌘</i>빠른 입력</div>
+        <div class="chip" style="left:90px;top:460px"><i style="background:#1f7a8c">LX</i>LearningX LMS</div>
+        <div class="chip" style="left:1580px;top:480px"><i style="background:#181825">Ts</i>폰 · Tailscale</div>
       </div>
 
       <!-- captions -->
-      <div class="cap" id="cap1"><div class="eb">01 — 오늘</div><h2><span class="ln"><span>오늘 챙길 것을</span></span><span class="ln"><span><em>한눈에.</em></span></span></h2><p>일정, 마감, 인박스, 승인 대기를 첫 화면에 모았어요. 정리 안 된 메모는 채널만 고르면 할 일이 돼요.</p></div>
+      <div class="cap" id="cap1"><div class="eb">01 — 오늘</div><h2><span class="ln"><span>오늘 챙길 것을</span></span><span class="ln"><span><em>한눈에.</em></span></span></h2><p>이번 주 진행, 앞으로 7일의 일정과 마감, 인박스를 첫 화면에. 달력에서 날짜를 누르면 그날 할 일이 보여요.</p></div>
       <div class="cap" id="cap2"><div class="eb">02 — 채팅으로 적기</div><h2><span class="ln"><span>그냥 쓰면</span></span><span class="ln"><span><em>알아서</em> 정리돼요.</span></span></h2><p>명령어 없이 쓴 말도 AI가 할 일·일정·노트로 나누고, 마감과 채널까지 채워요.</p></div>
-      <div class="cap" id="cap3"><div class="eb">03 — 에이전트</div><h2><span class="ln"><span>여러 에이전트에게</span></span><span class="ln"><span><em>한 번에</em> 물어봐요.</span></span></h2><p>Hermes, Claude, Codex, 로컬 모델. @멘션 하나로 부르면 답이 실시간으로 흘러와요.</p></div>
+      <div class="cap" id="cap3"><div class="eb">03 — 에이전트</div><h2><span class="ln"><span>여러 에이전트에게</span></span><span class="ln"><span><em>한 번에</em> 물어봐요.</span></span></h2><p>Hermes, Claude, Codex, 로컬 모델. 슬라이드·스크린샷을 붙여 @멘션하면 답이 실시간으로 흘러와요.</p></div>
       <div class="cap" id="cap4"><div class="eb">04 — 칸반과 잡</div><h2><span class="ln"><span>카드는 옮기고,</span></span><span class="ln"><span>일은 <em>맡겨요.</em></span></span></h2><p>/job 한 줄이면 에이전트가 작업 폴더에서 일하고, 카드가 진행 중에서 검토로 스스로 옮겨가요.</p></div>
-      <div class="cap" id="cap5"><div class="eb">05 — 연결</div><h2><span class="ln"><span>캘린더, 옵시디언,</span></span><span class="ln"><span>그리고 <em>폰까지.</em></span></span></h2><p>캘린더와 볼트를 읽고 쓰고, ⌘⇧Space로 어디서든 적어요. 지우는 일은 항상 승인한 뒤에.</p></div>
+      <div class="cap" id="cap5"><div class="eb">05 — 학교 LMS</div><h2><span class="ln"><span>긴 공지는</span></span><span class="ln"><span><em>짧게</em> 읽어요.</span></span></h2><p>LearningX에서 과제·공지·자료를 가져와요. 과제는 마감과 함께 할 일이 되고, 긴 공지는 AI가 두세 줄로 요약해요.</p></div>
+      <div class="cap" id="cap6"><div class="eb">06 — 연결</div><h2><span class="ln"><span>캘린더, 옵시디언,</span></span><span class="ln"><span>그리고 <em>폰까지.</em></span></span></h2><p>캘린더와 볼트를 읽고 쓰고, ⌘⇧Space로 어디서든 적어요. Tailscale로 폰에서 열고, 지우는 일은 항상 승인한 뒤에.</p></div>
 
       <div class="persp">
         <div class="wwrap" id="wr-today"><div class="win tok" id="w-today"></div></div>
         <div class="wwrap" id="wr-feed"><div class="win tok" id="w-feed"></div></div>
         <div class="wwrap" id="wr-kan"><div class="win tok" id="w-kan"></div></div>
+        <div class="wwrap" id="wr-lms"><div class="win tok" id="w-lms"></div></div>
         <div id="grp" class="tok"></div>
       </div>
 
@@ -381,7 +486,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <!-- chrome -->
       <div class="corner" id="brand"><span class="mini-logo"><svg><use href="#dog"/></svg></span>Argos</div>
       <div class="corner" id="tagTR">개인 학업·프로젝트 대시보드</div>
-      <div class="corner" id="lbl"><span>01 / 05 · 오늘</span><span>02 / 05 · 채팅으로 적기</span><span>03 / 05 · 에이전트</span><span>04 / 05 · 칸반과 잡</span><span>05 / 05 · 연결</span></div>
+      <div class="corner" id="lbl"><span>01 / 06 · 오늘</span><span>02 / 06 · 채팅으로 적기</span><span>03 / 06 · 에이전트</span><span>04 / 06 · 칸반과 잡</span><span>05 / 06 · 학교 LMS</span><span>06 / 06 · 연결</span></div>
       <div class="corner" id="tagBR">내 Mac에서 · tailnet 안에서만</div>
     </div>
   </div>
@@ -389,7 +494,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
     <button id="bPlay" type="button" aria-label="일시정지">❚❚</button>
     <button id="bRestart" type="button">처음부터</button>
     <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="재생 위치">
-    <span class="time" id="time">00:00 / 01:00</span>
+    <span class="time" id="time">00:00 / 01:12</span>
     <span class="hint">스페이스: 재생/일시정지 · ← →: 2초 이동 · 막대를 끌어 원하는 장면으로</span>
   </div>
 </div>
@@ -412,17 +517,19 @@ function shell(rail, sideActive, main, status = true) {
   <div class="tb"><i></i><i></i><i></i><span class="tt">Argos</span></div>
   <div class="app">
     <div class="rail"><div class="rlogo">${dog}</div>
-      ${['홈', '학', '프', '동'].map(x => `<div class="rbtn${x === rail ? ' on' : ''}">${x}</div>`).join('')}
-      <div class="rbtn add">+</div><div class="me">MJ</div></div>
+      ${['홈', '학', '프'].map(x => `<div class="rbtn${x === rail ? ' on' : ''}">${x}</div>`).join('')}
+      <div class="rbtn add">+</div><div class="me">⚙</div></div>
     <div class="side">
-      <div class="area"><b>학업</b><span>2026 · 2학기</span></div>
+      <div class="area"><b>${rail === '홈' ? '전체' : '학업'}</b><span>2026.10.12</span></div>
       <div class="search">⌕ 채널·할 일 찾기<kbd>⌘K</kbd></div>
-      <div class="sec">지켜보는 중</div>
-      ${it('today', '☼ today', '<span class="n">3</span>')}
-      ${it('inbox', '▭ inbox', '<span class="n">4</span>')}
+      <div class="sec">바로가기</div>
+      ${it('today', '☼ today', '<span class="n">4</span>')}
+      ${it('inbox', '▭ 내 공간', '<span class="n">2</span>')}
+      ${it('noti', '♢ 알림')}
       ${it('appr', '◌ 승인 대기', '<span class="n red">1</span>')}
+      ${it('rev', '▥ 리뷰')}
       <div class="sec">과목</div>
-      ${ch('arch', '컴퓨터구조', 'D-1', true)}${ch('os', '운영체제', 'D-4')}${ch('ai', '인공지능', 'D-6')}${ch('ml', '머신러닝')}
+      ${ch('arch', '컴퓨터구조', 'D-4')}${ch('os', '운영체제', 'D-1', true)}${ch('ai', '인공지능', 'D-2')}${ch('ml', '머신러닝')}
       <div class="sec">프로젝트</div>
       ${ch('p1', '캡스톤')}${ch('p2', 'argos')}
       <div class="sec">에이전트</div>
@@ -430,6 +537,7 @@ function shell(rail, sideActive, main, status = true) {
       ${it('', '<span class="av c">C</span>Claude')}
       ${it('', '<span class="av x">Cx</span>Codex', '<span class="n">● 잡 실행 중</span>')}
       ${it('', '<span class="av t">튜</span>과목 튜터', '<span class="n">커스텀</span>')}
+      ${it('', '<span class="av" style="background:var(--w-meta)">L</span>로컬 모델')}
     </div>
     <div class="main">${main}</div>
   </div>
@@ -439,45 +547,70 @@ function shell(rail, sideActive, main, status = true) {
     <span style="margin-left:auto;color:var(--w-danger)">승인 대기 1</span><span class="sep"></span><span>✓ 동기화 1분 전</span></div>
   ${cursorHTML}`;
 }
-const chanHead = (tab) => `<div class="chead"><h1><span class="h">#</span>컴퓨터구조</h1>
+const chanHead = (tab, name = '컴퓨터구조', note = '볼트 강의/컴퓨터구조/ · 기본 에이전트 Hermes') => `<div class="chead"><h1><span class="h">#</span>${name}</h1>
   <div class="avs"><span class="av h">H</span><span class="av c">C</span><span class="av x">Cx</span><span class="av t">튜</span></div></div>
   <div class="subrow"><div class="tabs">${['피드', '칸반', '캘린더', '노트', '자료'].map(t => `<span class="tab${t === tab ? ' on' : ''}">${t}</span>`).join('')}</div>
-  <span>볼트 강의/컴퓨터구조/ · 기본 에이전트 Hermes</span></div>`;
+  <span>${note}</span></div>`;
 
 /* ---------- today ---------- */
-$('#w-today').innerHTML = shell('학', 'today', `
-  <div class="thead"><div><div class="mono">THU · 2026.10.01 · 09:12</div><h1>오늘 챙길 것</h1></div>
-    <div class="stats">
-      <div class="stat"><small>일정</small><b><span class="cnt" data-to="3">0</span></b></div>
-      <div class="stat"><small>마감 임박</small><b><span class="cnt" data-to="3">0</span></b></div>
-      <div class="stat"><small>인박스</small><b><span class="cnt" data-to="4" id="t-ibA">0</span><span id="t-ibB" style="opacity:0;visibility:hidden">3</span></b></div>
-      <div class="stat red"><small>승인 대기</small><b><span class="cnt" data-to="1">0</span></b></div>
+const ico = {
+  done: '<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+  prog: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="3" height="10" rx="1"/><rect x="6.5" y="3" width="3" height="7" rx="1"/><rect x="11" y="3" width="3" height="10" rx="1"/></svg>',
+  due: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M8 4.8V8l2.2 1.5"/></svg>',
+  cal: '<svg viewBox="0 0 16 16"><rect x="2.3" y="3.2" width="11.4" height="10.3" rx="2"/><path d="M2.3 6.5h11.4M5.5 1.8v2.6M10.5 1.8v2.6"/></svg>',
+};
+const kpi = (ic, label, a, b, subA, subB, red, id) => `<div class="kpi"${id ? ` id="${id}"` : ''}><span class="ic">${ic}</span><div style="min-width:0">
+  <small>${label}</small><b><span class="cnt a" data-to="${a}">0</span>${b !== undefined ? `<span class="b" style="opacity:0;visibility:hidden">${b}</span>` : ''}</b>
+  <em${red ? ' class="red"' : ''}><span class="a">${subA}</span>${subB ? `<span class="b" style="opacity:0;visibility:hidden">${subB}</span>` : ''}</em></div></div>`;
+// items on the 7-day timeline: [day from today, hour, label, kind, row]
+const at7 = (d, h) => `${((d + h / 24) / 7) * 100}%`;
+const i7 = (d, h, label, kind, row, id = '') => `<div class="i7"${id ? ` id="${id}"` : ''} style="left:calc(${at7(d, h)} - ${kind === 'ev' ? 6 : 3}px);top:${row ? 25 : 8}px">${kind === 'ev' ? '<span class="pb"></span>' : `<span class="dia${kind === 'hot' ? ' hot' : ''}"></span>`}${label}</div>`;
+const lane = (name, items) => `<div class="lane"><b><span class="h">#</span>${name}</b><div class="track"><span class="shade"></span>${items}<span class="nowv" style="left:${at7(0, 9.2)}"></span></div></div>`;
+const mdays = [];
+for (let i = 0; i < 35; i++) {
+  const d = new Date(2026, 8, 28 + i), n = d.getDate(), m = d.getMonth();
+  const cls = [m !== 9 ? 'mut' : '', n === 12 && m === 9 ? 'td' : '', m === 9 && [12, 13, 14, 15, 17, 18].includes(n) ? 'dot' : ''].filter(Boolean).join(' ');
+  mdays.push(`<span${cls ? ` class="${cls}"` : ''}${m === 9 && n === 14 ? ' id="t-d14"' : ''}>${n}</span>`);
+}
+$('#w-today').innerHTML = shell('홈', 'today', `
+  <div class="thead"><div><div class="mono">MON · 2026.10.12 · 09:12</div><h1>오늘 챙길 것</h1>
+    <p>오늘 일정 2개, 마감 2개만 챙기면 돼요. 인박스에 정리할 입력이 2개 있어요.</p></div></div>
+  <div class="kpis">
+    ${kpi(ico.done, '이번 주 완료', 4, 5, '지난주보다 +2', '지난주보다 +3', false, 't-kd')}
+    ${kpi(ico.prog, '진행 중', 2, undefined, '검토 대기 1')}
+    ${kpi(ico.due, '마감 임박', 2, 1, '가장 빠른 마감 내일 09:00', '가장 빠른 마감 수 10:00', true, 't-ku')}
+    ${kpi(ico.cal, '오늘 일정', 2, undefined, '다음 일정 10:30 컴퓨터구조')}
+  </div>
+  <div class="trow">
+    <div class="panel"><h3>앞으로 7일 <span class="legend"><span><i class="pb"></i>일정</span><span><i class="dia"></i>마감</span><span><i class="dia hot"></i>하루 안</span></span></h3>
+      <div class="tl7"><div class="hdr"><span></span>${['오늘 12', '화 13', '수 14', '목 15', '금 16', '토 17', '일 18'].map((d, i) => `<span${i ? '' : ' class="on"'}>${d}</span>`).join('')}</div>
+        ${lane('컴퓨터구조', i7(0, 10.5, '강의 10:30', 'ev', 0) + i7(2, 10.5, '강의 10:30', 'ev', 0) + i7(6, 2, '실습3', 'dl', 1))}
+        ${lane('운영체제', i7(1, 9, '프로세스 스케줄링', 'hot', 0, 't-i7os') + i7(1, 13, '강의 13:00', 'ev', 1) + i7(3, 13, '강의 13:00', 'ev', 1))}
+        ${lane('인공지능', i7(0, 13, '강의 13:00', 'ev', 0) + i7(2, 10, '3주차 퀴즈 복습', 'dl', 1) + i7(5, 12, 'Homework 2', 'dl', 0))}
+      </div></div>
+    <div class="panel mcal"><h3><span class="nav" style="left:16px">‹</span>2026년 10월<span class="nav" style="right:16px">›</span></h3>
+      <div class="mgrid">${['월', '화', '수', '목', '금', '토', '일'].map(d => `<span class="dw">${d}</span>`).join('')}${mdays.join('')}</div></div>
+  </div>
+  <div class="brow">
+    <div class="panel"><h3>마감 임박 <small>3일 이내</small></h3>
+      <div class="dl" id="t-dl1"><span class="dd hot">D-1</span><div><b class="strike" id="t-dl1s">프로세스 스케줄링 과제</b><small># 운영체제 · 내일 09:00</small></div><span class="chk" id="t-chk"><b>✓</b></span></div>
+      <div class="dl"><span class="dd">D-2</span><div><b>3주차 퀴즈 복습</b><small># 인공지능 · 수 10:00</small></div><span class="chk"></span></div>
+    </div>
+    <div class="panel"><h3>인박스 <small>정리 안 된 입력 2</small></h3>
+      <div class="ib"><q>KUBIG 발표자료 다음주 수요일까지</q>
+        <div class="meta"><span class="src">↳ Hermes · 텔레그램</span>08:52</div>
+        <div class="sugg"><span>✦ 할 일 · 10/21 (수) · 채널 미정</span><span>0.58</span></div>
+        <div class="btns"><span class="btn cta">채널 골라 추가</span><span class="btn ghost">넘기기</span></div></div>
+    </div>
+    <div class="panel"><div class="nowbox">
+      <div id="t-nowA"><h3>지금</h3><div class="clock">09<i id="t-colon">:</i><span id="t-min">12</span></div><small>컴퓨터구조 강의까지 1시간 18분</small>
+        <div class="hrs"><span>09</span><i></i><span>10</span><span class="blk">10:30 컴퓨터구조 강의</span><span>13</span><span class="blk">13:00 인공지능 강의</span></div></div>
+      <div id="t-nowB" style="opacity:0;visibility:hidden"><h3>선택한 날 <small>10월 14일 (수)</small></h3>
+        <div class="sday"><div><time>10:00</time><span><span class="dia" style="display:inline-block;margin-right:7px"></span>3주차 퀴즈 복습</span></div>
+          <div><time>10:30</time>컴퓨터구조 강의</div><div><time>13:00</time>인공지능 강의</div><u>지금으로 ↺</u></div></div>
     </div></div>
-  <div class="tcols">
-    <div class="panel"><h3>일정 <small>주간 보기 →</small></h3>
-      <div class="nowl"><span>09:12</span><i></i></div>
-      <div class="ev"><time>10:30</time><div class="evb"><b>컴퓨터구조 강의</b><span class="t">10:30–11:45</span><span class="src">↳ iCloud · 학교</span></div></div>
-      <div class="ev"><time>13:00</time><div class="evb"><b>인공지능 강의</b><span class="t">13:00–14:15</span><span class="src">↳ iCloud · 학교</span></div></div>
-      <div class="ev"><time>19:00</time><div class="evb"><b>KUBIG NLP 세션</b><span class="t">19:00–21:00</span><span class="src">↳ Hermes · 텔레그램</span></div></div>
-    </div>
-    <div class="panel"><h3>마감 임박 <small>7일 이내</small></h3>
-      <div class="dl"><span class="dd hot">D-1</span><div><b>프로세스 스케줄링 과제</b><small># 운영체제 · 내일 23:59</small><span class="src" style="margin-top:6px">↳ Obsidian · 강의/운영체제/과제.md</span></div><span class="chk"></span></div>
-      <div class="dl"><span class="dd">D-3</span><div><b>실습3 · ALU 설계</b><small># 컴퓨터구조 · 일 23:59</small><div class="jobl"><span class="av x">Cx</span>Codex 잡 실행 중 · 2/6</div></div><span class="chk"></span></div>
-      <div class="dl"><span class="dd">D-6</span><div><b>3주차 퀴즈 복습</b><small># 인공지능 · 수 10:00</small></div><span class="chk"></span></div>
-    </div>
-    <div class="panel"><h3>인박스 <small>정리 안 된 입력 4</small></h3>
-      <div class="ib" id="t-ib1">
-        <div class="full"><q>KUBIG 발표자료 다음주 수요일까지</q>
-          <div class="meta"><span class="src">↳ Hermes · 텔레그램</span>08:52</div>
-          <div class="sugg"><span>✦ 할 일 · 10/7 (수) · 채널 미정</span><span>0.58</span></div>
-          <div class="btns"><span class="btn cta" id="t-pick">채널 골라 추가</span><span class="btn ghost">넘기기</span></div></div>
-        <div class="rev done"><div class="donel"><span class="okdot">✓</span># 머신러닝 할 일로 추가했어요 · 10/7 (수)</div></div>
-        <div class="menu" id="t-menu"><small>채널 고르기</small><div><span class="h">#</span>컴퓨터구조</div><div><span class="h">#</span>운영체제</div><div><span class="h">#</span>인공지능</div><div id="t-ml"><span class="h">#</span>머신러닝</div></div>
-      </div>
-      <div class="ib"><div class="meta" style="margin-top:0"><b style="font-family:var(--sans);color:var(--w-text);font-size:11px">아이디어</b><span class="src">↳ 채팅 · 어제</span></div>ViT 파인튜닝 때 CIFAR-10 augmentation 비교해보기</div>
-      <div class="ib"><div class="meta" style="margin-top:0"><b style="font-family:var(--sans);color:var(--w-text);font-size:11px">공부 노트</b><span class="src">↳ /note · 어제</span></div>페이지 교체: LRU vs Clock 정리</div>
-    </div>
-  </div>`);
+  </div>
+  <div class="toast" id="t-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>완료했어요 · <b>프로세스 스케줄링 과제</b></div>`);
 
 /* ---------- feed ---------- */
 $('#w-feed').innerHTML = shell('학', 'arch', chanHead('피드') + `
@@ -490,19 +623,20 @@ $('#w-feed').innerHTML = shell('학', 'arch', chanHead('피드') + `
     <div class="rev" id="f-sg"><div class="card sgc">
       <div class="sgh">✦ Argos가 정리했어요<small style="position:relative;min-width:80px;height:14px"><span id="f-c1" style="position:absolute;right:0;top:0">분류 중…</span><span id="f-c2" style="position:absolute;right:0;top:0;opacity:0;visibility:hidden;white-space:nowrap">신뢰도 0.92</span></small></div>
       <div class="rev" id="f-sgload" style="height:auto"><div class="loading"></div><div class="loading" style="width:45%"></div></div>
-      <div class="rev" id="f-sgfull"><dl class="rows"><dt>종류</dt><dd>할 일</dd><dt>제목</dt><dd><b>과제2 제출</b></dd><dt>마감</dt><dd>10월 2일 (금) 23:59 <span class="dd hot">D-1</span></dd><dt>채널</dt><dd># 컴퓨터구조 <span style="color:var(--w-meta);font-size:11px">· 채널 맥락으로 확정</span></dd></dl>
+      <div class="rev" id="f-sgfull"><dl class="rows"><dt>종류</dt><dd>할 일</dd><dt>제목</dt><dd><b>과제2 제출</b></dd><dt>마감</dt><dd>10월 16일 (금) 23:59 <span class="dd">D-4</span></dd><dt>채널</dt><dd># 컴퓨터구조 <span style="color:var(--w-meta);font-size:11px">· 채널 맥락으로 확정</span></dd></dl>
         <div class="btns"><span class="btn cta" id="f-add">추가하기</span><span class="btn">고치기</span><span class="btn ghost">인박스에 두기</span></div></div>
       <div class="rev" id="f-sgdone"><div class="sgdone"><span class="okdot">✓</span>할 일에 추가했어요 <small>· 칸반 › 할 일 · 원문은 인박스에 보관</small></div></div>
     </div></div>
-    <div class="rev" id="f-m3"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:16</small></div><div class="txt"><span class="men c">@Claude</span> <span class="men x">@Codex</span> 파이프라인에서 forwarding이랑 stall 차이, 각자 설명해줘</div></div></div></div>
+    <div class="rev" id="f-m3"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:16</small></div><div class="txt"><span class="men c">@Claude</span> <span class="men x">@Codex</span> 이 슬라이드에서 forwarding이랑 stall 차이, 각자 설명해줘</div><span class="fcard"><span class="fic">PDF</span>5주차_파이프라인.pdf<small>2.4 MB</small></span></div></div></div>
     <div class="rev" id="f-ans"><div class="ans">
       <div class="card acard"><div class="ah"><span class="av c">C</span>Claude<small><span id="f-cs1">생각 중…</span><span id="f-cs2" style="opacity:0;visibility:hidden">완료 · 14초</span></small></div><div class="atext" id="f-ct"></div></div>
       <div class="card acard"><div class="ah"><span class="av x">Cx</span>Codex<small><span id="f-xs1">입력 중…</span><span id="f-xs2" style="opacity:0;visibility:hidden">완료 · 9초</span></small></div><div class="atext" id="f-xt"></div></div>
     </div></div>
   </div>
-  <div class="comp"><div class="cin" id="f-cin"><span class="ph">#컴퓨터구조에 적기 — 그냥 쓰면 Argos가 알아서 정리해요</span><span id="f-typed"></span><span class="caret"></span></div>
-    <div class="crow"><span class="slash">/task</span><span class="slash">/event</span><span class="slash">/note</span><span class="slash">/ask</span><span class="slash">/job</span>
+  <div class="comp"><div class="drop" id="f-drop">여기에 놓아 첨부</div><div class="atrow" id="f-at"><span class="atch"><span class="fic">PDF</span><span>5주차_파이프라인.pdf<small>2.4 MB</small></span></span></div><div class="cin" id="f-cin"><span class="ph">#컴퓨터구조에 적기 — 그냥 쓰면 Argos가 알아서 정리해요</span><span id="f-typed"></span><span class="caret"></span></div>
+    <div class="crow"><span class="clip-btn"><svg viewBox="0 0 16 16"><path d="M13 7.5l-5 5a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3L6.6 11a1.1 1.1 0 01-1.5-1.5L10 4.6"/></svg></span><span class="slash">/task</span><span class="slash">/event</span><span class="slash">/note</span><span class="slash">/ask</span><span class="slash">/job</span><span class="slash">/debate</span>
       <span class="to">받는 이 · <b>Hermes</b> (채널 기본)</span><span class="send" id="f-send"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4" stroke="#000" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+  <div class="flyfile" id="f-fly"><span class="fic">PDF</span>5주차_파이프라인.pdf</div>
   <div class="toast" id="f-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>할 일을 추가했어요 · <b>과제2 제출</b></div>`);
 
 /* ---------- kanban ---------- */
@@ -515,14 +649,14 @@ $('#w-kan').innerHTML = shell('학', 'arch', chanHead('칸반') + `
       <div class="kw">${kc('캐시 매핑 방식 정리', '<span class="src">↳ 인박스 · 아이디어</span>')}</div>
       <div class="kw">${kc('기말 범위 확인', '<span class="src">날짜 없음</span>')}</div></div>
     <div class="col" id="k-todo">${colh('할 일', 2, 1, 'var(--w-meta)')}
-      <div class="kw" id="k-a2">${kc('과제2 제출', '<span class="dd hot">D-1</span><span class="src">↳ 채팅 입력</span>')}</div>
-      <div class="kw">${kc('3주차 퀴즈 복습', '<span class="dd">D-6</span><span class="src">↳ Obsidian</span>')}</div></div>
+      <div class="kw" id="k-a2">${kc('과제2 제출', '<span class="dd">D-4</span><span class="src">↳ 채팅 입력</span>')}</div>
+      <div class="kw">${kc('3주차 퀴즈 복습', '<span class="dd">D-2</span><span class="src">↳ Obsidian</span>')}</div></div>
     <div class="col" id="k-prog">${colh('진행 중', 1, 2, 'var(--w-text)')}
-      <div class="slot" id="k-slot1"><div class="in"><div class="phd"></div>${kc('과제2 제출', '<span class="dd hot">D-1</span><span class="src">↳ 채팅 입력</span>')}</div></div>
+      <div class="slot" id="k-slot1"><div class="in"><div class="phd"></div>${kc('과제2 제출', '<span class="dd">D-4</span><span class="src">↳ 채팅 입력</span>')}</div></div>
       <div class="kw" id="k-alu"><div class="kc"><b>실습3 · ALU 설계</b>
         <div class="job"><span class="av x">Cx</span><span id="k-step">잡 실행 중 · 2/6</span><span class="tm" id="k-tm">04:12</span></div>
         <div class="seg"><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i></div>
-        <div class="tags"><span class="dd">D-3</span><span class="src">↳ Obsidian</span></div></div></div></div>
+        <div class="tags"><span class="dd">D-6</span><span class="src">↳ Obsidian</span></div></div></div></div>
     <div class="col" id="k-rev">${colh('검토', 1, 2, 'var(--w-hermes)')}
       <div class="kw"><div class="kc"><b>캐시 시뮬레이터 코드 초안</b><div class="job"><span class="av c">C</span>잡 완료 · 12분</div><p>direct-mapped / 2-way 구현, 테스트 8개 통과.</p><span class="btn" style="height:26px">결과 보기</span></div></div>
       <div class="slot" id="k-slot2"><div class="in"><div class="phd"></div><div class="kc"><b>실습3 · ALU 설계</b><div class="job"><span class="av x">Cx</span>잡 완료 · 9분</div><p>alu.v 작성, 테스트 6/6 통과. 요약은 스레드에.</p><span class="btn" style="height:26px">결과 보기</span></div></div></div></div>
@@ -533,45 +667,70 @@ $('#w-kan').innerHTML = shell('학', 'arch', chanHead('칸반') + `
   </div>
   <div class="toast" id="k-toast"><span class="av x" style="width:18px;height:18px;font-size:8px">Cx</span>잡 완료 · 실습3 · ALU 설계 → <b>검토</b></div>`);
 
+/* ---------- LMS ---------- */
+const sysWho = (t) => `<div class="who">Argos <span class="badge">시스템</span><small>${t} · LearningX</small></div>`;
+$('#w-lms').innerHTML = shell('학', 'ai', chanHead('피드', '인공지능', 'LMS 과목 연결됨 · 기본 에이전트 Hermes') + `
+  <div class="feed">
+    <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">에이전트</span><small>08:40</small></div>
+      <div class="txt">오늘 13:00 인공지능 강의 있어요. 지난주 퀴즈 오답 노트 걸어둘게요.</div></div></div>
+    <div class="syncb" id="l-sync"><span class="av" style="background:#1f7a8c;width:18px;height:18px;font-size:7px">LX</span><span class="st"><span id="l-s1">LearningX에서 가져오는 중…</span><span id="l-s2" style="opacity:0;visibility:hidden">가져왔어요 · 과제 1 · 공지 1 · 자료 1</span></span><span class="pr"><b id="l-pr"></b></span></div>
+    <div class="rev" id="l-m1"><div class="msg"><span class="av sys">A</span><div>${sysWho('09:13')}
+      <div class="card ncard"><div class="nh"><span class="kind">활동</span><b>Assignment Created - Homework 2</b></div>
+        <ul><li>인공지능 과목에 Homework 2가 새로 올라왔어요</li><li>마감 10월 17일(토) 밤 11:59</li></ul>
+        <div class="nfoot"><span>▸ 원문 보기</span><span class="r">LMS에서 열기 ↗</span></div></div>
+      <div class="ntask"><span class="okdot">✓</span>할 일로 추가했어요 · <span class="dd">D-5</span> · 칸반 › 할 일</div></div></div></div>
+    <div class="rev" id="l-m2"><div class="msg"><span class="av sys">A</span><div>${sysWho('09:13')}
+      <div class="card ncard"><div class="nh"><span class="kind">공지</span><b>중간고사 범위와 시험장 안내</b></div>
+        <div class="rev" id="l-raw" style="height:auto"><p class="nraw">안녕하세요, 중간고사 관련 안내드립니다. 시험 범위는 3장부터 7장까지이며 시험은 10월 21일(수) 13:00에 봅니다. 시험장은 학번에 따라 다르니…</p>
+          <div class="npend"><span class="loading"></span>요약 중…</div></div>
+        <div class="rev" id="l-sum"><ul><li>범위: 3장–7장 (탐색, 제약 충족, 확률 추론)</li><li>10월 21일(수) 13:00, 시험장은 학번별로 달라요</li><li>계산기 지참 가능, 노트는 안 돼요</li></ul></div>
+        <div class="rev" id="l-orig"><div class="norig">안녕하세요, 중간고사 관련 안내드립니다. 시험 범위는 3장부터 7장까지이며 시험은 10월 21일(수) 13:00에 봅니다. 시험장은 학번에 따라 다르니 첨부한 표를 확인해 주세요. 공학용 계산기는 쓸 수 있지만 노트와 교재는 볼 수 없습니다.</div></div>
+        <div class="nfoot"><span class="tg" id="l-tg"><span id="l-t1" style="opacity:0;visibility:hidden">▸ 원문 보기</span><span id="l-t2" style="opacity:0;visibility:hidden">▾ 원문 접기</span></span><span class="r">LMS에서 열기 ↗</span></div></div></div></div></div>
+    <div class="rev" id="l-m3"><div class="msg"><span class="av sys">A</span><div>${sysWho('09:13')}
+      <div class="card ncard"><div class="nh"><span class="kind">자료</span><b>Lecture 06 - Constraint Satisfaction.pdf</b></div>
+        <div class="nfoot"><span>자료 탭에 내려받았어요</span><span class="r">LMS에서 열기 ↗</span></div></div></div></div></div>
+  </div>`);
+
 /* ---------- connect grid ---------- */
 const cev = (t, s, cls = '') => `<div class="cev ${cls}"><span class="t">${t}</span>${s}</div>`;
-const days = [['월', '9/28', [cev('13:00', '운영체제')]], ['화', '9/29', [cev('13:00', '인공지능')]], ['수', '9/30', [cev('10:30', '컴퓨터구조')]],
-  ['목', '10/1', [cev('10:30', '컴퓨터구조 강의'), cev('13:00', '인공지능 강의'), cev('19:00', 'KUBIG NLP')], 'today'],
-  ['금', '10/2', [cev('23:59 마감', '과제2 제출', 'due')]], ['토', '10/3', ['<div class="rev" id="g-newev">' + cev('14:00', '컴구 스터디 <span style="color:var(--w-meta)">↳ 빠른 입력</span>', 'new') + '</div>']],
-  ['일', '10/4', [cev('23:59 마감', '실습3 · ALU 설계', 'due')]]];
+const days = [['월', '10/12', [cev('10:30', '컴퓨터구조 강의'), cev('13:00', '인공지능 강의'), cev('19:00', 'KUBIG NLP')], 'today'],
+  ['화', '10/13', [cev('09:00 마감', '프로세스 스케줄링', 'due'), cev('13:00', '운영체제')]], ['수', '10/14', [cev('10:30', '컴퓨터구조'), cev('13:00', '인공지능')]],
+  ['목', '10/15', [cev('13:00', '운영체제')]], ['금', '10/16', [cev('23:59 마감', '과제2 제출', 'due')]],
+  ['토', '10/17', [cev('23:59 마감', 'Homework 2', 'due'), '<div class="rev" id="g-newev">' + cev('14:00', '컴구 스터디 <span style="color:var(--w-meta)">↳ 빠른 입력</span>', 'new') + '</div>']],
+  ['일', '10/18', [cev('23:59 마감', '실습3 · ALU 설계', 'due')]]];
 $('#grp').innerHTML = `
   <div class="gcard" style="left:0;top:0;width:650px;height:440px">
-    <div class="gh"><b>캘린더</b>10월 1주<span class="src">↳ iCloud · 학교 캘린더와 동기화</span></div>
+    <div class="gh"><b>캘린더</b>10월 3주<span class="src">↳ iCloud · 학교 캘린더와 동기화</span></div>
     <div class="week">${days.map(([d, n, evs, c]) => `<div class="day ${c || ''}"><h4>${d}<span>${n}</span></h4>${evs.join('')}</div>`).join('')}</div>
   </div>
   <div class="gcard" style="left:670px;top:0;width:440px;height:440px">
     <div class="gh"><b>옵시디언</b>강의/컴퓨터구조/3주차.md</div>
     <div class="md"><div class="hd">## 실습</div>
       <div class="ln"><span class="box"><b>✓</b></span><span>실습2 · 레지스터 파일</span></div>
-      <div class="ln" id="g-line"><span class="box" id="g-box"><b>✓</b></span><span class="strike" id="g-strike">ALU 설계 📅 2026-10-04</span></div>
+      <div class="ln" id="g-line"><span class="box" id="g-box"><b>✓</b></span><span class="strike" id="g-strike">ALU 설계 📅 2026-10-18</span></div>
       <div class="bid">&nbsp;&nbsp;&nbsp;&nbsp;^argos-7f2c</div>
       <div class="hd" style="margin-top:8px">## 메모</div>
       <div>- forwarding: EX/MEM → ALU 입력</div><div>- load-use는 1사이클 stall</div></div>
     <div class="syncl"><span id="g-s1"><span class="dd">할 일</span>체크 상태 양방향 동기화 · 1분 전</span><span id="g-s2" style="opacity:0;visibility:hidden"><span class="okdot">✓</span>Argos 칸반에도 완료로 반영 · 방금</span></div>
   </div>
   <div class="phone" style="left:1135px;top:10px;width:250px;height:520px"><div class="pscr">
-    <div class="pnotch"></div><h5>THU · 10.01</h5><h6>오늘 챙길 것</h6>
+    <div class="pnotch"></div><div class="ptop"><span>≡</span><b>${dog}Argos</b><span>⌕</span></div><h5>MON · 10.12</h5><h6>오늘 챙길 것</h6>
+    <div class="pk"><div><small>이번 주 완료</small><b>5</b></div><div><small>마감 임박</small><b class="red">1</b></div></div>
     <div class="pit"><span class="t">10:30 · 컴퓨터구조</span>컴퓨터구조 강의</div>
-    <div class="pit"><span class="t">D-1 · 운영체제</span>프로세스 스케줄링 과제</div>
     <div class="rev" id="g-pnew"><div class="pit" style="border-color:#f6c4a2;background:#fff3ea"><span class="t">토 14:00 · 컴퓨터구조</span>컴구 스터디</div></div>
-    <div class="pit"><span class="t">19:00 · Hermes</span>KUBIG NLP 세션</div>
-    <div class="pbar"><span>● tailnet 전용 연결</span></div></div></div>
+    <div class="pit"><span class="t">D-5 · 인공지능 · LMS</span>Homework 2</div>
+    <div class="pbar"><span>● Tailscale · tailnet 전용</span></div></div></div>
   <div class="gcard" style="left:0;top:460px;width:560px;height:250px">
     <div class="gh"><b>빠른 입력</b>어느 앱에서든</div>
     <div class="keys"><span class="key" id="g-k1">⌘</span><span class="key" id="g-k2">⇧</span><span class="key wide" id="g-k3">Space</span></div>
     <div class="qin"><span id="g-qph" class="ph">무엇이든 적기…</span><span id="g-q"></span></div>
-    <div class="rev" id="g-qres"><div class="qres"><span class="okdot">✓</span>일정 · 10/3 (토) 14:00 · # 컴퓨터구조</div></div>
+    <div class="rev" id="g-qres"><div class="qres"><span class="okdot">✓</span>일정 · 10/17 (토) 14:00 · # 컴퓨터구조</div></div>
   </div>
   <div class="gcard" style="left:580px;top:460px;width:530px;height:250px">
     <div class="rev" id="g-afull" style="height:auto">
       <div class="aprh">⛨ 승인 필요 <code>delete_event</code><small>Hermes 요청</small></div>
       <div style="font-size:13px;margin-bottom:10px;color:var(--w-text2)">같은 보강 일정이 두 캘린더에 있어요. 하나를 지울까요?</div>
-      <div class="apri"><b>운영체제 보강</b><span>10/5 (월) 15:00</span><span class="src">↳ Dashboard</span></div>
+      <div class="apri"><b>운영체제 보강</b><span>10/19 (월) 15:00</span><span class="src">↳ Dashboard</span></div>
       <div class="btns"><span class="btn danger" id="g-approve">승인하고 삭제</span><span class="btn">거절</span></div></div>
     <div class="rev" id="g-adone"><div class="aprh" style="color:var(--w-text)">✓ 승인했어요</div><div style="font-size:13px;color:var(--w-text2)">운영체제 보강 (Dashboard) 일정을 지웠어요. 기록은 발자국에 남아요.</div></div>
   </div>
@@ -590,7 +749,16 @@ function pos(el, root) {
 }
 
 function build() {
-  const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+  const main = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+  // Scenes keep their own times; scene(offset) shifts every later position so scenes can grow.
+  // One flat timeline (not nested ones) so tweens on shared targets still resolve in time order.
+  let off = 0;
+  const scene = (offset) => { off = offset; };
+  const tl = {
+    to: (t, v, at) => main.to(t, v, at + off),
+    fromTo: (t, a, b, at) => main.fromTo(t, a, b, at + off),
+    set: (t, v, at) => main.set(t, v, at + off),
+  };
 
   const move = (cur, root, target, at, dur = .8, dx = 0, dy = 4) =>
     tl.to(cur, { x: () => pos(target, root).x + dx, y: () => pos(target, root).y + dy, duration: dur, ease: 'power3.inOut' }, at);
@@ -623,7 +791,7 @@ function build() {
   };
 
   const streakL = $('#streakL'), streakD = $('#streakD');
-  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-1500px 0px', duration: 60, ease: 'none' }, 0);
+  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-1800px 0px', duration: 72, ease: 'none' }, 0);
   gsap.set('#wipe', { xPercent: -50, yPercent: -50, scale: 0 });
   gsap.set('#pill', { xPercent: -50, yPercent: -50 });
   gsap.set('.wwrap', { transformOrigin: '0% 50%' });
@@ -655,7 +823,7 @@ function build() {
   tl.to('#s1 .l2 .clip>span', { yPercent: 0, duration: .8, ease: 'expo.out' }, 7.5);
   tl.to('#s1', { autoAlpha: 0, scale: .94, duration: .5, ease: 'power2.in' }, 8.6);
 
-  /* ===== s2 today 8.9 – 15.6 ===== */
+  /* ===== s2 today 8.9 – 16.9 ===== */
   const wrT = $('#wr-today'), wT = $('#w-today'), cT = wT.querySelector('.cursor');
   label(0, 9.0);
   tl.to(streakL, { autoAlpha: 1, duration: 1.2 }, 8.7);
@@ -668,22 +836,28 @@ function build() {
     const o = { v: 0 }, to = +el.dataset.to;
     tl.fromTo(o, { v: 0 }, { v: to, duration: .9, ease: 'power2.out', immediateRender: false, onUpdate: () => { el.textContent = Math.round(o.v); } }, 10.1 + i * .1);
   });
-  tl.to(wrT, { scale: 1.0, x: 0, y: 30, duration: 1.4, ease: 'power2.inOut' }, 11.0);
+  tl.fromTo($$('.nowv', wT), { scaleY: 0 }, { scaleY: 1, duration: .6, stagger: .06, ease: 'power2.out' }, 10.2);
+  tl.fromTo($$('.i7', wT), { autoAlpha: 0, x: -10 }, { autoAlpha: 1, x: 0, duration: .45, stagger: .06 }, 10.35);
+  tl.to('#t-colon', { opacity: .15, duration: .5, repeat: 11, yoyo: true, ease: 'steps(1)' }, 9.6);
+  tl.to(wrT, { scale: .96, x: -20, y: 20, duration: 1.4, ease: 'power2.inOut' }, 11.0);
   tl.fromTo(cT, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 11.1);
-  move(cT, wT, $('#t-pick'), 11.2, 1.0);
-  click(cT, $('#t-pick'), 12.3);
-  tl.fromTo('#t-menu', { autoAlpha: 0, scale: .92, y: -6 }, { autoAlpha: 1, scale: 1, y: 0, duration: .3, immediateRender: false }, 12.42);
-  move(cT, wT, $('#t-ml'), 12.7, .65, -30, 2);
-  tl.set('#t-ml', { className: 'hl' }, 13.25);
-  click(cT, $('#t-ml'), 13.4);
-  tl.to('#t-menu', { autoAlpha: 0, scale: .96, duration: .2 }, 13.55);
-  collapse('#t-ib1 .full', 13.65, .45);
-  reveal('#t-ib1 .done', 13.7, .45);
-  swap('#t-ibA', '#t-ibB', 13.9);
-  tl.to(cT, { x: '+=160', y: '+=120', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 14.3);
-  capOut('#cap1', 15.0);
-  tl.to(wrT, { rotationY: -50, rotationX: 10, x: -1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 15.0);
+  move(cT, wT, $('#t-chk'), 11.2, 1.0);
+  click(cT, $('#t-chk'), 12.3);
+  tl.to('#t-chk b', { opacity: 1, duration: .2 }, 12.35);
+  tl.fromTo('#t-dl1s', { '--sw': '0%' }, { '--sw': '100%', duration: .35, ease: 'power2.inOut', immediateRender: false }, 12.4);
+  tl.to(['#t-dl1', '#t-i7os'], { opacity: .4, duration: .3 }, 12.5);
+  ['#t-kd b', '#t-kd em', '#t-ku b', '#t-ku em'].forEach(s => swap(`${s} .a`, `${s} .b`, 12.6));
+  tl.fromTo('#t-toast', { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .4, immediateRender: false }, 12.65);
+  tl.to('#t-toast', { autoAlpha: 0, y: 10, duration: .3 }, 14.3);
+  move(cT, wT, $('#t-d14'), 13.1, .8);
+  click(cT, $('#t-d14'), 14.0);
+  tl.set('#t-d14', { className: 'dot sel' }, 14.05);
+  swap('#t-nowA', '#t-nowB', 14.1);
+  tl.to(cT, { x: '+=160', y: '+=120', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 14.9);
+  capOut('#cap1', 15.9);
+  tl.to(wrT, { rotationY: -50, rotationX: 10, x: -1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 15.9);
 
+  scene(1.0);
   /* ===== s3 capture 15.4 – 25.6 ===== */
   const wrF = $('#wr-feed'), wF = $('#w-feed'), cF = wF.querySelector('.cursor');
   const typed = $('#f-typed'), ph = wF.querySelector('.cin .ph'), caret = wF.querySelector('.caret');
@@ -739,30 +913,44 @@ function build() {
   tl.to(['#brand .mini-logo'], { boxShadow: '0 0 0 1px rgba(255,255,255,.25)', duration: .5 }, 26);
   tl.to(wrF, { rotationY: -14, rotationX: 7, scale: .92, x: 0, duration: 1.6, ease: 'power2.inOut' }, 25.8);
   capIn('#cap3', 26.6);
-  move(cF, wF, $('#f-cin'), 27.0, .7, -120, 2);
-  click(cF, null, 27.75);
-  tl.to(ph, { autoAlpha: 0, duration: .15 }, 27.85);
-  tl.to(caret, { opacity: 1, duration: .05 }, 27.85);
-  const s2 = '@Claude @Codex 파이프라인에서 forwarding이랑 stall 차이, 각자 설명해줘';
-  text(typed, s2, 0, s2.length, 27.95, 2.0);
-  tl.to(wrF, { scale: 1.0, x: 0, y: -40, rotationY: -6, duration: 1.8, ease: 'power2.inOut' }, 28.2);
-  move(cF, wF, $('#f-send'), 30.05, .5);
-  click(cF, $('#f-send'), 30.6);
-  text(typed, s2, s2.length, 0, 30.7, .05);
-  tl.to(caret, { opacity: 0, duration: .05 }, 30.7);
-  tl.to(ph, { autoAlpha: 1, duration: .2 }, 30.8);
-  reveal('#f-m3', 30.75, .45);
-  tl.fromTo('#f-m3 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 30.8);
-  reveal('#f-ans', 31.15, .55);
-  tl.fromTo('#f-ans .acard', { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .5, stagger: .12, immediateRender: false }, 31.2);
-  tl.to(cF, { x: '+=220', y: '+=60', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 31.0);
-  const cText = '둘 다 데이터 해저드 대응이에요. Forwarding은 EX/MEM 결과를 레지스터 파일에 쓰기 전에 다음 명령어로 바로 넘겨서 기다리지 않게 하고, stall은 load-use처럼 값이 아직 없을 때 파이프라인을 한 사이클 멈춰요.';
-  const xText = '코드로 보면 hazard unit이 ID/EX.rs == EX/MEM.rd 를 검사해서 mux 선택 신호를 바꾸는 게 forwarding이고, load 바로 뒤에서 그 값을 쓰면 PC와 IF/ID 쓰기를 막는 게 stall이에요.';
-  text($('#f-ct'), cText, 0, cText.length, 31.7, 3.1);
-  text($('#f-xt'), xText, 0, xText.length, 32.1, 3.0);
-  swap('#f-cs1', '#f-cs2', 34.85);
-  swap('#f-xs1', '#f-xs2', 35.15);
-  capOut('#cap3', 35.3);
+  // drag a PDF from Finder onto the composer
+  const fly = $('#f-fly'), drop = $('#f-drop');
+  tl.to(cF, { x: 820, y: 250, duration: .55, ease: 'power3.inOut' }, 26.9);
+  tl.set(fly, { x: 790, y: 222 }, 27.4);
+  tl.fromTo(fly, { autoAlpha: 0, scale: .7, rotation: -6 }, { autoAlpha: 1, scale: 1, rotation: -3, duration: .35, ease: 'back.out(2)', immediateRender: false }, 27.45);
+  move(fly, wF, $('#f-cin'), 27.75, .8, -150, -24);
+  move(cF, wF, $('#f-cin'), 27.75, .8, -120, 2);
+  tl.fromTo(drop, { autoAlpha: 0 }, { autoAlpha: 1, duration: .2, immediateRender: false }, 28.25);
+  tl.to(fly, { scale: .6, autoAlpha: 0, duration: .25, ease: 'power2.in' }, 28.6);
+  tl.to(drop, { autoAlpha: 0, duration: .2 }, 28.65);
+  reveal('#f-at', 28.65, .35);
+  tl.fromTo('#f-at .atch', { scale: .85, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: .35, ease: 'back.out(2)', immediateRender: false }, 28.7);
+  click(cF, null, 29.25);
+  tl.to(ph, { autoAlpha: 0, duration: .15 }, 29.35);
+  tl.to(caret, { opacity: 1, duration: .05 }, 29.35);
+  const s2 = '@Claude @Codex 이 슬라이드에서 forwarding이랑 stall 차이, 각자 설명해줘';
+  text(typed, s2, 0, s2.length, 29.45, 2.0);
+  tl.to(wrF, { scale: 1.0, x: 0, y: -40, rotationY: -6, duration: 1.8, ease: 'power2.inOut' }, 29.7);
+  move(cF, wF, $('#f-send'), 31.55, .5);
+  click(cF, $('#f-send'), 32.1);
+  text(typed, s2, s2.length, 0, 32.2, .05);
+  tl.to(caret, { opacity: 0, duration: .05 }, 32.2);
+  tl.to(ph, { autoAlpha: 1, duration: .2 }, 32.3);
+  tl.to('#f-at', { height: 0, duration: .3, ease: 'power3.inOut' }, 32.2);
+  reveal('#f-m3', 32.25, .45);
+  tl.fromTo('#f-m3 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 32.3);
+  reveal('#f-ans', 32.65, .55);
+  tl.fromTo('#f-ans .acard', { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .5, stagger: .12, immediateRender: false }, 32.7);
+  tl.to(cF, { x: '+=220', y: '+=60', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 32.5);
+  const cText = '슬라이드 12쪽 그림 기준으로, 둘 다 데이터 해저드 대응이에요. Forwarding은 EX/MEM 결과를 레지스터 파일에 쓰기 전에 다음 명령어로 바로 넘겨서 기다리지 않게 하고, stall은 load-use처럼 값이 아직 없을 때 한 사이클 멈춰요.';
+  const xText = '14쪽 표처럼 hazard unit이 ID/EX.rs == EX/MEM.rd 를 검사해서 mux 선택 신호를 바꾸는 게 forwarding이고, load 바로 뒤에서 그 값을 쓰면 PC와 IF/ID 쓰기를 막는 게 stall이에요.';
+  text($('#f-ct'), cText, 0, cText.length, 33.2, 3.1);
+  text($('#f-xt'), xText, 0, xText.length, 33.6, 3.0);
+  swap('#f-cs1', '#f-cs2', 36.35);
+  swap('#f-xs1', '#f-xs2', 36.65);
+  capOut('#cap3', 36.8);
+
+  scene(2.5);
 
   /* ===== s5 kanban 35.6 – 45.9 ===== */
   const wrK = $('#wr-kan'), wK = $('#w-kan'), cK = wK.querySelector('.cursor');
@@ -819,14 +1007,49 @@ function build() {
   capOut('#cap4', 45.7);
   tl.to(wrK, { autoAlpha: 0, scale: .55, rotationX: 45, rotationZ: -14, y: 260, duration: .9, ease: 'power3.in' }, 45.7);
 
-  /* ===== s6 connect 46.1 – 52.6 ===== */
+  /* ===== s5b LMS 48.4 – 58.2 (main time) ===== */
+  scene(0);
+  const wrL = $('#wr-lms'), wL = $('#w-lms'), cL = wL.querySelector('.cursor');
+  label(4, 48.6);
+  tl.fromTo(wrL, { autoAlpha: 0, x: -900, rotationY: -40, rotationX: 8, scale: .82 },
+    { autoAlpha: 1, x: 0, rotationY: -10, rotationX: 6, scale: .9, duration: 1.5, ease: 'expo.out' }, 48.5);
+  capIn('#cap5', 49.0);
+  tl.fromTo('#l-sync', { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: .4 }, 49.5);
+  tl.to('#l-pr', { scaleX: 1, duration: 1.3, ease: 'power1.inOut' }, 49.7);
+  swap('#l-s1', '#l-s2', 51.0);
+  reveal('#l-m1', 51.2, .5);
+  tl.fromTo('#l-m1 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 51.25);
+  tl.fromTo('#l-m1 .ntask', { autoAlpha: 0, x: -8 }, { autoAlpha: 1, x: 0, duration: .4 }, 51.8);
+  reveal('#l-m2', 51.9, .5);
+  tl.fromTo('#l-m2 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 51.95);
+  tl.to(wrL, { scale: 1.04, rotationY: -4, rotationX: 3, y: -50, duration: 1.5, ease: 'power2.inOut' }, 52.0);
+  tl.fromTo('#l-m2 .loading', { backgroundPosition: '0 0' }, { backgroundPosition: '200px 0', duration: 1.2, ease: 'none', immediateRender: false }, 52.2);
+  collapse('#l-raw', 53.4, .4);
+  reveal('#l-sum', 53.45, .45);
+  tl.fromTo('#l-sum li', { autoAlpha: 0, x: -8 }, { autoAlpha: 1, x: 0, duration: .35, stagger: .1 }, 53.5);
+  tl.fromTo('#l-t1', { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 53.7);
+  tl.set(cL, { x: 900, y: 640 }, 53.89);
+  tl.fromTo(cL, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 53.9);
+  move(cL, wL, $('#l-tg'), 54.0, .8, -14, 2);
+  click(cL, $('#l-tg'), 54.9);
+  swap('#l-t1', '#l-t2', 55.0);
+  reveal('#l-orig', 55.0, .5);
+  reveal('#l-m3', 55.7, .45);
+  tl.fromTo('#l-m3 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 55.75);
+  tl.to(cL, { x: '+=180', y: '+=120', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 56.2);
+  capOut('#cap5', 57.3);
+  tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 57.3);
+
+  scene(12.0);
+
+  /* ===== s6 connect 46.1 – 52.6 (+12) ===== */
   const grp = $('#grp'), cG = grp.querySelector('.cursor'), gcards = $$('#grp > .gcard, #grp > .phone');
-  label(4, 46.2);
+  label(5, 46.2);
   tl.fromTo(grp, { autoAlpha: 0, rotationX: 58, rotationZ: -22, scale: .62, y: 320 },
     { autoAlpha: 1, rotationX: 26, rotationZ: -9, scale: .8, y: 0, duration: 1.6, ease: 'expo.out' }, 46.1);
   tl.fromTo(gcards, { y: 90, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .9, stagger: .08, ease: 'expo.out', immediateRender: false }, 46.15);
   tl.to(grp, { rotationX: 16, rotationZ: -5, scale: .83, duration: 5.2, ease: 'sine.inOut' }, 47.6);
-  capIn('#cap5', 46.6);
+  capIn('#cap6', 46.6);
   ['#g-k1', '#g-k2', '#g-k3'].forEach((k, i) => tl.to(k, { y: 3, boxShadow: '0 0 0 var(--w-line)', backgroundColor: '#fff3ea', duration: .12 }, 47.4 + i * .14));
   ['#g-k1', '#g-k2', '#g-k3'].forEach((k) => tl.to(k, { y: 0, boxShadow: '0 3px 0 var(--w-line)', backgroundColor: '#ffffff', duration: .2 }, 48.05));
   tl.to('#g-qph', { autoAlpha: 0, duration: .1 }, 48.1);
@@ -847,14 +1070,14 @@ function build() {
   collapse('#g-afull', 51.3, .4);
   reveal('#g-adone', 51.35, .4);
   tl.to(cG, { autoAlpha: 0, duration: .3 }, 52.0);
-  capOut('#cap5', 52.0);
+  capOut('#cap6', 52.0);
   tl.to(gcards, { x: (i, el) => 695 - (el.offsetLeft + el.offsetWidth / 2), y: (i, el) => 360 - (el.offsetTop + el.offsetHeight / 2),
     scale: .12, autoAlpha: 0, rotation: (i) => (i % 2 ? 12 : -12), duration: .8, stagger: .035, ease: 'power3.in' }, 52.1);
   tl.to(grp, { rotationX: 0, rotationZ: 0, duration: .8, ease: 'power3.in' }, 52.1);
   tl.to(streakL, { autoAlpha: 0, duration: .8 }, 52.3);
   label(-1, 52.3);
 
-  /* ===== s7 outro 52.8 – 60 ===== */
+  /* ===== s7 outro 52.8 – 60 (+12) ===== */
   tl.fromTo('#pill', { autoAlpha: 0, scale: .15 }, { autoAlpha: 1, scale: 1, duration: .6, ease: 'back.out(1.6)', immediateRender: false }, 52.8);
   tl.to('#pill', { width: 196, height: 196, borderRadius: 46, duration: .75, ease: 'expo.inOut' }, 53.6);
   tl.to('#pill svg', { opacity: 1, duration: .5 }, 54.1);
@@ -865,7 +1088,7 @@ function build() {
   tl.fromTo('#o-sub', { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: .7, immediateRender: false }, 55.6);
   tl.fromTo('#o-chips span', { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .5, stagger: .08, immediateRender: false }, 56.0);
   tl.to({}, { duration: .01 }, 60);
-  return tl;
+  return main;
 }
 
 /* ---------- controls ---------- */
