@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     # `hermes send` and is turned on in the settings screen.
     notify_interval_minutes: int = 15  # 0 turns the checks off
     notify_digest_hour: int = 9  # daily roundups (stale inbox, undated tasks) after this hour
+    # Morning digest (PLAN Phase 15b): an agent writes the day's briefing into #today
+    # (and the messenger) once after this hour. Off until the user turns it on.
+    morning_digest_enabled: bool = False
+    morning_digest_hour: int = 7
+    morning_digest_agent: str = ""  # agent name; empty: the default agent
     notify_hermes_target: str | None = None  # e.g. "discord" or "discord:#general"
     # LMS notices at least this long (characters) get an AI summary; 0 turns it off.
     lms_summary_min_chars: int = 300

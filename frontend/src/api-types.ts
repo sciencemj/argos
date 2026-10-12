@@ -2879,6 +2879,12 @@ export interface components {
             weekly_review_weekday: number;
             /** Weekly Review Hour */
             weekly_review_hour: number;
+            /** Morning Digest Enabled */
+            morning_digest_enabled?: boolean | null;
+            /** Morning Digest Hour */
+            morning_digest_hour?: number | null;
+            /** Morning Digest Agent */
+            morning_digest_agent?: string | null;
         };
         /** NotifySettingsOut */
         NotifySettingsOut: {
@@ -2894,6 +2900,12 @@ export interface components {
             digest_hour: number;
             /** Last Run */
             last_run: string | null;
+            /** Morning Digest Enabled */
+            morning_digest_enabled: boolean;
+            /** Morning Digest Hour */
+            morning_digest_hour: number;
+            /** Morning Digest Agent */
+            morning_digest_agent: string;
         };
         /** NotifyTarget */
         NotifyTarget: {

@@ -257,3 +257,27 @@ def test_launch_agent_install_and_remove(
     assert any(c[0] == "bootstrap" for c in calls)
     removed = app.delete("/api/v1/ops/service").json()["service"]
     assert not removed["installed"] and not plist.exists()
+
+
+def test_morning_digest_settings(app: TestClient) -> None:
+    current = app.get("/api/v1/settings/notify").json()
+    assert (
+        current["morning_digest_enabled"],
+        current["morning_digest_hour"],
+        current["morning_digest_agent"],
+    ) == (False, 7, "")
+    base = {"hermes_target": None, "weekly_review_weekday": 6, "weekly_review_hour": 20}
+    digest = {
+        "morning_digest_enabled": True,
+        "morning_digest_hour": 8,
+        "morning_digest_agent": "claude",
+    }
+    saved = app.put("/api/v1/settings/notify", json=base | digest).json()
+    assert (saved["morning_digest_enabled"], saved["morning_digest_hour"]) == (True, 8)
+    assert saved["morning_digest_agent"] == "claude"
+    # Older clients leave the digest fields out: they stay as they were.
+    assert app.put("/api/v1/settings/notify", json=base).json()["morning_digest_hour"] == 8
+    bad_hour = app.put("/api/v1/settings/notify", json=base | {"morning_digest_hour": 24})
+    assert bad_hour.status_code == 422
+    unknown = app.put("/api/v1/settings/notify", json=base | {"morning_digest_agent": "nobody"})
+    assert unknown.status_code == 422

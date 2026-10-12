@@ -2021,12 +2021,19 @@ class NotifySettingsOut(BaseModel):
     weekly_review_hour: int
     digest_hour: int
     last_run: datetime | None
+    morning_digest_enabled: bool
+    morning_digest_hour: int
+    morning_digest_agent: str  # empty: the default agent
 
 
 class NotifySettingsIn(BaseModel):
     hermes_target: str | None = Field(default=None, max_length=200)
     weekly_review_weekday: int = Field(ge=0, le=6)
     weekly_review_hour: int = Field(ge=0, le=23)
+    # None: leave as is (clients from before Phase 15b don't send these).
+    morning_digest_enabled: bool | None = None
+    morning_digest_hour: int | None = Field(default=None, ge=0, le=23)
+    morning_digest_agent: str | None = Field(default=None, max_length=40)
 
 
 class NotifyTarget(BaseModel):
@@ -2104,6 +2111,9 @@ def _notify_settings(request: Request, config: Settings) -> NotifySettingsOut:
         weekly_review_hour=config.weekly_review_hour,
         digest_hour=config.notify_digest_hour,
         last_run=request.app.state.notifier.last_run,
+        morning_digest_enabled=config.morning_digest_enabled,
+        morning_digest_hour=config.morning_digest_hour,
+        morning_digest_agent=config.morning_digest_agent,
     )
 
 
@@ -2120,6 +2130,17 @@ async def put_notify_settings(
     await services.set_setting(session, "notify_hermes_target", target, USER)
     await services.set_setting(session, "weekly_review_weekday", body.weekly_review_weekday, USER)
     await services.set_setting(session, "weekly_review_hour", body.weekly_review_hour, USER)
+    if body.morning_digest_agent is not None:
+        name = body.morning_digest_agent.strip()
+        if name and await services.find_agent(session, name) is None:
+            raise services.InvalidError("등록되지 않은 에이전트예요")
+        await services.set_setting(session, "morning_digest_agent", name, USER)
+    if body.morning_digest_enabled is not None:
+        await services.set_setting(
+            session, "morning_digest_enabled", body.morning_digest_enabled, USER
+        )
+    if body.morning_digest_hour is not None:
+        await services.set_setting(session, "morning_digest_hour", body.morning_digest_hour, USER)
     overrides = await services.get_settings_overrides(session)
     request.app.state.settings = classifier.apply_overrides(
         request.app.state.base_settings, overrides
