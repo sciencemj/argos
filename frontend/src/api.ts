@@ -28,6 +28,7 @@ export type Routines = Schemas["RoutinesOut"];
 export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
 export type Attachment = Schemas["AttachmentOut"];
+export type LmsNotice = Schemas["LmsNoticeOut"];
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
   { id: "backlog", label: tr("백로그") },
@@ -141,6 +142,7 @@ export function invalidateFor(
     note_ref: [["notes"], ["settings", "vault"]],
     agent: [["agents"], ["channels"]],
     debate: [["debates"], ...feeds],
+    lms_notice: feeds, // the card behind an LMS message (its summary arrives later)
     notification: [["notifications"]],
     area: [["channels"]],
   };

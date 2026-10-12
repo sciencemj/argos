@@ -48,6 +48,7 @@ import {
   PinIcon,
   SendIcon,
 } from "./icons";
+import { LmsNoticeCard } from "./lmsNotice";
 import { Markdown } from "./markdown";
 import { PawTrail } from "./paws";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
@@ -231,7 +232,9 @@ export function MessageItem({
             </span>
           )}
         </div>
-        {message.run ? (
+        {message.ref?.lms_notice ? (
+          <LmsNoticeCard notice={message.ref.lms_notice} />
+        ) : message.run ? (
           <AgentBody message={message} />
         ) : system || message.body.includes("```") ? (
           // Argos's own notes (the weekly review) and code or documents pasted for
