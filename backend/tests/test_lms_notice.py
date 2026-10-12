@@ -99,6 +99,29 @@ async def test_failed_summary_retries_on_next_import(session: AsyncSession) -> N
     assert (await notice(session)).summary_state == "pending"
 
 
+async def test_failed_summary_stops_retrying_after_five_attempts(session: AsyncSession) -> None:
+    await run_import(session)
+    row = await notice(session)
+    for _ in range(services.MAX_SUMMARY_ATTEMPTS):
+        await services.fail_summary(session, row.id, LONG)
+        await run_import(session)
+    row = await notice(session)
+    assert (row.summary_state, row.summary_attempts) == ("failed", 5)
+    assert (await run_import(session))["summarize"] == []
+
+
+async def test_changed_text_gets_fresh_attempts(session: AsyncSession) -> None:
+    await run_import(session)
+    row = await notice(session)
+    for _ in range(services.MAX_SUMMARY_ATTEMPTS):
+        await services.fail_summary(session, row.id, LONG)
+        await run_import(session)
+    result = await run_import(session, text=LONG + " 장소 변경")
+    row = await notice(session)
+    assert result["summarize"] == [row.id]
+    assert (row.summary_state, row.summary_attempts) == ("pending", 0)
+
+
 async def test_save_summary_updates_body_and_drops_stale_text(session: AsyncSession) -> None:
     await run_import(session)
     row = await notice(session)

@@ -220,6 +220,8 @@ class LmsNotice(Record):
     summary: Mapped[str | None] = mapped_column(Text)
     summary_state: Mapped[str] = mapped_column(String(10))  # SummaryState
     summary_hash: Mapped[str | None] = mapped_column(String(64))  # sha256 of summarized text
+    # Failed tries of this text; retries stop at services.MAX_SUMMARY_ATTEMPTS.
+    summary_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Attachment(Record):

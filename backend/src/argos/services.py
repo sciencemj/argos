@@ -280,6 +280,10 @@ async def pending_summaries(session: AsyncSession) -> list[str]:
     )
 
 
+# A summary that keeps failing (e.g. a decision-only model) stops being retried each sync.
+MAX_SUMMARY_ATTEMPTS = 5
+
+
 def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -305,7 +309,8 @@ async def _settle_summary(
         return None
     notice = await _get(session, LmsNotice, notice_id)
     await session.refresh(notice)
-    _log(session, notice, "updated", "system:lms", after=changes)
+    fields = snapshot(notice)  # values, not the SQL expressions in `changes`
+    _log(session, notice, "updated", "system:lms", after={k: fields[k] for k in changes})
     return notice
 
 
@@ -340,8 +345,12 @@ async def save_summary(session: AsyncSession, notice_id: str, text: str, summary
 async def mark_summary(
     session: AsyncSession, notice_id: str, text: str, state: SummaryState
 ) -> None:
-    """`failed` (tried again on the next sync) or `skipped` (summaries turned off)."""
-    notice = await _settle_summary(session, notice_id, text, {"summary_state": state})
+    """`failed` (tried again on the next sync, up to MAX_SUMMARY_ATTEMPTS) or `skipped`
+    (summaries turned off)."""
+    changes: dict[str, Any] = {"summary_state": state}
+    if state == "failed":
+        changes["summary_attempts"] = LmsNotice.summary_attempts + 1
+    notice = await _settle_summary(session, notice_id, text, changes)
     if notice is not None:
         fields = snapshot(notice)
         await session.commit()
@@ -413,8 +422,17 @@ async def _sync_lms_notice(
     before = snapshot(notice)
     stale = notice.summary_state == "done" and notice.summary_hash != _text_hash(item["text"])
     if notice.text != item["text"] or stale:
-        fields |= {"summary": None, "summary_hash": None, "summary_state": state}
-    elif notice.summary_state == "failed" and state == "pending":
+        fields |= {
+            "summary": None,
+            "summary_hash": None,
+            "summary_state": state,
+            "summary_attempts": 0,
+        }
+    elif (
+        notice.summary_state == "failed"
+        and state == "pending"
+        and notice.summary_attempts < MAX_SUMMARY_ATTEMPTS
+    ):
         fields["summary_state"] = "pending"
     for key, value in fields.items():
         setattr(notice, key, value)
