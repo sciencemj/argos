@@ -45,6 +45,7 @@ from argos import (
     ops,
     remote,
     services,
+    summarizer,
     usage,
     vault,
 )
@@ -2399,6 +2400,7 @@ async def put_classifier_settings(
     overrides = await services.get_settings_overrides(session)
     request.app.state.settings = classifier.apply_overrides(base, overrides)
     request.app.state.classifier = classifier.build_classifier(request.app.state.settings)
+    request.app.state.summarizer = summarizer.build_summarizer(request.app.state.settings)
     return await _classifier_settings(request, session)
 
 

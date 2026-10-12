@@ -23,6 +23,7 @@ from starlette.exceptions import HTTPException
 
 from argos import lms_extension, services
 from argos.api import Config, Session
+from argos.summarizer import LmsSummaries
 
 router = APIRouter(prefix="/api/v1/lms", tags=["lms"])
 TOKEN_KEY = "lms_extension_token_hash"
@@ -296,20 +297,29 @@ async def disconnect(session: Session) -> LmsStatus:
 @router.post("/import")
 async def import_data(
     body: LmsImport,
+    request: Request,
     session: Session,
+    config: Config,
     authorization: Annotated[str | None, Header()] = None,
 ) -> LmsImportResult:
+    summaries: LmsSummaries = request.app.state.lms_summaries
     async with sync_lock:
         # Check after acquiring the write lock so rotation revokes queued imports too.
         await paired(session, authorization)
-        return LmsImportResult(
-            **await services.import_lms(
-                session,
-                account_id=body.account_id,
-                courses=[course.model_dump() for course in body.courses],
-                items=[item.model_dump() for item in body.items],
-            )
+        min_chars = (
+            await services.lms_summary_min_chars(session, config.lms_summary_min_chars)
+            if summaries.available()
+            else 0
         )
+        result = await services.import_lms(
+            session,
+            account_id=body.account_id,
+            courses=[course.model_dump() for course in body.courses],
+            items=[item.model_dump() for item in body.items],
+            summary_min_chars=min_chars,
+        )
+    summaries.enqueue(result.pop("summarize"))
+    return LmsImportResult(**result)
 
 
 @router.post("/materials/needed")

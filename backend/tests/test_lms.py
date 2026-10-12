@@ -2,10 +2,12 @@ import asyncio
 import copy
 import json
 import logging
+import time
 from typing import Any, cast
 
 import httpx2 as httpx
 import pytest
+from fakes import FakeSummarizer
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -443,3 +445,20 @@ def test_course_name_toggle_is_local_only(client: TestClient) -> None:
         headers={"Origin": "https://lms.korea.ac.kr"},
     )
     assert response.status_code == 403
+
+
+def test_import_queues_long_notices_for_summary(client: TestClient) -> None:
+    app = cast(FastAPI, client.app)
+    fake = FakeSummarizer("- 요약됨")
+    app.state.summarizer = fake
+    payload = batch()
+    payload["items"][1]["text"] = "시험 안내입니다. " * 40
+    headers = {"Authorization": f"Bearer {token(client)}"}
+    response = client.post("/api/v1/lms/import", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert "summarize" not in response.json()
+    # The worker runs on the app's event loop: wait by polling, not by joining its queue.
+    deadline = time.time() + 5
+    while not fake.calls and time.time() < deadline:
+        time.sleep(0.05)
+    assert len(fake.calls) == 1

@@ -3,16 +3,25 @@ from typing import Any
 
 import httpx2 as httpx
 import pytest
+from fakes import FakeSummarizer
 from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from argos import services
 from argos.config import Settings
+from argos.db import make_engine, make_sessionmaker
+from argos.models import LmsNotice
 from argos.summarizer import (
     MAX_SOURCE_CHARS,
+    LmsSummaries,
     OpenAISummarizer,
     SummaryError,
     build_summarizer,
     parse_bullets,
 )
+
+LONG = "기말 프로젝트 발표 순서와 준비물을 안내합니다. " * 20
+Maker = async_sessionmaker[AsyncSession]
 
 
 def completion(content: str) -> dict[str, Any]:
@@ -86,3 +95,78 @@ def test_build_summarizer_prefers_the_title_model(settings: Settings) -> None:
     plain = settings.model_copy(update={"classifier_model": "qwen"})
     built = build_summarizer(plain)
     assert isinstance(built, OpenAISummarizer) and built.model == "qwen"
+
+
+async def seeded(settings: Settings) -> tuple[Maker, str]:
+    maker = make_sessionmaker(make_engine(settings.db_url))
+    async with maker() as session:
+        result = await services.import_lms(
+            session,
+            account_id="42",
+            courses=[{"id": "7", "name": "알고리즘"}],
+            items=[
+                {
+                    "id": "1",
+                    "course_id": "7",
+                    "kind": "announcement",
+                    "title": "발표",
+                    "text": LONG,
+                    "url": "https://lms.example/1",
+                    "due_at": None,
+                    "file": None,
+                }
+            ],
+            summary_min_chars=300,
+        )
+    return maker, result["summarize"][0]
+
+
+async def state(maker: Maker, notice_id: str) -> LmsNotice:
+    async with maker() as session:
+        row = await session.get(LmsNotice, notice_id)
+        assert row is not None
+        return row
+
+
+async def test_worker_saves_summary(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+    fake = FakeSummarizer("- 발표 순서 공개")
+    await LmsSummaries(maker, lambda: fake, lambda: settings).process(notice_id)
+    row = await state(maker, notice_id)
+    assert (row.summary_state, row.summary) == ("done", "- 발표 순서 공개")
+    assert fake.calls == [("발표", LONG)]
+
+
+async def test_worker_failure_marks_failed(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+    fake = FakeSummarizer(error=True)
+    await LmsSummaries(maker, lambda: fake, lambda: settings).process(notice_id)
+    assert (await state(maker, notice_id)).summary_state == "failed"
+
+
+async def test_stale_summary_is_dropped(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+
+    class ChangesWhileSummarizing(FakeSummarizer):
+        async def summarize(self, title: str, text: str, language: str) -> str:
+            async with maker() as session:
+                row = await session.get(LmsNotice, notice_id)
+                assert row is not None
+                row.text = LONG + " 변경"
+                await session.commit()
+            return "- 옛 요약"
+
+    fake = ChangesWhileSummarizing()
+    await LmsSummaries(maker, lambda: fake, lambda: settings).process(notice_id)
+    row = await state(maker, notice_id)
+    assert (row.summary_state, row.summary) == ("pending", None)
+
+
+async def test_start_requeues_pending_and_processes(settings: Settings) -> None:
+    maker, notice_id = await seeded(settings)
+    fake = FakeSummarizer("- 완료")
+    worker = LmsSummaries(maker, lambda: fake, lambda: settings)
+    await worker.start()
+    await worker.join()
+    await worker.stop()
+    assert (await state(maker, notice_id)).summary_state == "done"

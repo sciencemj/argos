@@ -1,14 +1,19 @@
 """AI summaries of LMS notices (PLAN Phase 15a), written with the Inbox classifier's
 chat model. A notice without a summary still shows its original text."""
 
+import asyncio
 import logging
 import re
+from collections.abc import Callable, Iterable
 from typing import Protocol
 
 from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from argos import services
 from argos.classifier import DEFAULT_BASE_URLS
 from argos.config import Settings
+from argos.models import LmsNotice
 
 log = logging.getLogger(__name__)
 
@@ -88,3 +93,74 @@ def build_summarizer(settings: Settings) -> Summarizer | None:
         base_url=base_url, api_key=api_key, timeout=settings.classifier_timeout, max_retries=1
     )
     return OpenAISummarizer(client, model)
+
+
+class LmsSummaries:
+    """One notice at a time in the background: a slow local model must not hold up the
+    LMS import, and it gets one request at a time."""
+
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        summarizer: Callable[[], Summarizer | None],
+        settings: Callable[[], Settings],
+    ) -> None:
+        self._sessionmaker = sessionmaker
+        self._summarizer = summarizer
+        self._settings = settings
+        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._loop: asyncio.Task[None] | None = None
+
+    def available(self) -> bool:
+        return self._summarizer() is not None
+
+    def enqueue(self, ids: Iterable[str]) -> None:
+        for notice_id in ids:
+            self._queue.put_nowait(notice_id)
+
+    async def process(self, notice_id: str) -> None:
+        summarizer = self._summarizer()
+        async with self._sessionmaker() as session:
+            notice = await session.get(LmsNotice, notice_id)
+            if notice is None or notice.summary_state != "pending":
+                return
+            title, text = notice.title, notice.text
+            if summarizer is None:  # the classifier was turned off meanwhile
+                await services.fail_summary(session, notice_id, text)
+                return
+            try:
+                summary = await summarizer.summarize(title, text, self._settings().language)
+            except SummaryError as exc:
+                log.warning("LMS summary failed: %s", exc)
+                await services.fail_summary(session, notice_id, text)
+                return
+            await services.save_summary(session, notice_id, text, summary)
+
+    async def start(self) -> None:
+        """Cards for older LMS messages, then the notices left waiting at shutdown."""
+        async with self._sessionmaker() as session:
+            await services.backfill_lms_notices(session)
+            self.enqueue(await services.pending_summaries(session))
+
+        async def loop() -> None:
+            while True:
+                notice_id = await self._queue.get()
+                try:
+                    await self.process(notice_id)
+                except Exception:
+                    log.exception("LMS summary pass failed")
+                finally:
+                    self._queue.task_done()
+
+        self._loop = asyncio.create_task(loop())
+
+    async def join(self) -> None:
+        await self._queue.join()
+
+    async def stop(self) -> None:
+        if self._loop is not None:
+            self._loop.cancel()
+            try:
+                await self._loop
+            except asyncio.CancelledError:
+                pass

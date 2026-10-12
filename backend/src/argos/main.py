@@ -27,6 +27,7 @@ from argos.hub import hub
 from argos.lms import router as lms_router
 from argos.mcp_server import build_mcp
 from argos.runner import Runner
+from argos.summarizer import LmsSummaries, build_summarizer
 
 
 def create_app(config: Settings = settings) -> FastAPI:
@@ -43,6 +44,7 @@ def create_app(config: Settings = settings) -> FastAPI:
         app.state.base_settings = config
         app.state.settings = apply_overrides(config, overrides)
         app.state.classifier = build_classifier(app.state.settings)
+        app.state.summarizer = build_summarizer(app.state.settings)
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
         async with app.state.sessionmaker() as session:
             await services.abandon_running_runs(session)
@@ -55,6 +57,10 @@ def create_app(config: Settings = settings) -> FastAPI:
 
         app.state.notifier = notify.Notifier(app.state.sessionmaker, lambda: app.state.settings)
         app.state.notifier.start()
+        app.state.lms_summaries = LmsSummaries(
+            app.state.sessionmaker, lambda: app.state.summarizer, lambda: app.state.settings
+        )
+        await app.state.lms_summaries.start()
         app.state.backups = ops.Backups(lambda: app.state.settings)
         if config.auto_backup:
             app.state.backups.start()
@@ -96,6 +102,7 @@ def create_app(config: Settings = settings) -> FastAPI:
         await app.state.vault_sync.stop()
         await app.state.usage.stop()
         await app.state.notifier.stop()
+        await app.state.lms_summaries.stop()
         await app.state.backups.stop()
         await app.state.calendar_sync.stop()
         await app.state.runner.shutdown()
