@@ -6,6 +6,7 @@ from argos.agents import AgentEvent, AgentUnavailable, Status, Token, Turn
 from argos.classifier import ClassifierError, ClassifyContext, Suggestion
 from argos.config import Settings
 from argos.models import Agent
+from argos.summarizer import SummaryError
 
 
 class FakeClassifier:
@@ -72,3 +73,18 @@ def fake_agents(**agents: FakeAgent) -> Any:
         return fake
 
     return factory
+
+
+class FakeSummarizer:
+    """Answers a fixed summary (or fails) and remembers (title, text) it was given."""
+
+    def __init__(self, answer: str = "- 요약", error: bool = False) -> None:
+        self.answer = answer
+        self.error = error
+        self.calls: list[tuple[str, str]] = []
+
+    async def summarize(self, title: str, text: str, language: str) -> str:
+        self.calls.append((title, text))
+        if self.error:
+            raise SummaryError("fake failure")
+        return self.answer
