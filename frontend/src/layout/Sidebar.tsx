@@ -41,6 +41,7 @@ import {
   useReorderChannels,
   useTasks,
   useToday,
+  useUnread,
 } from "../api";
 import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { dday, fmt } from "../dates";
@@ -113,7 +114,8 @@ export function Sidebar({
   const channels = data?.channels ?? [];
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
   const approvals = usePendingApprovals().data?.length ?? 0;
-  const unread = useNotifications().data?.unread ?? 0;
+  const unreadNotices = useNotifications().data?.unread ?? 0;
+  const unread = useUnread();
   const inScope = channels.filter(
     (c) => c.kind !== "system" && (!areaId || c.area_id === areaId),
   );
@@ -176,11 +178,11 @@ export function Sidebar({
           <NavLink to="/notifications" className={row}>
             <BellIcon />
             <span className="grow">{tr("알림")}</span>
-            {unread > 0 && (
+            {unreadNotices > 0 && (
               <span
                 className={`${count} rounded-full border border-line bg-inset px-1 py-px font-semibold text-text`}
               >
-                {unread}
+                {unreadNotices}
               </span>
             )}
           </NavLink>
@@ -220,6 +222,7 @@ export function Sidebar({
               <SortableChannels
                 channels={inScope.filter((c) => c.kind === kind)}
                 due={due}
+                unread={unread.data}
                 onMenu={(event, channel) => {
                   event.preventDefault();
                   setMenu({ x: event.clientX, y: event.clientY, channel });
@@ -287,10 +290,12 @@ const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 function SortableChannels({
   channels,
   due,
+  unread,
   onMenu,
 }: {
   channels: Channel[];
   due: Map<string, number>;
+  unread: Record<string, number> | undefined;
   onMenu: (event: MouseEvent<HTMLAnchorElement>, channel: Channel) => void;
 }) {
   const reorder = useReorderChannels();
@@ -325,6 +330,7 @@ function SortableChannels({
             key={c.id}
             channel={c}
             days={due.get(c.id)}
+            unread={unread?.[c.id] ?? 0}
             onContextMenu={(event) => onMenu(event, c)}
           />
         ))}
@@ -336,10 +342,12 @@ function SortableChannels({
 function ChannelRow({
   channel,
   days,
+  unread,
   onContextMenu,
 }: {
   channel: Channel;
   days: number | undefined;
+  unread: number;
   onContextMenu: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const {
@@ -362,9 +370,27 @@ function ChannelRow({
       {...listeners}
     >
       <span className="font-mono text-hash">#</span>
-      <span className="grow truncate">{channel.name}</span>
+      <span
+        className={`grow truncate ${unread ? "font-semibold text-ink" : ""}`}
+      >
+        {channel.name}
+      </span>
+      {unread > 0 && <UnreadDot count={unread} />}
       {days !== undefined && <DdayBadge days={days} />}
     </NavLink>
+  );
+}
+
+/** New messages since the channel was last read (PLAN Phase 16b): a dot, so the
+ * row keeps showing the deadline as its number. */
+function UnreadDot({ count }: { count: number }) {
+  return (
+    <span
+      role="img"
+      aria-label={tt`안 읽은 메시지 ${String(count)}개`}
+      title={tt`안 읽은 메시지 ${String(count)}개`}
+      className="size-[7px] shrink-0 rounded-full bg-ink"
+    />
   );
 }
 
@@ -468,13 +494,20 @@ function AgentSection() {
   const busy = useBusyAgents();
   const { channelId } = useParams();
   const channels = useChannels();
+  const unread = useUnread();
   const current = channels.data?.channels.find((c) => c.id === channelId);
+  const dmOf = (agentId: string) =>
+    channels.data?.channels.find(
+      (c) => c.kind === "dm" && c.default_agent_id === agentId,
+    );
 
   return (
     <Section title={tr("에이전트")}>
       {agents.data?.map((a) => {
         const active =
           current?.kind === "dm" && current.default_agent_id === a.id;
+        const dm = dmOf(a.id);
+        const fresh = dm ? (unread.data?.[dm.id] ?? 0) : 0;
         return (
           <button
             key={a.id}
@@ -489,7 +522,12 @@ function AgentSection() {
             className={`${row} h-[34px] cursor-pointer text-left ${a.available ? "" : "opacity-55"}`}
           >
             <AgentAvatar id={a.name} size={22} />
-            <span className="grow truncate">{a.display_name}</span>
+            <span
+              className={`grow truncate ${fresh ? "font-semibold text-ink" : ""}`}
+            >
+              {a.display_name}
+            </span>
+            {fresh > 0 && <UnreadDot count={fresh} />}
             {busy.has(a.name) ? (
               <span className="text-[11.5px] text-meta">
                 <PawTrail label={tr("입력 중")} />

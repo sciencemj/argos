@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import createClient from "openapi-fetch";
+import { useEffect, useState } from "react";
 import type { components, paths } from "./api-types";
 import { BASE } from "./base";
 import { placeInSlots } from "./channelOrder";
@@ -133,13 +134,23 @@ export function invalidateFor(
     ],
     inbox_item: [["inbox"], ["today"], ...feeds],
     attachment: feeds, // a message's files are linked right after it is stored
-    message: [...feeds, ["dm-sessions"]], // a message makes its DM conversation current
+    // A message makes its DM conversation current, and may be unread elsewhere.
+    message: [...feeds, ["dm-sessions"], ["unread"]],
+    channel_read: [["unread"]],
     dm_session: [["dm-sessions"]],
     routine: [["routines"]],
     approval: [["approvals"], ...feeds],
-    agent_run: [["tasks"], ["task"], ...feeds], // job status lives on the card
+    // Job status lives on the card; a finished answer becomes unread.
+    agent_run: [["tasks"], ["task"], ["unread"], ...feeds],
     routine_check: [["routines"]],
-    channel: [["channels"], ["tasks"], ["notes"], ["materials"], ["lms"]],
+    channel: [
+      ["channels"],
+      ["tasks"],
+      ["notes"],
+      ["materials"],
+      ["lms"],
+      ["unread"],
+    ],
     note_ref: [["notes"], ["settings", "vault"]],
     // A deleted or renamed agent also moves the morning digest's choice.
     agent: [["agents"], ["channels"], ["settings", "notify"]],
@@ -170,6 +181,53 @@ export const useChannels = () =>
     queryKey: ["channels"],
     queryFn: () => call(client.GET("/api/v1/channels")),
   });
+
+/** Unread message counts by channel id (PLAN Phase 16b). */
+export const useUnread = () =>
+  useQuery({
+    queryKey: ["unread"],
+    queryFn: () => call(client.GET("/api/v1/channels/unread")),
+  });
+
+function usePageVisible() {
+  const [visible, setVisible] = useState(
+    () => document.visibilityState === "visible",
+  );
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  return visible;
+}
+
+/** While `active` (the channel's messages are on screen) and the page is visible,
+ * anything unread in `channelIds` is marked read, including messages that arrive
+ * while the user watches. */
+export function useMarkRead(channelIds: string[], active: boolean) {
+  const qc = useQueryClient();
+  const unread = useUnread();
+  const visible = usePageVisible();
+  const pending = channelIds
+    .filter((id) => (unread.data?.[id] ?? 0) > 0)
+    .join(",");
+  useEffect(() => {
+    if (!active || !visible || !pending) return;
+    const ids = pending.split(",");
+    qc.setQueryData<Record<string, number>>(["unread"], (old) =>
+      old
+        ? Object.fromEntries(
+            Object.entries(old).filter(([id]) => !ids.includes(id)),
+          )
+        : old,
+    );
+    for (const id of ids) {
+      void client.POST("/api/v1/channels/{channel_id}/read", {
+        params: { path: { channel_id: id } },
+      });
+    }
+  }, [qc, active, visible, pending]);
+}
 
 export const useTasks = (channelId?: string) =>
   useQuery({

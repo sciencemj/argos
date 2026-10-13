@@ -15,6 +15,7 @@ import {
   useAgents,
   useChannels,
   useDmSessions,
+  useMarkRead,
   useStartDmSession,
   useUpdateChannel,
   useVaultFolders,
@@ -151,6 +152,12 @@ export function ChannelPage() {
   // The feed reads in a centered column; kanban, calendar and notes get more room.
   const onFeed = useMatch("/c/:channelId") !== null;
   const column = onFeed ? FEED_COLUMN : "mx-auto w-full max-w-[1480px]";
+  // Reading the feed clears the sidebar's unread mark (내 공간 also shows 일상).
+  const shownIds = [channel?.id, channel?.id === inbox?.id ? personal?.id : ""];
+  useMarkRead(
+    shownIds.filter((id): id is string => Boolean(id)),
+    onFeed,
+  );
 
   if (isLoading) return null;
   if (!channel) {

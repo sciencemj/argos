@@ -36,6 +36,7 @@ from argos.models import (
     AuthorType,
     Channel,
     ChannelKind,
+    ChannelRead,
     Debate,
     DebateMode,
     DebateStatus,
@@ -901,6 +902,53 @@ async def update_channel(
     if changes.get("area_id") is not None:
         await _get(session, Area, changes["area_id"])
     return await _update(session, channel, changes, actor)
+
+
+async def unread_counts(session: AsyncSession) -> dict[str, int]:
+    """Messages the user has not seen per channel (PLAN Phase 16b): anything not
+    written by the user after the channel's read mark. An agent answer counts when its
+    run finishes (the reply row exists from the start and fills in as it streams)."""
+    read = func.coalesce(ChannelRead.read_at, Channel.created_at)
+    plain = Message.run_id.is_(None) & (Message.created_at > read)
+    answered = (
+        Message.run_id.is_not(None)
+        & AgentRun.status.not_in([RunStatus.QUEUED, RunStatus.RUNNING])
+        & (AgentRun.finished_at > read)
+    )
+    rows = await session.execute(
+        select(Message.channel_id, func.count())
+        .join(Channel, Channel.id == Message.channel_id)
+        .outerjoin(ChannelRead, ChannelRead.channel_id == Channel.id)
+        .outerjoin(AgentRun, AgentRun.id == Message.run_id)
+        .where(
+            Channel.kind != ChannelKind.SYSTEM,
+            Message.author_type != AuthorType.USER,
+            plain | answered,
+        )
+        .group_by(Message.channel_id)
+    )
+    return {channel_id: count for channel_id, count in rows.tuples()}
+
+
+async def mark_channel_read(session: AsyncSession, channel_id: str) -> None:
+    """Bookkeeping like a read receipt: no activity log, one event so other open
+    screens (the phone) clear the mark too."""
+    await get_channel(session, channel_id)
+    row = await session.get(ChannelRead, channel_id)
+    now = utcnow()
+    if row is None:
+        session.add(ChannelRead(channel_id=channel_id, read_at=now))
+    else:
+        row.read_at = now
+    await session.commit()
+    await hub.publish(
+        "object.updated",
+        {
+            "object_type": "channel_read",
+            "id": channel_id,
+            "object": {"channel_id": channel_id, "read_at": now.isoformat()},
+        },
+    )
 
 
 async def reorder_channels(session: AsyncSession, ids: Sequence[str], actor: str) -> None:

@@ -676,6 +676,17 @@ async def reorder_channels(session: Session, body: ChannelOrder) -> None:
     await services.reorder_channels(session, body.ids, USER)
 
 
+@router.get("/channels/unread")
+async def unread_channels(session: Session) -> dict[str, int]:
+    """Unread message counts by channel id; channels with none are left out."""
+    return await services.unread_counts(session)
+
+
+@router.post("/channels/{channel_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_channel_read(session: Session, channel_id: str) -> None:
+    await services.mark_channel_read(session, channel_id)
+
+
 @router.patch("/channels/{channel_id}")
 async def update_channel(
     request: Request, session: Session, config: Config, channel_id: str, body: ChannelUpdate

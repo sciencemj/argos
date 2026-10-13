@@ -1,4 +1,5 @@
 export const enTemplates: Record<string, string> = {
+  "안 읽은 메시지 {0}개": "{0} unread",
   "#{0} 삭제": "Delete #{0}",
   "{0} 종일": "{0} · all day",
   "{0} 다시 열기": "Reopen {0}",

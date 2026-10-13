@@ -113,6 +113,18 @@ class Channel(Record):
     workspace_path: Mapped[str | None] = mapped_column(String(500))
 
 
+class ChannelRead(Base):
+    """How far the user has read a channel (PLAN Phase 16b). Bookkeeping, not a user
+    change: no activity log. No row yet: read up to the channel's creation."""
+
+    __tablename__ = "channel_read"
+
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), primary_key=True
+    )
+    read_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class Task(Record):
     __tablename__ = "task"
 
