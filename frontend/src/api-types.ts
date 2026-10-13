@@ -1774,6 +1774,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/courses/{channel_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Course
+         * @description The LMS course in `channel_id` continues in the user's own course channel.
+         */
+        post: operations["merge_course_api_v1_lms_courses__channel_id__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lms/materials": {
         parameters: {
             query?: never;
@@ -2659,6 +2679,11 @@ export interface components {
             original: string;
             /** Name */
             name: string;
+            /**
+             * Course
+             * @default true
+             */
+            course: boolean;
         };
         /** LmsCourse */
         LmsCourse: {
@@ -2792,6 +2817,18 @@ export interface components {
             /** Item Ids */
             item_ids: string[];
         };
+        /** LmsMerge */
+        LmsMerge: {
+            /** Target Channel Id */
+            target_channel_id: string;
+        };
+        /** LmsMergeTarget */
+        LmsMergeTarget: {
+            /** Channel Id */
+            channel_id: string;
+            /** Name */
+            name: string;
+        };
         /** LmsNoticeOut */
         LmsNoticeOut: {
             /** Kind */
@@ -2839,6 +2876,11 @@ export interface components {
              * @default []
              */
             courses: components["schemas"]["LmsChannel"][];
+            /**
+             * Merge Targets
+             * @default []
+             */
+            merge_targets: components["schemas"]["LmsMergeTarget"][];
             /**
              * Summary Min Chars
              * @default 300
@@ -7130,6 +7172,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    merge_course_api_v1_lms_courses__channel_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsMerge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

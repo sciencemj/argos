@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from argos import lms_canvas
+from argos import lms_canvas, lms_match
 from argos.config import Settings
 from argos.db import make_engine, make_sessionmaker
 from argos.main import create_app
@@ -442,3 +442,86 @@ def test_stream_copies_imported_before_are_removed(app: TestClient, settings: Se
     assert notice_titles(settings).count("휴강 안내") == 1  # removed in the same import
     sync(app)
     assert notice_titles(settings).count("휴강 안내") == 1
+
+
+class FakeMatcher:
+    def __init__(self, answers: dict[str, str]) -> None:
+        self.answers = answers
+        self.asked: list[tuple[str, list[str]]] = []
+
+    async def match(self, course: str, channels: Sequence[str]) -> str | None:
+        self.asked.append((course, list(channels)))
+        return self.answers.get(course)
+
+
+def with_matcher(app: TestClient, matcher: FakeMatcher) -> None:
+    app.app.state.lms_sync.matcher = lambda _settings: matcher  # type: ignore[attr-defined]
+
+
+def test_ai_match_is_suggested_and_merges_once_approved(
+    app: TestClient, settings: Settings
+) -> None:
+    mine = user_channel(app, settings, "Algorithms")  # named unlike the LMS course
+    matcher = FakeMatcher({"2026-2 알고리즘(01)": "Algorithms"})
+    with_matcher(app, matcher)
+    connect(app)
+    sync(app)
+    [approval] = app.get("/api/v1/approvals").json()
+    assert approval["action"] == "merge_channels" and approval["status"] == "pending"
+    lms = approval["payload_json"]["source_channel_id"]
+    assert approval["payload_json"]["target_channel_id"] == mine
+    assert lms in {c.id for c in rows(settings, Channel)}  # nothing merged yet
+    sync(app)
+    assert len(matcher.asked) == 2  # each LMS course asked about once (알고리즘, 자료구조)
+    assert app.post(f"/api/v1/approvals/{approval['id']}/approve").status_code == 200
+    assert lms not in {c.id for c in rows(settings, Channel)}
+    assert {t.title for t in rows(settings, Task) if t.channel_id == mine} == {"내 할 일", "과제 1"}
+    assert app.get("/api/v1/approvals").json()[0]["status"] == "approved"
+    sync(app)  # the course keeps syncing into the user's channel
+    assert lms not in {c.id for c in rows(settings, Channel)}
+
+
+def test_rejected_suggestion_is_not_asked_again(app: TestClient, settings: Settings) -> None:
+    user_channel(app, settings, "Algorithms")
+    matcher = FakeMatcher({"2026-2 알고리즘(01)": "Algorithms"})
+    with_matcher(app, matcher)
+    connect(app)
+    sync(app)
+    [approval] = app.get("/api/v1/approvals").json()
+    assert app.post(f"/api/v1/approvals/{approval['id']}/reject").status_code == 200
+    sync(app)
+    assert len(app.get("/api/v1/approvals").json()) == 1
+    assert any(c.name == "알고리즘" for c in rows(settings, Channel))
+
+
+def test_settings_merge_course_into_a_chosen_channel(app: TestClient, settings: Settings) -> None:
+    mine = user_channel(app, settings, "Algorithms")
+    with_matcher(app, FakeMatcher({}))
+    connect(app)
+    status = sync(app)
+    assert {t["channel_id"] for t in status["merge_targets"]} >= {mine}
+    courses = {c["original"]: c for c in status["courses"]}
+    assert courses["알림·메시지"]["course"] is False
+    lms = courses["2026-2 알고리즘(01)"]["channel_id"]
+    inbox = courses["알림·메시지"]["channel_id"]
+    other = courses["자료구조"]["channel_id"] if "자료구조" in courses else None
+    refused = app.post(f"/api/v1/lms/courses/{inbox}/merge", json={"target_channel_id": mine})
+    assert refused.status_code == 422
+    if other:  # an LMS-linked channel is not a target
+        taken = app.post(f"/api/v1/lms/courses/{lms}/merge", json={"target_channel_id": other})
+        assert taken.status_code == 409
+    merged = app.post(f"/api/v1/lms/courses/{lms}/merge", json={"target_channel_id": mine})
+    assert merged.status_code == 200, merged.text
+    names = {c["channel_id"]: c["name"] for c in merged.json()["courses"]}
+    assert names.get(mine) == "Algorithms" and lms not in names
+    assert mine not in {t["channel_id"] for t in merged.json()["merge_targets"]}
+    sync(app)
+    assert {t.title for t in rows(settings, Task) if t.channel_id == mine} == {"내 할 일", "과제 1"}
+
+
+def test_parse_match_takes_only_a_listed_channel() -> None:
+    channels = ["머신러닝", "운영체제"]
+    assert lms_match.parse_match("머신러닝", channels) == "머신러닝"
+    assert lms_match.parse_match("<think>hmm</think>\n- '머신러닝'", channels) == "머신러닝"
+    assert lms_match.parse_match("NONE", channels) is None
+    assert lms_match.parse_match("머신 러닝 같아요", channels) is None

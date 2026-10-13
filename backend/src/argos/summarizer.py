@@ -83,9 +83,9 @@ class OpenAISummarizer:
         return parse_bullets(content)
 
 
-def build_summarizer(settings: Settings) -> Summarizer | None:
-    """The classifier's chat model: the title writer when the classifier is a
-    decision-only model. None when no classifier is set up."""
+def classifier_chat(settings: Settings) -> tuple[AsyncOpenAI, str, str | None] | None:
+    """Client, model and reasoning effort of the classifier's chat model: the title
+    writer when the classifier is a decision-only model. None when none is set up."""
     model = settings.classifier_title_model or settings.classifier_model
     if not model:
         return None
@@ -101,6 +101,14 @@ def build_summarizer(settings: Settings) -> Summarizer | None:
     effort = settings.classifier_reasoning_effort  # the classifier's rule (build_classifier)
     if effort is None and settings.classifier_provider == "ollama":
         effort = "none"
+    return client, model, effort
+
+
+def build_summarizer(settings: Settings) -> Summarizer | None:
+    chat = classifier_chat(settings)
+    if chat is None:
+        return None
+    client, model, effort = chat
     return OpenAISummarizer(client, model, reasoning_effort=effort)
 
 

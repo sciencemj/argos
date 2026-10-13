@@ -82,6 +82,8 @@ class LmsStatus(BaseModel):
     extension_manual_update: bool = False
     clean_course_names: bool = True
     courses: list["LmsChannel"] = []
+    # The user's own course channels an LMS course can continue in (settings → 합치기).
+    merge_targets: list["LmsMergeTarget"] = []
     summary_min_chars: int = 300  # 0: no AI summaries of notices
     summary_available: bool = False  # an Inbox classifier model is set up
     # Canvas access token connection (the default way in).
@@ -98,6 +100,16 @@ class LmsChannel(BaseModel):
     channel_id: str
     original: str
     name: str
+    course: bool = True  # False for the notices channel, which never merges
+
+
+class LmsMergeTarget(BaseModel):
+    channel_id: str
+    name: str
+
+
+class LmsMerge(BaseModel):
+    target_channel_id: str
 
 
 class LmsCourseNames(BaseModel):
@@ -261,8 +273,17 @@ async def status(request: Request, session: Session, config: Config) -> LmsStatu
         ),
         clean_course_names=await services.lms_clean_names(session),
         courses=[
-            LmsChannel(channel_id=channel.id, original=link.container_name or "", name=channel.name)
+            LmsChannel(
+                channel_id=channel.id,
+                original=link.container_name or "",
+                name=channel.name,
+                course=link.container_name != services.LMS_INBOX,
+            )
             for link, channel in await services.lms_channels(session)
+        ],
+        merge_targets=[
+            LmsMergeTarget(channel_id=c.id, name=c.name)
+            for c in await services.lms_merge_targets(session)
         ],
         summary_min_chars=await services.lms_summary_min_chars(
             session, config.lms_summary_min_chars
@@ -339,6 +360,16 @@ async def sync_now(request: Request, session: Session, config: Config) -> LmsSta
     if not await services.get_setting(session, lms_canvas.CANVAS_SETTING):
         raise HTTPException(409, "LMS 토큰을 먼저 연결해 주세요")
     await sync.run()
+    return await status(request, session, config)
+
+
+@router.post("/courses/{channel_id}/merge", dependencies=[Depends(local_settings_request)])
+async def merge_course(
+    channel_id: str, body: LmsMerge, request: Request, session: Session, config: Config
+) -> LmsStatus:
+    """The LMS course in `channel_id` continues in the user's own course channel."""
+    async with sync_lock:
+        await services.merge_lms_channel(session, channel_id, body.target_channel_id, "user")
     return await status(request, session, config)
 
 
@@ -446,6 +477,8 @@ async def import_data(
             summary_min_chars=min_chars,
         )
     summaries.enqueue(result.pop("summarize"))
+    sync: lms_canvas.LmsSync = request.app.state.lms_sync
+    sync.suggest_soon()  # same-course channels the user named differently
     return LmsImportResult(**result)
 
 

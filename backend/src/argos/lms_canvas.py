@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import services
 from argos.config import Settings
+from argos.lms_match import CourseMatcher, build_matcher, suggest_merges
 from argos.summarizer import LmsSummaries
 
 log = logging.getLogger(__name__)
@@ -637,10 +638,12 @@ class LmsSync:
         self.keychain = keychain
         self.lock = lock  # shared with the extension endpoints: one LMS writer at a time
         self.transport: TransportFactory = lambda: None  # tests serve a fake Canvas here
+        self.matcher: Callable[[Settings], CourseMatcher | None] = build_matcher
         self.status = SyncStatus()
         self._run_lock = asyncio.Lock()
         self._loop: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[SyncStatus]] = set()
+        self._suggesting: set[asyncio.Task[None]] = set()
 
     def canvas(self, origin: str, token: str) -> Canvas:
         return Canvas(origin, token, self.transport())
@@ -740,6 +743,24 @@ class LmsSync:
         self.status.last_result = result
         self.status.last_error = None
         self.status.warnings = warnings[:20]
+        await self.suggest()
+
+    async def suggest(self) -> None:
+        """Suggest merging LMS courses into same-course channels the user named
+        differently (the extension's imports land here too, via suggest_soon)."""
+        matcher = self.matcher(self._settings())
+        if matcher is None:
+            return
+        try:
+            async with self.lock, self._sessionmaker() as session:
+                await suggest_merges(session, matcher)
+        except Exception:
+            log.exception("LMS course match failed")
+
+    def suggest_soon(self) -> None:
+        task = asyncio.create_task(self.suggest())
+        self._suggesting.add(task)
+        task.add_done_callback(self._suggesting.discard)
 
     def start(self) -> None:
         async def loop() -> None:
@@ -750,7 +771,7 @@ class LmsSync:
         self._loop = asyncio.create_task(loop())
 
     async def stop(self) -> None:
-        for task in list(self._tasks):
+        for task in [*self._tasks, *self._suggesting]:
             task.cancel()
         if self._loop is not None:
             self._loop.cancel()

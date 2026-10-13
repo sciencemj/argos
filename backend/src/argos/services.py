@@ -609,6 +609,92 @@ async def _merge_lms_channel(
     changes.append(("object.updated", target, snapshot(target)))
 
 
+LMS_INBOX = "알림·메시지"  # the LMS channel for notices that belong to no course
+
+
+async def lms_merge_targets(session: AsyncSession) -> Sequence[Channel]:
+    """Course channels no LMS course is linked to: where an LMS course can merge into."""
+    linked = select(SourceLink.object_id).where(
+        SourceLink.source == "learningx", SourceLink.object_type == "channel"
+    )
+    return (
+        await session.scalars(
+            select(Channel)
+            .where(Channel.kind == ChannelKind.COURSE, Channel.id.not_in(linked))
+            .order_by(Channel.name)
+        )
+    ).all()
+
+
+async def merge_lms_channel(
+    session: AsyncSession, source_id: str, target_id: str, actor: str
+) -> Channel:
+    """The user's choice (settings, or an approved suggestion): the LMS course in
+    `source_id` continues in their own course channel `target_id`."""
+    link = await session.scalar(
+        select(SourceLink).where(
+            SourceLink.source == "learningx",
+            SourceLink.object_type == "channel",
+            SourceLink.object_id == source_id,
+        )
+    )
+    source = await get_channel(session, source_id)
+    target = await get_channel(session, target_id)
+    if link is None or link.container_name == LMS_INBOX:
+        raise InvalidError("LMS 과목 채널만 합칠 수 있어요")
+    if target.id not in {c.id for c in await lms_merge_targets(session)}:
+        raise ConflictError("이미 LMS 과목과 연결된 채널이거나 과목 채널이 아니에요")
+    changes: list[tuple[str, Record, dict[str, Any]]] = []
+    await _merge_lms_channel(session, source, target, changes)
+    link.object_id = target.id
+    _log(
+        session,
+        target,
+        "updated",
+        actor,
+        after={"merged_from": source_id, "lms_course": link.container_name},
+    )
+    await session.commit()
+    for type_, obj, fields in changes:
+        await _publish(type_, obj, fields)
+    return target
+
+
+async def request_lms_merge(
+    session: AsyncSession, source: Channel, target: Channel, reason: str | None = None
+) -> Approval:
+    """A suggested merge as an approval card in the LMS course's feed."""
+    actor = "system:lms"
+    approval = await _create(
+        session,
+        Approval(
+            requested_by=actor,
+            channel_id=source.id,
+            action="merge_channels",
+            payload_json={
+                "source_channel_id": source.id,
+                "target_channel_id": target.id,
+                "title": f"{source.name} → {target.name}",
+            },
+            summary=f"같은 과목 채널 합치기: {source.name} → {target.name}",
+            reason=reason,
+        ),
+        actor,
+    )
+    await create_message(
+        session,
+        channel_id=source.id,
+        body=(
+            f"LMS 과목 '{source.name}'이(가) 직접 만든 채널 '{target.name}'과(와) "
+            "같은 과목 같아요. 합치면 이 채널의 내용이 그쪽으로 옮겨지고 이 채널은 사라져요."
+        ),
+        author_type=AuthorType.SYSTEM,
+        ref=approval,
+        actor=actor,
+    )
+    return approval
+
+
 async def set_lms_clean_names(session: AsyncSession, enabled: bool, actor: str) -> None:
     """Save the setting and rename every channel Argos named, in one transaction."""
     row = await session.scalar(select(AppSetting).where(AppSetting.key == LMS_CLEAN_NAMES))
@@ -676,7 +762,7 @@ async def import_lms(
         area = Area(name="LearningX", sort_order=100)
         await record(area)
     channel_ids: dict[str | None, str] = {}
-    channel_courses: list[dict[str, Any]] = [*courses, {"id": None, "name": "알림·메시지"}]
+    channel_courses: list[dict[str, Any]] = [*courses, {"id": None, "name": LMS_INBOX}]
     clean = await lms_clean_names(session)
     for course in channel_courses:
         course_id = course["id"]
@@ -2173,7 +2259,16 @@ async def resolve_approval(
             await delete_task(session, approval.payload_json["task_id"], approval.requested_by)
         elif approval.action == "delete_event":
             await delete_event(session, approval.payload_json["event_id"], approval.requested_by)
-    except NotFoundError as exc:
+        elif approval.action == "merge_channels":
+            await merge_lms_channel(
+                session,
+                approval.payload_json["source_channel_id"],
+                approval.payload_json["target_channel_id"],
+                actor,
+            )
+            # The approval's own channel was the merged one; it now lives in the target.
+            approval = await _get(session, Approval, approval_id)
+    except (NotFoundError, InvalidError, ConflictError) as exc:
         # Raised by the lookup before anything is written, so there is nothing to undo.
         return await _update(
             session,
