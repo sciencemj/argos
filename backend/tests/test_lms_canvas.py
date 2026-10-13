@@ -245,6 +245,16 @@ def test_materials_download_without_sending_the_token_to_storage(
     storage = [r for r in canvas.requests if r.url.host == "files.storage.example"]
     assert len(storage) == 1
     assert "signed-secret" not in caplog.text
+    channel = next(c for c in rows(settings, Channel) if c.name == "알고리즘")
+    [listed] = app.get(f"/api/v1/channels/{channel.id}/lms-materials").json()
+    assert listed["attachment_id"] == attachment.id
+    assert (listed["name"], listed["title"], listed["module"]) == (
+        "week1.pdf",
+        "1주차 슬라이드",
+        "1주차",
+    )
+    assert listed["posted_at"].startswith("2026-09-01T03:00")
+    assert app.get(f"/api/v1/attachments/{attachment.id}/content").content == PDF
     sync(app)  # unchanged file: not downloaded again
     assert len([r for r in canvas.requests if r.url.host == "files.storage.example"]) == 1
     assert len(rows(settings, Attachment)) == 1

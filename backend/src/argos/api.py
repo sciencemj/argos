@@ -1716,6 +1716,17 @@ class MaterialOut(BaseModel):
     modified_at: datetime
 
 
+class LmsMaterialOut(BaseModel):
+    attachment_id: str  # read it at /attachments/{id}/content
+    message_id: str  # its card in the feed
+    name: str  # file name
+    size: int
+    title: str  # the module item's title
+    module: str  # week or unit the LMS lists it under ("" when unknown)
+    url: str  # the item in the LMS
+    posted_at: datetime  # upload time (the card's place in the feed)
+
+
 def _vault_sync(request: Request) -> vault.VaultSync:
     return request.app.state.vault_sync
 
@@ -1878,6 +1889,35 @@ async def list_materials(session: Session, config: Config, channel_id: str) -> l
         return sorted(found, key=lambda m: m.modified_at, reverse=True)
 
     return await asyncio.to_thread(scan)
+
+
+@router.get("/channels/{channel_id}/lms-materials")
+async def list_lms_materials(session: Session, channel_id: str) -> list[LmsMaterialOut]:
+    """Weekly learning files saved from the LMS into this channel, newest first."""
+    channel = await services.get_channel(session, channel_id)
+    rows = await session.execute(
+        select(LmsNotice, Message, Attachment)
+        .join(Message, LmsNotice.message_id == Message.id)
+        .join(Attachment, Attachment.message_id == Message.id)
+        .where(Message.channel_id == channel.id, LmsNotice.kind == "material")
+        .order_by(Message.created_at.desc(), Attachment.name)
+    )
+    found: list[LmsMaterialOut] = []
+    for notice, message, attachment in rows.tuples():
+        module = notice.text.removeprefix("주차/단원: ").strip() if notice.text else ""
+        found.append(
+            LmsMaterialOut(
+                attachment_id=attachment.id,
+                message_id=message.id,
+                name=attachment.name,
+                size=attachment.size,
+                title=notice.title,
+                module=module,
+                url=notice.url,
+                posted_at=message.created_at,
+            )
+        )
+    return found
 
 
 @router.get("/vault/file", response_class=FileResponse)

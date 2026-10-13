@@ -859,6 +859,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/lms-materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Lms Materials
+         * @description Weekly learning files saved from the LMS into this channel, newest first.
+         */
+        get: operations["list_lms_materials_api_v1_channels__channel_id__lms_materials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/vault/file": {
         parameters: {
             query?: never;
@@ -2739,6 +2759,28 @@ export interface components {
             item: components["schemas"]["LmsItem"];
             /** Download Url */
             download_url: string;
+        };
+        /** LmsMaterialOut */
+        LmsMaterialOut: {
+            /** Attachment Id */
+            attachment_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /** Title */
+            title: string;
+            /** Module */
+            module: string;
+            /** Url */
+            url: string;
+            /**
+             * Posted At
+             * Format: date-time
+             */
+            posted_at: string;
         };
         /** LmsMaterials */
         LmsMaterials: {
@@ -5238,6 +5280,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_lms_materials_api_v1_channels__channel_id__lms_materials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsMaterialOut"][];
                 };
             };
             /** @description Validation Error */

@@ -133,7 +133,8 @@ export function invalidateFor(
       ...feeds,
     ],
     inbox_item: [["inbox"], ["today"], ...feeds],
-    attachment: feeds, // a message's files are linked right after it is stored
+    // a message's files are linked right after it is stored; LMS files list in 자료
+    attachment: [...feeds, ["materials"]],
     // A message makes its DM conversation current, and may be unread elsewhere.
     message: [...feeds, ["dm-sessions"], ["unread"]],
     channel_read: [["unread"]],
@@ -155,7 +156,8 @@ export function invalidateFor(
     // A deleted or renamed agent also moves the morning digest's choice.
     agent: [["agents"], ["channels"], ["settings", "notify"]],
     debate: [["debates"], ...feeds],
-    lms_notice: feeds, // the card behind an LMS message (its summary arrives later)
+    // the card behind an LMS message (its summary arrives later); materials list them
+    lms_notice: [...feeds, ["materials"]],
     notification: [["notifications"]],
     area: [["channels"]],
   };
@@ -1020,6 +1022,18 @@ export const useNote = (noteId: string | null) =>
       call(
         client.GET("/api/v1/notes/{note_id}", {
           params: { path: { note_id: noteId ?? "" } },
+        }),
+      ),
+  });
+
+/** Weekly learning files the LMS sync saved into the channel. */
+export const useChannelLmsMaterials = (channelId: string) =>
+  useQuery({
+    queryKey: ["materials", channelId, "lms"],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/lms-materials", {
+          params: { path: { channel_id: channelId } },
         }),
       ),
   });
