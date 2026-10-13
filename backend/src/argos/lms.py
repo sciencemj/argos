@@ -271,7 +271,9 @@ async def status(request: Request, session: Session, config: Config) -> LmsStatu
         token_url=canvas.get("url"),
         token_user=canvas.get("user"),
         token_syncing=sync.status.running,
-        token_last_sync=sync.status.last_sync_at.isoformat() if sync.status.last_sync_at else None,
+        token_last_sync=(
+            sync.status.last_sync_at.isoformat() if canvas and sync.status.last_sync_at else None
+        ),
         token_error=sync.status.last_error if canvas else None,
         token_warnings=sync.status.warnings if canvas else [],
         materials=bool(await services.get_setting(session, lms_canvas.MATERIALS_SETTING)),

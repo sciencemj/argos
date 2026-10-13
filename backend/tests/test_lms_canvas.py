@@ -280,6 +280,12 @@ def test_token_settings_are_local_only(app: TestClient) -> None:
     assert app.post("/api/v1/lms/token/sync").status_code == 409  # nothing connected
 
 
+def test_idle_sync_reports_no_last_sync_without_a_token(app: TestClient) -> None:
+    sync = app.app.state.lms_sync  # type: ignore[attr-defined]
+    app.portal.call(sync.run)  # type: ignore[union-attr]  # the timer firing with no token
+    assert app.get("/api/v1/lms/status").json()["token_last_sync"] is None
+
+
 @pytest.mark.parametrize(
     ("raw", "origin"),
     [
