@@ -667,6 +667,15 @@ async def create_channel(session: Session, body: ChannelCreate) -> ChannelOut:
     return ChannelOut.model_validate(channel)
 
 
+class ChannelOrder(BaseModel):
+    ids: list[str] = Field(max_length=1000)
+
+
+@router.put("/channels/order", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_channels(session: Session, body: ChannelOrder) -> None:
+    await services.reorder_channels(session, body.ids, USER)
+
+
 @router.patch("/channels/{channel_id}")
 async def update_channel(
     request: Request, session: Session, config: Config, channel_id: str, body: ChannelUpdate

@@ -8,6 +8,7 @@ import {
 import createClient from "openapi-fetch";
 import type { components, paths } from "./api-types";
 import { BASE } from "./base";
+import { placeInSlots } from "./channelOrder";
 import { language, t, tr } from "./i18n";
 
 type Schemas = components["schemas"];
@@ -424,6 +425,32 @@ export const useUpdateChannel = () =>
         }),
       ),
   );
+
+/** Sidebar drag and drop: the section's ids in their new order, shown at once. */
+export function useReorderChannels() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      call(client.PUT("/api/v1/channels/order", { body: { ids } })),
+    onSettled: () => invalidateFor(qc, "channel"),
+  });
+  return (ids: string[]) => {
+    const key = ["channels"];
+    const previous = qc.getQueryData<Schemas["ChannelsOut"]>(key);
+    void qc.cancelQueries({ queryKey: key }, { revert: false, silent: true });
+    if (previous) {
+      qc.setQueryData(key, {
+        ...previous,
+        channels: placeInSlots(previous.channels, ids),
+      });
+    }
+    mutation.mutate(ids, {
+      onError: () => {
+        if (previous) qc.setQueryData(key, previous);
+      },
+    });
+  };
+}
 
 export const useDeleteChannel = () =>
   useWrite("channel", ({ id, force }: { id: string; force: boolean }) =>

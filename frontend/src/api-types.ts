@@ -74,6 +74,23 @@ export interface paths {
         patch: operations["update_area_api_v1_areas__area_id__patch"];
         trace?: never;
     };
+    "/api/v1/channels/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Channels */
+        put: operations["reorder_channels_api_v1_channels_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}": {
         parameters: {
             query?: never;
@@ -2066,6 +2083,11 @@ export interface components {
          * @enum {string}
          */
         ChannelKind: "course" | "project" | "personal" | "dm" | "system";
+        /** ChannelOrder */
+        ChannelOrder: {
+            /** Ids */
+            ids: string[];
+        };
         /** ChannelOut */
         ChannelOut: {
             /** Id */
@@ -3565,6 +3587,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AreaOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_channels_api_v1_channels_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

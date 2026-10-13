@@ -1,4 +1,23 @@
 import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  type Modifier,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   type FormEvent,
   type MouseEvent,
   type ReactNode,
@@ -19,6 +38,7 @@ import {
   useNotifications,
   useOpenDM,
   usePendingApprovals,
+  useReorderChannels,
   useTasks,
   useToday,
 } from "../api";
@@ -197,23 +217,14 @@ export function Sidebar({
                 </button>
               }
             >
-              {inScope
-                .filter((c) => c.kind === kind)
-                .map((c) => (
-                  <ChannelRow
-                    key={c.id}
-                    channel={c}
-                    days={due.get(c.id)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setMenu({
-                        x: event.clientX,
-                        y: event.clientY,
-                        channel: c,
-                      });
-                    }}
-                  />
-                ))}
+              <SortableChannels
+                channels={inScope.filter((c) => c.kind === kind)}
+                due={due}
+                onMenu={(event, channel) => {
+                  event.preventDefault();
+                  setMenu({ x: event.clientX, y: event.clientY, channel });
+                }}
+              />
             </Section>
           ))}
         </div>
@@ -269,6 +280,59 @@ function Section({
   );
 }
 
+const vertical: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
+/** One sidebar section; drag a row to reorder (saved, PUT /channels/order). Rows
+ * stay within their section: course and project are channel kinds, not folders. */
+function SortableChannels({
+  channels,
+  due,
+  onMenu,
+}: {
+  channels: Channel[];
+  due: Map<string, number>;
+  onMenu: (event: MouseEvent<HTMLAnchorElement>, channel: Channel) => void;
+}) {
+  const reorder = useReorderChannels();
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // Touch: a long press, so a swipe still scrolls the drawer.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 300, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+  const ids = channels.map((c) => c.id);
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const from = ids.indexOf(String(active.id));
+    const to = ids.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+    reorder(arrayMove(ids, from, to));
+  };
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[vertical]}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {channels.map((c) => (
+          <ChannelRow
+            key={c.id}
+            channel={c}
+            days={due.get(c.id)}
+            onContextMenu={(event) => onMenu(event, c)}
+          />
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 function ChannelRow({
   channel,
   days,
@@ -278,12 +342,24 @@ function ChannelRow({
   days: number | undefined;
   onContextMenu: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: channel.id });
   return (
     <NavLink
+      ref={setNodeRef}
       to={`/c/${channel.id}`}
-      className={row}
-      title={tr("우클릭하여 삭제 메뉴")}
+      className={`${row} ${isDragging ? "relative z-10 bg-inset shadow-sm" : ""}`}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      title={tr("끌어서 순서 바꾸기 · 우클릭하여 삭제 메뉴")}
       onContextMenu={onContextMenu}
+      {...attributes}
+      {...listeners}
     >
       <span className="font-mono text-hash">#</span>
       <span className="grow truncate">{channel.name}</span>

@@ -903,6 +903,43 @@ async def update_channel(
     return await _update(session, channel, changes, actor)
 
 
+async def reorder_channels(session: AsyncSession, ids: Sequence[str], actor: str) -> None:
+    """Sidebar drag and drop: `ids` take the slots they already hold, in the given
+    order, and every course/project channel is renumbered 1..n so the order survives
+    restarts even where older rows shared a sort_order. Kind and area stay as they are."""
+    rows = [
+        c
+        for c in await list_channels(session)
+        if c.kind in (ChannelKind.COURSE, ChannelKind.PROJECT)
+    ]
+    by_id = {c.id: c for c in rows}
+    if len(set(ids)) != len(ids) or any(i not in by_id for i in ids):
+        raise InvalidError("과목·프로젝트 채널만 순서를 바꿀 수 있어요")
+    moved = iter(by_id[i] for i in ids)
+    wanted = set(ids)
+    ordered = [next(moved) if c.id in wanted else c for c in rows]
+    changed: list[tuple[Channel, dict[str, Any]]] = []
+    for index, channel in enumerate(ordered, start=1):
+        if channel.sort_order == index:
+            continue
+        before = channel.sort_order
+        channel.sort_order = index
+        await session.flush()
+        after = snapshot(channel)
+        _log(
+            session,
+            channel,
+            "updated",
+            actor,
+            before={"sort_order": before},
+            after={"sort_order": index},
+        )
+        changed.append((channel, after))
+    await session.commit()
+    for channel, after in changed:
+        await _publish("object.updated", channel, after)
+
+
 async def delete_channel(
     session: AsyncSession,
     channel_id: str,

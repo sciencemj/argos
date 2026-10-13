@@ -225,3 +225,37 @@ def test_personal_channel_listed(client: TestClient) -> None:
     [personal] = [c for c in channels if c["kind"] == "personal"]
     assert personal["name"] == "일상"
     assert client.delete(f"/api/v1/channels/{personal['id']}").status_code == 422
+
+
+def test_channel_order_is_saved(client: TestClient) -> None:
+    channels = client.get("/api/v1/channels").json()["channels"]
+    courses = [c["id"] for c in channels if c["kind"] == "course"]
+    assert len(courses) >= 2
+    wanted = [*courses[1:], courses[0]]
+
+    assert client.put("/api/v1/channels/order", json={"ids": wanted}).status_code == 204
+
+    after = client.get("/api/v1/channels").json()["channels"]
+    assert [c["id"] for c in after if c["kind"] == "course"] == wanted
+    assert {c["id"]: c["kind"] for c in after} == {c["id"]: c["kind"] for c in channels}
+
+
+def test_channel_order_moves_a_subset_within_its_slots(client: TestClient) -> None:
+    channels = client.get("/api/v1/channels").json()["channels"]
+    movable = [c["id"] for c in channels if c["kind"] in ("course", "project")]
+    projects = [c["id"] for c in channels if c["kind"] == "project"]
+    courses = [c["id"] for c in channels if c["kind"] == "course"]
+
+    client.put("/api/v1/channels/order", json={"ids": list(reversed(courses))})
+
+    after = [c["id"] for c in client.get("/api/v1/channels").json()["channels"]]
+    assert [i for i in after if i in projects] == projects
+    assert [i for i in after if i in courses] == list(reversed(courses))
+    assert set(after) >= set(movable)
+
+
+def test_channel_order_rejects_system_channels(client: TestClient) -> None:
+    today = next(
+        c for c in client.get("/api/v1/channels").json()["channels"] if c["name"] == "today"
+    )
+    assert client.put("/api/v1/channels/order", json={"ids": [today["id"]]}).status_code == 422
