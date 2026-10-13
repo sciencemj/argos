@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -180,3 +181,17 @@ async def test_summary_min_chars_setting(session: AsyncSession) -> None:
     assert await services.lms_summary_min_chars(session, 300) == 300
     await services.set_lms_summary_min_chars(session, 0, "user")
     assert await services.lms_summary_min_chars(session, 300) == 0
+
+
+async def test_posted_at_is_stored_without_counting_as_a_change(session: AsyncSession) -> None:
+    await run_import(session, min_chars=0)  # an older extension: no posted_at
+    posted = datetime(2026, 10, 1, tzinfo=UTC)
+    dated = [{**items()[0], "posted_at": posted}]
+    result = await services.import_lms(
+        session,
+        account_id="42",
+        courses=[{"id": "7", "name": "알고리즘"}],
+        items=dated,
+    )
+    assert (result["updated"], result["unchanged"]) == (0, 1)
+    assert (await notice(session)).posted_at == posted

@@ -62,13 +62,63 @@ export async function collectLms(mode = "sync", materials = false) {
   const rawCourses = await list("/api/v1/courses?enrollment_type=student&enrollment_state=active&per_page=100");
   const courses = rawCourses.filter((c) => c.name).map((c) => ({ id: String(c.id), name: String(c.name).slice(0, 200) }));
   const items = [];
-  function add(kind, row, course, title, body, fallback) {
+  function add(kind, row, course, title, body, fallback, extra = "", postedAt = null) {
     items.push({
       kind, id: String(row.id), course_id: course?.id ?? null,
-      title: String(title || "제목 없음").slice(0, 500), text: text(body),
+      title: String(title || "제목 없음").slice(0, 500),
+      text: (text(body) + extra).trim().slice(0, 20000),
       url: safeUrl(row.html_url, fallback), due_at: kind === "assignment" ? row.due_at ?? null : null,
+      ...(postedAt && !Number.isNaN(Date.parse(postedAt)) ? { posted_at: postedAt } : {}),
     });
   }
+  // Links in an LMS body (attached files, external pages) are lost when HTML becomes
+  // text; keep up to 20 http(s) ones so agents can point the user at them.
+  const links = (html) => {
+    const doc = new DOMParser().parseFromString(String(html ?? ""), "text/html");
+    const out = [];
+    for (const a of doc.querySelectorAll("a[href]")) {
+      try {
+        const url = new URL(a.getAttribute("href"), origin);
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) continue;
+        const label = (a.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 200) || url.href;
+        if (!out.some((line) => line.endsWith(url.href))) out.push(`- ${label}: ${url.href}`);
+      } catch { /* Skip malformed links. */ }
+      if (out.length >= 20) break;
+    }
+    return out.length ? `\n\n본문 링크:\n${out.join("\n")}` : "";
+  };
+  const when = (value) => {
+    const time = Date.parse(value ?? "");
+    return Number.isNaN(time) ? "" : new Date(time).toLocaleString("ko-KR", {
+      year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit",
+    });
+  };
+  const SUBMISSION_TYPES = {
+    online_upload: "파일 업로드", online_text_entry: "텍스트 입력", online_url: "웹 주소",
+    media_recording: "미디어 녹화", online_quiz: "퀴즈", discussion_topic: "토론 참여",
+    external_tool: "외부 도구", on_paper: "오프라인(종이) 제출", none: "제출 없음",
+  };
+  // How to hand an assignment in, from Canvas assignment fields (null fields are skipped).
+  const submissionGuide = (row) => {
+    const lines = [];
+    const types = Array.isArray(row.submission_types) ? row.submission_types : [];
+    if (types.length) lines.push(`제출 방식: ${types.map((t) => SUBMISSION_TYPES[t] ?? t).join(", ")}`);
+    if (Array.isArray(row.allowed_extensions) && row.allowed_extensions.length) {
+      lines.push(`허용 파일 형식: ${row.allowed_extensions.slice(0, 30).join(", ")}`);
+    }
+    if (Number.isInteger(row.allowed_attempts)) {
+      lines.push(`제출 가능 횟수: ${row.allowed_attempts < 0 ? "제한 없음" : `${row.allowed_attempts}회`}`);
+    }
+    if (typeof row.points_possible === "number") lines.push(`배점: ${row.points_possible}점`);
+    if (row.due_at) lines.push(`마감: ${when(row.due_at)}`);
+    if (row.unlock_at || row.lock_at) {
+      lines.push(`제출 가능 기간: ${row.unlock_at ? when(row.unlock_at) : "지금"} ~ ${row.lock_at ? when(row.lock_at) : "마감 후에도 가능"}`);
+    }
+    if (row.locked_for_user && row.lock_explanation) {
+      lines.push(`잠김: ${text(row.lock_explanation).slice(0, 500)}`);
+    }
+    return lines.length ? `\n\n제출 안내:\n${lines.join("\n")}` : "";
+  };
   if (mode === "attendance") {
     const match = location.pathname.match(/^\/courses\/(\d+)(?:\/|$)/);
     const course = courses.find((c) => c.id === match?.[1]);
@@ -90,10 +140,13 @@ export async function collectLms(mode = "sync", materials = false) {
             ? `/api/v1/courses/${encodeURIComponent(course.id)}/assignments?include[]=submission&per_page=100`
             : `/api/v1/courses/${encodeURIComponent(course.id)}/discussion_topics?only_announcements=true&per_page=100`;
           for (const row of await list(path)) {
+            const body = row.description ?? row.message ?? "";
             const submitted = kind === "assignment" && row.submission
               ? `\n\n제출 상태: ${row.submission.workflow_state ?? "알 수 없음"}` : "";
-            add(kind, row, course, row.name ?? row.title, (row.description ?? row.message ?? "") + submitted,
-              `/courses/${course.id}/${kind === "assignment" ? "assignments" : "discussion_topics"}/${row.id}`);
+            const extra = links(body) + (kind === "assignment" ? submissionGuide(row) : "") + submitted;
+            add(kind, row, course, row.name ?? row.title, body,
+              `/courses/${course.id}/${kind === "assignment" ? "assignments" : "discussion_topics"}/${row.id}`,
+              extra, kind === "announcement" ? row.posted_at ?? row.created_at ?? null : null);
           }
         } catch (error) {
           warnings.push(`${course.name} ${kind === "assignment" ? "과제" : "공지"}: ${error.message}`);
@@ -135,7 +188,8 @@ export async function collectLms(mode = "sync", materials = false) {
           const course = courses.find((c) => c.id === String(row.course_id));
           add(kind, { ...row, id: `${row.type ?? kind}:${row.id}` }, course,
             row.title ?? row.subject ?? row.type, row.message ?? row.last_message,
-            kind === "conversation" ? "/conversations" : course ? `/courses/${course.id}` : "/");
+            kind === "conversation" ? "/conversations" : course ? `/courses/${course.id}` : "/",
+            "", row.last_message_at ?? row.updated_at ?? row.created_at ?? null);
         }
       } catch (error) { warnings.push(`${kind === "activity" ? "최근 활동" : "메시지 요약"}: ${error.message}`); }
     }

@@ -222,7 +222,13 @@ def lms_key(account_id: str, kind: str, course: str | None, external_id: str) ->
 
 
 def lms_hash(value: dict[str, Any]) -> str:
-    value = {key: item for key, item in value.items() if key != "file" or item is not None}
+    # posted_at only dates the card; leaving it out keeps items synced before it existed
+    # from all counting as changed.
+    value = {
+        key: item
+        for key, item in value.items()
+        if key != "posted_at" and (key != "file" or item is not None)
+    }
     return hashlib.sha256(
         json.dumps(value, default=_jsonable, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -414,6 +420,8 @@ async def _sync_lms_notice(
         "text": item["text"],
         "url": item["url"],
     }
+    if item.get("posted_at") is not None:
+        fields["posted_at"] = item["posted_at"]
     state = summary_state(item["text"], min_chars)
     notice = await session.scalar(select(LmsNotice).where(LmsNotice.message_id == message.id))
     if notice is None:

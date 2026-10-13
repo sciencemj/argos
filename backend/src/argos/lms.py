@@ -133,6 +133,8 @@ class LmsItem(BaseModel):
     text: str = Field(default="", max_length=20000)
     url: str = Field(max_length=2000)
     due_at: AwareDatetime | None = None
+    # When the LMS posted it (announcements, activity, messages); older extensions omit it.
+    posted_at: AwareDatetime | None = None
     file: LmsFile | None = None
 
     @model_validator(mode="after")

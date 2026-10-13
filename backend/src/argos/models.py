@@ -229,6 +229,8 @@ class LmsNotice(Record):
     title: Mapped[str] = mapped_column(String(500))
     text: Mapped[str] = mapped_column(Text)
     url: Mapped[str] = mapped_column(String(2000))
+    # When the LMS posted it (PLAN Phase 16d: agents cite it); None before 16d or unknown.
+    posted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     summary: Mapped[str | None] = mapped_column(Text)
     summary_state: Mapped[str] = mapped_column(String(10))  # SummaryState
     summary_hash: Mapped[str | None] = mapped_column(String(64))  # sha256 of summarized text

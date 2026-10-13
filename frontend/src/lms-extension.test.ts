@@ -306,3 +306,59 @@ test("storage URL comes from Canvas public_url without fetching storage or forwa
     );
   }
 });
+
+test("assignments keep submission guidance, body links and announcement dates", async () => {
+  setup();
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string, init: RequestInit) => {
+      const url = new URL(input);
+      const json = (data: unknown) =>
+        new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json" },
+        });
+      if (url.pathname.endsWith("/assignments"))
+        return json([
+          {
+            id: 3,
+            name: "보고서",
+            description:
+              '<p>양식 참고</p><a href="/courses/7/files/9">양식.docx</a><a href="javascript:x()">x</a>',
+            due_at: "2026-10-20T14:59:00Z",
+            submission_types: ["online_upload"],
+            allowed_extensions: ["pdf", "docx"],
+            allowed_attempts: -1,
+            points_possible: 10,
+            submission: { workflow_state: "unsubmitted" },
+          },
+        ]);
+      if (url.pathname.endsWith("/discussion_topics"))
+        return json([
+          {
+            id: 4,
+            title: "휴강",
+            message: "<p>휴강합니다</p>",
+            posted_at: "2026-10-01T00:00:00Z",
+          },
+        ]);
+      return original(input, init);
+    }),
+  );
+  const { payload } = await collect();
+  const assignment = payload.items.find((item) => item.kind === "assignment");
+  expect(assignment?.text).toContain("양식 참고");
+  expect(assignment?.text).toContain(
+    "- 양식.docx: https://lms.korea.ac.kr/courses/7/files/9",
+  );
+  expect(assignment?.text).not.toContain("javascript");
+  expect(assignment?.text).toContain("제출 방식: 파일 업로드");
+  expect(assignment?.text).toContain("허용 파일 형식: pdf, docx");
+  expect(assignment?.text).toContain("제출 가능 횟수: 제한 없음");
+  expect(assignment?.text).toContain("배점: 10점");
+  expect(assignment?.text).toContain("제출 상태: unsubmitted");
+  const notice = payload.items.find((item) => item.kind === "announcement") as
+    | { posted_at?: string }
+    | undefined;
+  expect(notice?.posted_at).toBe("2026-10-01T00:00:00Z");
+});
