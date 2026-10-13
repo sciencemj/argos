@@ -525,3 +525,17 @@ def test_parse_match_takes_only_a_listed_channel() -> None:
     assert lms_match.parse_match("<think>hmm</think>\n- '머신러닝'", channels) == "머신러닝"
     assert lms_match.parse_match("NONE", channels) is None
     assert lms_match.parse_match("머신 러닝 같아요", channels) is None
+
+
+def test_a_channel_waiting_on_a_suggestion_is_not_offered_again(
+    app: TestClient, settings: Settings
+) -> None:
+    user_channel(app, settings, "Algorithms")
+    # A small model may also pick it for a related course on a later sync.
+    matcher = FakeMatcher({"2026-2 알고리즘(01)": "Algorithms", "자료구조": "Algorithms"})
+    with_matcher(app, matcher)
+    connect(app)
+    sync(app)
+    sync(app)
+    approvals = app.get("/api/v1/approvals").json()
+    assert [a["payload_json"]["title"] for a in approvals] == ["알고리즘 → Algorithms"]

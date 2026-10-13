@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos import services
 from argos.config import Settings
+from argos.models import ApprovalStatus
 from argos.summarizer import classifier_chat
 
 log = logging.getLogger(__name__)
@@ -21,8 +22,11 @@ ASKED = "lms_merge_asked"  # ids of LMS course channels already asked about
 
 PROMPT = (
     "학교 LMS의 과목 이름 하나와, 학생이 직접 만든 과목 채널 이름 목록이 있다. "
-    "같은 과목을 가리키는 채널이 있으면(번역, 줄임말, 한국어/영어 표기 차이 포함) 그 채널 이름을 "
-    "목록에 적힌 그대로 한 줄로만 써라. 확실하지 않거나 없으면 NONE만 써라. 다른 말은 쓰지 마라."
+    "정확히 같은 과목을 가리키는 채널이 있으면(번역, 줄임말, 한국어/영어 표기 차이만 다름) "
+    "그 채널 이름을 목록에 적힌 그대로 한 줄로만 써라. "
+    "분야가 비슷하거나 관련된 다른 과목은 같은 과목이 아니다"
+    "(예: 기계학습과 머신러닝은 같고, 인공지능과 머신러닝은 다르다). "
+    "확실하지 않거나 없으면 NONE만 써라. 다른 말은 쓰지 마라."
 )
 
 
@@ -77,7 +81,13 @@ async def suggest_merges(session: AsyncSession, matcher: CourseMatcher) -> int:
     """Asks about each LMS course not asked about yet while the user has course
     channels of their own; returns how many merge suggestions were posted. A failed
     request is asked again at the next sync."""
-    targets = list(await services.lms_merge_targets(session))
+    # A channel already offered in a suggestion waiting for the user is not offered again.
+    offered = {
+        approval.payload_json.get("target_channel_id")
+        for approval in await services.list_approvals(session, ApprovalStatus.PENDING)
+        if approval.action == "merge_channels"
+    }
+    targets = [t for t in await services.lms_merge_targets(session) if t.id not in offered]
     if not targets:
         return 0
     asked: list[str] = list(await services.get_setting(session, ASKED) or [])
