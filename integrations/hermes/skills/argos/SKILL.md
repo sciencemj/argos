@@ -39,6 +39,7 @@ facts about the user, not for their schedule.
 | Tasks | `list_tasks(channel?, status?, include_done?)` |
 | Per-course progress | `get_course_progress(channel?)` |
 | The user's Obsidian notes (to ground answers) | `search_notes(query, channel?)` |
+| A course's LMS assignments (description, submission guidance) and notices; cite title, date and url | `search_course_lms(query?, channel?, kind?)` |
 | New task | `add_task(title, channel, due?, description?, priority?)` |
 | New event | `create_event(title, channel, start, end?, location?)` |
 | Change task / move on the kanban | `update_task`, `move_task(task_id, status)` |

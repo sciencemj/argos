@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     job_timeout: float = 1800.0
     job_max_budget_usd: float = 2.0  # Claude jobs stop past this API-cost estimate
     context_limit: int = 4000  # characters of channel context sent with each run
+    # Characters of a course's LMS notices/assignments added to that context (0: none).
+    lms_context_limit: int = 6000
     dm_session_idle_hours: float = 6.0  # a DM message after this long starts a new conversation
     attachment_max_mb: int = 25  # per file attached to a chat message
 

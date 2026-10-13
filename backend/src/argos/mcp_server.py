@@ -21,7 +21,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from argos import chat, services, vault
+from argos import chat, course_lms, services, vault
 from argos.config import Settings
 from argos.models import Channel, ChannelKind, Event, InboxStatus, Task, TaskStatus
 
@@ -39,7 +39,7 @@ TOOL_NAMES: list[str] = []
 DESTRUCTIVE = {"delete_task", "delete_event"}  # always go through approval
 READ_ONLY = {
     "list_channels", "get_today", "get_schedule", "search_notes", "list_tasks",
-    "list_inbox", "get_course_progress",
+    "list_inbox", "get_course_progress", "search_course_lms",
 }  # fmt: skip
 
 
@@ -181,6 +181,42 @@ def build_mcp(app: FastAPI) -> MCPServer:
                     "snippet": snippet,
                 }
                 for n, snippet in found
+            ]
+
+        return await run(work)
+
+    @tool
+    async def search_course_lms(
+        ctx: Context,
+        query: str = "",
+        channel: str | None = None,
+        kind: str | None = None,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Search a course's LMS assignments and notices imported into Argos (assignment
+        descriptions with submission guidance, announcements, messages, materials). Best
+        matches first; an empty query lists the newest. `channel`: the course (all courses
+        when omitted); `kind`: assignment, announcement, activity, conversation,
+        attendance or material. Cite the title, date and url of what you use."""
+        tz = settings().zoneinfo
+
+        async def work(s: AsyncSession) -> list[dict[str, Any]]:
+            channel_ids = [(await _channel(s, channel)).id] if channel else None
+            docs = await course_lms.course_docs(s, channel_ids)
+            if kind:
+                docs = [d for d in docs if d.kind == kind]
+            names = await _channel_names(s)
+            return [
+                {
+                    "kind": d.kind,
+                    "title": d.title,
+                    "channel": names.get(d.channel_id),
+                    "date": _local(d.date, tz),
+                    "url": d.url,
+                    "summary": d.summary,
+                    "text": d.text[:4000],
+                }
+                for d in course_lms.rank(docs, query, max(1, min(limit, 20)))
             ]
 
         return await run(work)

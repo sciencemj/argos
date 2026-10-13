@@ -37,7 +37,7 @@ def test_tool_list(server: str) -> None:
         "list_channels", "get_today", "get_schedule", "list_tasks", "list_inbox",
         "get_course_progress", "add_task", "update_task", "move_task", "create_event",
         "update_event", "capture_note", "delete_task", "delete_event", "search_notes",
-        "create_channel",
+        "create_channel", "search_course_lms",
     }  # fmt: skip
 
 
@@ -177,3 +177,42 @@ def test_create_channel(server: str) -> None:
     assert "error" in call(server, "create_channel", {"name": "자료구조"})  # taken
     assert "error" in call(server, "create_channel", {"name": "x", "kind": "inbox"})
     assert "error" in call(server, "create_channel", {"name": "y", "area": "없는영역"})
+
+
+def test_search_course_lms(server: str) -> None:
+    token = rest(server, "POST", "/lms/connection")["token"]
+    batch = {
+        "account_id": "42",
+        "courses": [{"id": "7", "name": "알고리즘"}],
+        "items": [
+            {
+                "id": "10",
+                "course_id": "7",
+                "kind": "assignment",
+                "title": "과제 1",
+                "text": "그래프 탐색 문제\n\n제출 안내:\n허용 파일 형식: pdf",
+                "url": "https://lms.korea.ac.kr/courses/7/assignments/10",
+                "due_at": "2026-10-20T14:59:00Z",
+            },
+            {
+                "id": "11",
+                "course_id": "7",
+                "kind": "announcement",
+                "title": "휴강 안내",
+                "text": "다음 주 휴강",
+                "url": "https://lms.korea.ac.kr/courses/7/discussion_topics/11",
+                "posted_at": "2026-10-01T00:00:00Z",
+            },
+        ],
+    }
+    rest(server, "POST", "/lms/import", json=batch, headers={"Authorization": f"Bearer {token}"})
+
+    query = {"query": "제출 파일 형식", "channel": "알고리즘"}
+    [hit, *_] = call(server, "search_course_lms", query)
+    assert (hit["kind"], hit["title"]) == ("assignment", "과제 1")
+    assert hit["url"].endswith("/assignments/10")
+    assert "허용 파일 형식: pdf" in hit["text"]
+    assert hit["date"].startswith("2026-10-20T23:59")
+
+    [notice] = call(server, "search_course_lms", {"kind": "announcement"})
+    assert notice["date"].startswith("2026-10-01T09:00")

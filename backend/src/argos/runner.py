@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import attachments, services
+from argos import attachments, course_lms, services
 from argos.agents import (
     AgentAdapter,
     AgentUnavailable,
@@ -70,10 +70,16 @@ async def mentioned_agents(session: AsyncSession, text: str) -> list[Agent]:
 
 
 async def build_context(
-    session: AsyncSession, agent: Agent, channel: Channel, settings: Settings
+    session: AsyncSession,
+    agent: Agent,
+    channel: Channel,
+    settings: Settings,
+    question: str = "",
 ) -> str:
     """System context: who the agent is, where it is talking, what is open there
-    (PLAN Phase 5 "컨텍스트 주입", capped at settings.context_limit characters)."""
+    (PLAN Phase 5 "컨텍스트 주입", capped at settings.context_limit characters), and in
+    a course channel the LMS items most related to `question` (Phase 16d, up to
+    settings.lms_context_limit more)."""
     tz: ZoneInfo = settings.zoneinfo
     now = datetime.now(UTC).astimezone(tz)
     if settings.language == "en":
@@ -142,7 +148,15 @@ async def build_context(
             ]
     if agent.system_prompt:
         lines.append(agent.system_prompt)
-    return "\n".join(lines)[: settings.context_limit]
+    context = "\n".join(lines)[: settings.context_limit]
+    if channel.kind not in (ChannelKind.DM, ChannelKind.SYSTEM):
+        docs = await course_lms.course_docs(session, [channel.id])
+        lms = course_lms.context_section(
+            docs, question, settings.lms_context_limit, tz, settings.language
+        )
+        if lms:
+            context += "\n\n" + lms
+    return context
 
 
 async def build_transcript(session: AsyncSession, trigger: Message, directory: Path) -> list[Turn]:
@@ -345,7 +359,9 @@ class Runner:
                 reply_thread_root_id=reply_root,
                 actor="user",
             )
-            context = await build_context(session, agent, channel, self.settings)
+            # The thread's opening message keeps a follow-up ("그 형식은?") on topic.
+            question = trigger.body if root.id == trigger.id else f"{root.body}\n{trigger.body}"
+            context = await build_context(session, agent, channel, self.settings, question)
             transcript = await build_transcript(session, trigger, self.settings.attachments_dir)
             if transcript and parse_call(transcript[-1].text) is not None:
                 transcript = apply_skill(transcript, await self.skill_lister(agent, self.settings))
