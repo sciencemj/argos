@@ -187,6 +187,7 @@ export const en: Record<string, string> = {
   리뷰: "Reviews",
   "채널 삭제…": "Delete Channel...",
   "우클릭하여 삭제 메뉴": "Right-click to delete",
+  "안 읽은 메시지": "Unread messages",
   "끌어서 순서 바꾸기 · 우클릭하여 삭제 메뉴":
     "Drag to reorder · Right-click to delete",
   "예: argos": "e.g., argos",

@@ -358,6 +358,11 @@ function ChannelRow({
     transition,
     isDragging,
   } = useSortable({ id: channel.id });
+  // Stays a link: dnd-kit's role="button" would hide that from screen readers.
+  const { role: _role, ...linkAttributes } = attributes;
+  // Releasing a drag over the row would also click it and open the channel.
+  const dragged = useRef(false);
+  if (isDragging) dragged.current = true;
   return (
     <NavLink
       ref={setNodeRef}
@@ -366,7 +371,15 @@ function ChannelRow({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       title={tr("끌어서 순서 바꾸기 · 우클릭하여 삭제 메뉴")}
       onContextMenu={onContextMenu}
-      {...attributes}
+      onPointerDownCapture={() => {
+        dragged.current = false;
+      }}
+      onClickCapture={(event) => {
+        if (!dragged.current) return;
+        dragged.current = false;
+        event.preventDefault();
+      }}
+      {...linkAttributes}
       {...listeners}
     >
       <span className="font-mono text-hash">#</span>

@@ -12,7 +12,13 @@ import {
   useMatch,
   useNavigate,
 } from "react-router";
-import { type Area, useChannels, useCreateArea, useDeleteArea } from "../api";
+import {
+  type Area,
+  useChannels,
+  useCreateArea,
+  useDeleteArea,
+  useUnread,
+} from "../api";
 import { tr, tt } from "../i18n";
 import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, ContextMenu, Dialog, ErrorText, field, label } from "../ui";
@@ -32,6 +38,17 @@ export function Rail({
 }) {
   const navigate = useNavigate();
   const { data } = useChannels();
+  const unread = useUnread();
+  // Areas holding an unread course/project channel: their sidebar is not on screen.
+  const unreadAreas = new Set(
+    data?.channels
+      .filter(
+        (c) =>
+          (c.kind === "course" || c.kind === "project") &&
+          (unread.data?.[c.id] ?? 0) > 0,
+      )
+      .map((c) => c.area_id),
+  );
   const remove = useDeleteArea();
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; area: Area } | null>(
@@ -125,6 +142,13 @@ export function Rail({
           }}
         >
           {area.icon || area.name.slice(0, 1)}
+          {activeKey !== area.id && unreadAreas.has(area.id) && (
+            <span
+              role="img"
+              aria-label={tr("안 읽은 메시지")}
+              className="absolute top-1 right-1 size-[7px] rounded-full bg-ink ring-2 ring-rail"
+            />
+          )}
         </button>
       ))}
       <button
