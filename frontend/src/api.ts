@@ -1313,8 +1313,45 @@ export const useLmsStatus = () =>
   useQuery({
     queryKey: ["lms"],
     queryFn: () => call(client.GET("/api/v1/lms/status")),
-    refetchInterval: 30_000,
+    // A token sync started in the background reports back within seconds.
+    refetchInterval: (query) =>
+      query.state.data?.token_syncing ? 2_000 : 30_000,
   });
+
+/** Phase 17: the Canvas access token (kept in the Keychain), the default LMS link. */
+export function useConnectLmsToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { url: string; token: string }) =>
+      call(client.PUT("/api/v1/lms/token", { body })),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
+
+export function useDisconnectLmsToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.DELETE("/api/v1/lms/token")),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
+
+export function useSyncLmsNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(client.POST("/api/v1/lms/token/sync")),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
+
+export function useLmsMaterials() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      call(client.PUT("/api/v1/lms/materials", { body: { enabled } })),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
 
 export function usePrepareLmsExtension() {
   const qc = useQueryClient();

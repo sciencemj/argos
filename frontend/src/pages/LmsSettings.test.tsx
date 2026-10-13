@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   disconnect: { mutate: vi.fn(), isPending: false },
   courseNames: { mutate: vi.fn(), isPending: false },
   summary: { mutate: vi.fn(), isPending: false, error: null },
+  tokenConnect: { mutate: vi.fn(), isPending: false, error: null },
+  tokenDisconnect: { mutate: vi.fn(), isPending: false, error: null },
+  syncNow: { mutate: vi.fn(), isPending: false, error: null },
+  materials: { mutate: vi.fn(), isPending: false, error: null },
 }));
 vi.mock("../api", () => ({
   useLmsStatus: () => mocks.status,
@@ -27,6 +31,10 @@ vi.mock("../api", () => ({
   useDisconnectLms: () => mocks.disconnect,
   useLmsCourseNames: () => mocks.courseNames,
   useLmsSummarySetting: () => mocks.summary,
+  useConnectLmsToken: () => mocks.tokenConnect,
+  useDisconnectLmsToken: () => mocks.tokenDisconnect,
+  useSyncLmsNow: () => mocks.syncNow,
+  useLmsMaterials: () => mocks.materials,
 }));
 vi.mock("../desktop", () => ({ inDesktopApp: () => false }));
 
@@ -47,6 +55,60 @@ beforeEach(() => {
     };
     options.onSuccess();
   });
+});
+
+test("the token form is the default and the extension sits behind a disclosure", () => {
+  render(<LmsSection />);
+  const details = screen
+    .getByText("다른 연결 방법: 브라우저 확장 프로그램")
+    .closest("details");
+  expect(details).not.toHaveAttribute("open");
+  const connect = screen.getByRole("button", { name: "연결" });
+  expect(connect).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("LMS 주소"), {
+    target: { value: "lms.school.ac.kr" },
+  });
+  const token = screen.getByLabelText("액세스 토큰");
+  expect(token).toHaveAttribute("type", "password");
+  fireEvent.change(token, { target: { value: " 7~abc " } });
+  fireEvent.click(connect);
+  expect(mocks.tokenConnect.mutate).toHaveBeenCalledWith(
+    { url: "lms.school.ac.kr", token: "7~abc" },
+    expect.anything(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "토큰 발급 방법" }));
+  expect(screen.getByText(/새 액세스 토큰/)).toBeInTheDocument();
+});
+
+test("a connected token shows the account, sync state, errors and materials toggle", () => {
+  mocks.status.data = {
+    connected: false,
+    clean_course_names: true,
+    courses: [],
+    token_url: "https://lms.school.ac.kr",
+    token_user: "길동",
+    token_last_sync: "2026-10-13T01:00:00Z",
+    token_error: "LMS 토큰이 만료됐거나 취소됐어요.",
+    token_warnings: ["알고리즘 공지: LMS 조회 실패 (500)"],
+    materials: false,
+  };
+  render(<LmsSection />);
+  expect(screen.getByText(/길동 계정으로 연결됨/)).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("만료");
+  expect(
+    screen.getByText(/일부 항목을 가져오지 못했어요 \(1\)/),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText("액세스 토큰")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "지금 가져오기" }));
+  expect(mocks.syncNow.mutate).toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /주차학습 자료도 저장/ }),
+  );
+  expect(mocks.materials.mutate).toHaveBeenCalledWith(true);
+  fireEvent.click(screen.getByRole("button", { name: "토큰 바꾸기" }));
+  expect(screen.getByLabelText("LMS 주소")).toHaveValue(
+    "https://lms.school.ac.kr",
+  );
 });
 
 test("installation guide prepares a stable folder and explains Chrome's manual steps", async () => {
