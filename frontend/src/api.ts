@@ -1358,6 +1358,21 @@ export function useSyncLmsNow() {
   });
 }
 
+/** An LMS course continues in the user's own course channel (the LMS one goes). */
+export function useMergeLmsCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { channelId: string; targetId: string }) =>
+      call(
+        client.POST("/api/v1/lms/courses/{channel_id}/merge", {
+          params: { path: { channel_id: body.channelId } },
+          body: { target_channel_id: body.targetId },
+        }),
+      ),
+    onSuccess: (data) => qc.setQueryData(["lms"], data),
+  });
+}
+
 export function useLmsMaterials() {
   const qc = useQueryClient();
   return useMutation({

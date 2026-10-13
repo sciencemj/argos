@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   tokenDisconnect: { mutate: vi.fn(), isPending: false, error: null },
   syncNow: { mutate: vi.fn(), isPending: false, error: null },
   materials: { mutate: vi.fn(), isPending: false, error: null },
+  merge: { mutate: vi.fn(), isPending: false, error: null },
 }));
 vi.mock("../api", () => ({
   useLmsStatus: () => mocks.status,
@@ -35,6 +36,7 @@ vi.mock("../api", () => ({
   useDisconnectLmsToken: () => mocks.tokenDisconnect,
   useSyncLmsNow: () => mocks.syncNow,
   useLmsMaterials: () => mocks.materials,
+  useMergeLmsCourse: () => mocks.merge,
 }));
 vi.mock("../desktop", () => ({ inDesktopApp: () => false }));
 
@@ -185,4 +187,40 @@ test("the summary toggle turns notice summaries off and says when no model is se
   expect(toggle).toBeChecked();
   fireEvent.click(toggle);
   expect(mocks.summary.mutate).toHaveBeenCalledWith(0);
+});
+
+test("a course can be merged into one of my channels after confirming", () => {
+  mocks.status.data = {
+    connected: false,
+    clean_course_names: true,
+    courses: [
+      {
+        channel_id: "lms1",
+        original: "262R (서울-학부)기계학습(MACHINE LEARNING)-02분반",
+        name: "기계학습",
+        course: true,
+      },
+      {
+        channel_id: "inbox",
+        original: "알림·메시지",
+        name: "알림·메시지",
+        course: false,
+      },
+    ],
+    merge_targets: [{ channel_id: "mine", name: "머신러닝" }],
+  };
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  render(<LmsSection />);
+  expect(
+    screen.queryByLabelText("알림·메시지 합칠 채널"),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("기계학습 합칠 채널"), {
+    target: { value: "mine" },
+  });
+  expect(confirm).toHaveBeenCalled();
+  expect(mocks.merge.mutate).toHaveBeenCalledWith({
+    channelId: "lms1",
+    targetId: "mine",
+  });
+  confirm.mockRestore();
 });

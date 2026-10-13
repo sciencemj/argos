@@ -8,6 +8,7 @@ import {
   useLmsMaterials,
   useLmsStatus,
   useLmsSummarySetting,
+  useMergeLmsCourse,
   usePrepareLmsExtension,
   useSyncLmsNow,
 } from "../api";
@@ -19,6 +20,8 @@ import { btn, card, ErrorText, field, label } from "../ui";
 export function LmsSection() {
   const status = useLmsStatus();
   const courseNames = useLmsCourseNames();
+  const merge = useMergeLmsCourse();
+  const targets = status.data?.merge_targets ?? [];
   const summarySetting = useLmsSummarySetting();
   return (
     <section
@@ -57,12 +60,54 @@ export function LmsSection() {
         {!!status.data?.courses?.length && (
           <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs">
             {status.data.courses.map((course) => (
-              <li key={course.channel_id} className="flex flex-wrap gap-x-2">
+              <li
+                key={course.channel_id}
+                className="flex flex-wrap items-center gap-x-2"
+              >
                 <span className="text-meta">{course.original}</span>
                 <span className="text-meta" aria-hidden>
                   →
                 </span>
                 <span>{course.name}</span>
+                {course.course && targets.length > 0 && (
+                  <select
+                    aria-label={tr(
+                      `${course.name} 합칠 채널`,
+                      `Merge ${course.name} into`,
+                    )}
+                    className="ml-auto rounded-md border border-line bg-card px-1.5 py-0.5 text-xs text-text-2"
+                    value=""
+                    disabled={merge.isPending}
+                    onChange={(event) => {
+                      const target = targets.find(
+                        (t) => t.channel_id === event.target.value,
+                      );
+                      if (
+                        target &&
+                        window.confirm(
+                          tr(
+                            `'${course.name}'을(를) '${target.name}'에 합칠까요? 이 채널의 내용이 그쪽으로 옮겨지고 이 채널은 사라져요. 되돌릴 수 없어요.`,
+                            `Merge '${course.name}' into '${target.name}'? Its contents move there and this channel goes away. This cannot be undone.`,
+                          ),
+                        )
+                      ) {
+                        merge.mutate({
+                          channelId: course.channel_id,
+                          targetId: target.channel_id,
+                        });
+                      }
+                    }}
+                  >
+                    <option value="">
+                      {tr("내 채널과 합치기…", "Merge into my channel…")}
+                    </option>
+                    {targets.map((t) => (
+                      <option key={t.channel_id} value={t.channel_id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </li>
             ))}
           </ul>
@@ -96,7 +141,12 @@ export function LmsSection() {
         </label>
       </div>
       <ErrorText
-        error={status.error ?? courseNames.error ?? summarySetting.error}
+        error={
+          status.error ??
+          courseNames.error ??
+          merge.error ??
+          summarySetting.error
+        }
       />
       <details className="border-t border-line-soft pt-4 text-sm">
         <summary className="cursor-pointer text-text-3">

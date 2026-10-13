@@ -584,6 +584,7 @@ export function InboxRow({ item }: { item: InboxItem }) {
 const ACTION_VERB: Record<string, string> = {
   delete_task: tr("승인하고 삭제"),
   delete_event: tr("승인하고 삭제"),
+  merge_channels: tr("승인하고 합치기", "Approve and merge"),
 };
 
 /** A destructive action an agent asked for. Nothing happens until the user decides. */
@@ -594,6 +595,11 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
     when?: string | null;
   };
   const pending = approval.status === "pending";
+  // Deletions strike the object out; a merge suggestion (from the LMS sync) does not.
+  const deletes = approval.action.startsWith("delete_");
+  const requester = approval.requested_by.startsWith("system:")
+    ? "LMS"
+    : agentInfo(approval.requested_by).name;
   const when = payload.when
     ? payload.when.length === 10
       ? fmt(`${payload.when}T12:00:00`, "M/d (EEE)")
@@ -614,12 +620,12 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         </span>
         <span className="grow" />
         <span className="text-[12px] text-meta">
-          {agentInfo(approval.requested_by).name} {tr("요청") + " "}
+          {requester} {tr("요청") + " "}
         </span>
       </div>
       <div className="flex items-center gap-2.5 rounded-xl bg-inset px-3.5 py-3">
         <span
-          className={`font-medium text-ink ${approval.status === "approved" ? "line-through decoration-danger" : pending ? "line-through decoration-danger" : ""}`}
+          className={`font-medium text-ink ${deletes && (approval.status === "approved" || pending) ? "line-through decoration-danger" : ""}`}
         >
           {payload.title ?? approval.summary}
         </span>
