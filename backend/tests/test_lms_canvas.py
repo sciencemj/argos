@@ -15,7 +15,7 @@ from argos import lms_canvas
 from argos.config import Settings
 from argos.db import make_engine, make_sessionmaker
 from argos.main import create_app
-from argos.models import Attachment, Channel, Message, SourceLink, Task
+from argos.models import Area, Attachment, Channel, LmsNotice, Message, SourceLink, Task
 
 ORIGIN = "https://canvas.school.example"
 TOKEN = "7~valid-canvas-token"
@@ -104,6 +104,7 @@ class FakeCanvas:
                     "id": 99,
                     "display_name": "week1.pdf",
                     "size": len(PDF),
+                    "created_at": "2026-09-01T03:00:00Z",
                     "updated_at": "2026-10-01T00:00:00Z",
                     "url": f"{ORIGIN}/files/99/download?download_frd=1&verifier=v",
                 }
@@ -320,3 +321,56 @@ def test_uninstall_removes_the_token_from_the_keychain(
     assert "키체인의 LMS 액세스 토큰 삭제" in removed
     assert keychain.saved == {}
     assert app.get("/api/v1/lms/status").json()["token_url"] is None
+
+
+def test_cards_take_the_time_the_lms_posted_them(app: TestClient, settings: Settings) -> None:
+    connect(app)
+    app.put("/api/v1/lms/materials", json={"enabled": True})
+    sync(app)
+    created = {
+        notice.title: message.created_at
+        for notice in rows(settings, LmsNotice)
+        for message in rows(settings, Message)
+        if message.id == notice.message_id
+    }
+    assert created["휴강 안내"].isoformat() == "2026-10-12T01:00:00+00:00"
+    assert created["1주차 슬라이드"].isoformat() == "2026-09-01T03:00:00+00:00"  # upload time
+
+
+def user_channel(app: TestClient, settings: Settings, name: str) -> str:
+    area = next(a for a in rows(settings, Area) if a.name != "LearningX")
+    response = app.post("/api/v1/channels", json={"name": name, "area_id": area.id})
+    assert response.status_code == 201, response.text
+    channel = response.json()["id"]
+    task = app.post("/api/v1/tasks", json={"channel_id": channel, "title": "내 할 일"})
+    assert task.status_code == 201, task.text
+    return channel
+
+
+def test_lms_course_adopts_the_users_course_channel(app: TestClient, settings: Settings) -> None:
+    mine = user_channel(app, settings, "알고리즘")
+    connect(app)
+    sync(app)
+    named = [c for c in rows(settings, Channel) if c.name.startswith("알고리즘")]
+    assert [c.id for c in named] == [mine]  # no "알고리즘 (01)" next to it
+    titles = {t.title for t in rows(settings, Task) if t.channel_id == mine}
+    assert titles == {"내 할 일", "과제 1"}
+
+
+def test_split_course_channels_merge_into_the_users_one(
+    app: TestClient, settings: Settings
+) -> None:
+    connect(app)
+    sync(app)
+    lms = next(c for c in rows(settings, Channel) if c.name == "알고리즘")
+    # As before adoption existed: the LMS channel got a section suffix next to the user's.
+    renamed = app.patch(f"/api/v1/channels/{lms.id}", json={"name": "알고리즘 (01)"})
+    assert renamed.status_code == 200
+    mine = user_channel(app, settings, "알고리즘")
+    sync(app)
+    channels = {c.id for c in rows(settings, Channel)}
+    assert lms.id not in channels and mine in channels
+    assert {t.title for t in rows(settings, Task) if t.channel_id == mine} == {"내 할 일", "과제 1"}
+    assert any("휴강 안내" in m.body for m in rows(settings, Message) if m.channel_id == mine)
+    sync(app)  # stable afterwards
+    assert {c.id for c in rows(settings, Channel)} == channels

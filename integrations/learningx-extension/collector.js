@@ -178,6 +178,9 @@ export async function collectLms(mode = "sync", materials = false) {
                 }
                 add("material", row, course, row.title ?? file.display_name, `주차/단원: ${module.name}`, `/courses/${course.id}/modules/items/${row.id}`);
                 items[items.length - 1].file = { id: String(file.id), name: String(file.display_name).slice(0, 200), size: file.size, updated_at: file.updated_at };
+                // Its place in the feed: when the file was uploaded.
+                const uploaded = file.created_at ?? file.updated_at;
+                if (uploaded && !Number.isNaN(Date.parse(uploaded))) items[items.length - 1].posted_at = uploaded;
               } catch (error) { warnings.push(`${course.name} ${row.title ?? "학습자료"}: ${error.message}`); }
             }
           }

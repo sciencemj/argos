@@ -46,6 +46,8 @@ from argos.models import (
     InboxStatus,
     LmsNotice,
     Message,
+    NoteRef,
+    Notification,
     Record,
     Routine,
     RoutineCheck,
@@ -548,6 +550,64 @@ async def _rename_lms_channel(
     return after
 
 
+async def _lms_twin(session: AsyncSession, original: str) -> Channel | None:
+    """The user's own course channel for this LMS course: the only course channel named
+    like the course (tidied) that no LMS course is linked to yet."""
+    title = clean_course_name(original)[0][:100]
+    linked = select(SourceLink.object_id).where(
+        SourceLink.source == "learningx", SourceLink.object_type == "channel"
+    )
+    found = (
+        await session.scalars(
+            select(Channel)
+            .where(
+                Channel.kind == ChannelKind.COURSE,
+                Channel.name == title,
+                Channel.id.not_in(linked),
+            )
+            .limit(2)
+        )
+    ).all()
+    return found[0] if len(found) == 1 else None
+
+
+async def _merge_lms_channel(
+    session: AsyncSession,
+    source: Channel,
+    target: Channel,
+    changes: list[tuple[str, Record, dict[str, Any]]],
+) -> None:
+    """Moves everything in an LMS-made channel into the user's channel for the same
+    course, then deletes the LMS one. The user's channel keeps its name and area."""
+    actor = "system:lms"
+    for model in (Message, Task, Event):
+        rows = (await session.scalars(select(model).where(model.channel_id == source.id))).all()
+        for obj in rows:
+            obj.channel_id = target.id
+            await session.flush()
+            fields = snapshot(obj)
+            if not isinstance(obj, Message):  # messages move silently; there can be many
+                _log(
+                    session,
+                    obj,
+                    "updated",
+                    actor,
+                    before={"channel_id": source.id},
+                    after={"channel_id": target.id},
+                )
+            changes.append(("object.updated", obj, fields))
+    for model in (InboxItem, NoteRef, Approval, AgentRun, Debate, DmSession, Notification):
+        await session.execute(
+            update(model).where(model.channel_id == source.id).values(channel_id=target.id)
+        )
+    before = snapshot(source)
+    _log(session, source, "deleted", actor, before=before, after={"merged_into": target.id})
+    await session.delete(source)
+    await session.flush()
+    changes.append(("object.deleted", source, before))
+    changes.append(("object.updated", target, snapshot(target)))
+
+
 async def set_lms_clean_names(session: AsyncSession, enabled: bool, actor: str) -> None:
     """Save the setting and rename every channel Argos named, in one transaction."""
     row = await session.scalar(select(AppSetting).where(AppSetting.key == LMS_CLEAN_NAMES))
@@ -622,6 +682,26 @@ async def import_lms(
         channel_key = key("channel", course_id, "")
         link = await link_for(channel_key)
         channel = await session.get(Channel, link.object_id) if link else None
+        # A course channel the user made before connecting the LMS becomes the LMS one.
+        twin = await _lms_twin(session, course["name"]) if course_id is not None else None
+        if twin is not None:
+            if channel is not None:
+                await _merge_lms_channel(session, channel, twin, changes)
+            channel = twin
+            if link is None:
+                link = SourceLink(
+                    source="learningx",
+                    external_id=channel_key,
+                    object_type="channel",
+                    object_id=channel.id,
+                    container=origin,
+                    container_name=course["name"],
+                    uid=channel_key,
+                    last_synced_at=now,
+                )
+                session.add(link)
+            else:
+                link.object_id = channel.id
         if channel is None:
             name = await _lms_channel_name(session, course["name"], channel_key, clean, None)
             channel = Channel(name=name, kind=ChannelKind.COURSE, area_id=area.id)
@@ -703,6 +783,14 @@ async def import_lms(
         link.last_synced_at = now
         link.local_updated_at = obj.updated_at
         link.container = item["url"]
+        # The feed is ordered by creation time: LMS cards sit where the LMS posted them,
+        # also those imported before (or all at once by a first sync).
+        posted = _lms_posted(item.get("posted_at"), now)
+        if isinstance(obj, Message) and posted is not None and obj.created_at != posted:
+            obj.created_at = posted
+            await session.flush()
+            if not any(entry[1] is obj for entry in changes):
+                changes.append(("object.updated", obj, snapshot(obj)))
         if isinstance(obj, Message) and (
             notice_id := await _sync_lms_notice(
                 session, obj, item, summary_min_chars, changes, record
@@ -719,6 +807,19 @@ async def import_lms(
     for type_, obj, fields in changes:
         await _publish(type_, obj, fields)
     return {**counts, "summarize": summarize}
+
+
+def _lms_posted(value: Any, now: datetime) -> datetime | None:
+    """When the LMS posted an item, never later than now (a clock skew must not put a
+    card above messages still to come)."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        return None
+    return min(value.astimezone(UTC), now)
 
 
 async def lms_material_needed(

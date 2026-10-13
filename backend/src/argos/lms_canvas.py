@@ -592,6 +592,10 @@ async def _materials(
                     "updated_at": file["updated_at"],
                 }
                 files[item["id"]] = item["file"]
+                # Its place in the feed: when the file was uploaded.
+                uploaded = file.get("created_at") or file.get("updated_at")
+                if _datetime(uploaded) is not None:
+                    item["posted_at"] = uploaded
             except CanvasAuthError:
                 raise
             except CanvasError as exc:
