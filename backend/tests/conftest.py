@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import subprocess
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
@@ -60,6 +61,22 @@ def no_real_tailscale(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(remote, "_run", run)
     monkeypatch.setattr(remote, "find_cli", find_cli)
+
+
+@pytest.fixture(autouse=True)
+def no_real_agent_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may run the developer's claude/codex/hermes CLIs: an uninstall test once
+    removed the real Argos MCP entries. tests/test_onboarding.py puts fakes in tmp_path."""
+    from argos import onboarding
+
+    real = onboarding._run  # pyright: ignore[reportPrivateUsage]
+
+    def run(args: list[str], timeout: float = 20) -> subprocess.CompletedProcess[str]:
+        if not Path(args[0]).resolve().is_relative_to(tmp_path.resolve()):
+            raise OSError("no real agent CLI in tests")
+        return real(args, timeout)
+
+    monkeypatch.setattr(onboarding, "_run", run)
 
 
 @pytest.fixture

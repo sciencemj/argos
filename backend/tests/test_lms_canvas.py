@@ -304,3 +304,13 @@ def test_when_matches_the_extension_format() -> None:
     assert lms_canvas.when("2026-10-20T00:05:00Z", seoul) == "2026. 10. 20. (화) 오전 09:05"
     assert lms_canvas.when("2026-10-20T15:30:00Z", seoul) == "2026. 10. 21. (수) 오전 12:30"
     assert lms_canvas.when("nope", seoul) == ""
+
+
+def test_uninstall_removes_the_token_from_the_keychain(
+    app: TestClient, keychain: FakeKeychain
+) -> None:
+    connect(app)
+    removed = app.post("/api/v1/setup/uninstall").json()["removed"]
+    assert "키체인의 LMS 액세스 토큰 삭제" in removed
+    assert keychain.saved == {}
+    assert app.get("/api/v1/lms/status").json()["token_url"] is None

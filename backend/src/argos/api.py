@@ -39,6 +39,7 @@ from argos import (
     chat,
     classifier,
     ics,
+    lms_canvas,
     mcp_server,
     notify,
     onboarding,
@@ -2614,6 +2615,16 @@ async def prepare_uninstall(request: Request, session: Session, config: Config) 
             ) from None
         await services.set_setting_quietly(session, caldav_sync.ICLOUD_USERNAME, None)
         removed.append("키체인의 iCloud 앱 암호 삭제")
+    canvas: dict[str, str] | None = await services.get_setting(session, lms_canvas.CANVAS_SETTING)
+    if canvas:
+        try:
+            await asyncio.to_thread(request.app.state.lms_sync.keychain.delete, canvas["url"])
+        except keyring.errors.KeyringError:
+            raise services.InvalidError(
+                "키체인에서 LMS 토큰을 지우지 못했어요. macOS 키체인 접근을 확인해 주세요"
+            ) from None
+        await services.set_setting_quietly(session, lms_canvas.CANVAS_SETTING, None)
+        removed.append("키체인의 LMS 액세스 토큰 삭제")
     return UninstallOut(removed=removed)
 
 

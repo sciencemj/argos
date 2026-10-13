@@ -78,6 +78,11 @@ vitest, build), api-types 최신 여부.
   쓰고 요약할 id를 돌려주면 `LmsSummaries` 워커가 분류기의 채팅 모델(`classifier_title_model` 우선)로 하나씩
   요약해 `services.save_summary`로 저장. 처리 중 원문이 바뀐 요약은 버리고, 실패는 다음 동기화에 재시도(최대 5회).
   피드는 `ref.lms_notice`를 `lmsNotice.tsx` 카드로 그린다.
+- **`lms_canvas.py`**: LMS 기본 연결(Phase 17). Canvas 개인 액세스 토큰(키체인)으로 서버가 15분마다 확장의
+  `collectLms`와 같은 API를 읽어(`collect`) `services.import_lms`에 넣고 자료 파일도 받음. 토큰은 설정한 주소의
+  `/api/v1/`로만, GET만, 리다이렉트는 따르지 않음(저장소는 토큰 없이). `LmsSync`는 `lms.sync_lock`을 확장 수신
+  API와 공유. 테스트는 httpx `MockTransport` 가짜 Canvas. 확장 프로그램(`lms_extension.py`, `integrations/
+  learningx-extension`)은 설정에서 접힌 대안.
 - **`notify.py` 아침 요약**(Phase 15b): `Notifier.run()`이 잠금 안에서 `MorningDigest.start_if_due`를 불러 설정
   시각~정오 사이 하루 한 번(알림 키 `digest:날짜`) #today에 루트 메시지를 만들고, 별도 태스크에서 고른 에이전트를
   `run_turn(no_tools=True)`로 실행해 그 스레드에 쓰게 한 뒤 같은 글을 `hermes send`로 보낸다. 에이전트가 없거나
