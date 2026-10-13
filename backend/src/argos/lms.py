@@ -1,4 +1,5 @@
-"""Read-only LMS imports from a paired extension. No school login credentials cross here."""
+"""Read-only LMS imports: a Canvas access token (default, `lms_canvas`) or a paired
+browser extension (alternative). School passwords and cookies never cross here."""
 
 import asyncio
 import hashlib
@@ -10,18 +11,20 @@ from typing import Annotated, Literal
 from urllib.parse import unquote, urlsplit
 
 import httpx2 as httpx
+import keyring.errors
 from fastapi import APIRouter, Depends, Form, Header, Request, UploadFile
 from pydantic import (
     AwareDatetime,
     BaseModel,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 from starlette.exceptions import HTTPException
 
-from argos import lms_extension, services
+from argos import lms_canvas, lms_extension, services
 from argos.api import Config, Session
 from argos.summarizer import LmsSummaries
 
@@ -34,11 +37,12 @@ sync_lock = asyncio.Lock()
 
 class _StorageLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        # Desktop logs httpx2 at INFO. Its URL argument otherwise persists signatures.
+        # Desktop logs httpx2 at INFO. Its URL argument otherwise persists signatures of
+        # LMS file storage, whichever host a school's Canvas uses.
         if isinstance(record.args, tuple):
             record.args = tuple(
                 value.copy_with(query=None)
-                if isinstance(value, httpx.URL) and value.host == STORAGE_HOST
+                if isinstance(value, httpx.URL) and value.host not in {"127.0.0.1", "localhost"}
                 else value
                 for value in record.args
             )
@@ -80,6 +84,14 @@ class LmsStatus(BaseModel):
     courses: list["LmsChannel"] = []
     summary_min_chars: int = 300  # 0: no AI summaries of notices
     summary_available: bool = False  # an Inbox classifier model is set up
+    # Canvas access token connection (the default way in).
+    token_url: str | None = None  # LMS origin; set while a token is saved
+    token_user: str | None = None  # the Canvas account's display name
+    token_syncing: bool = False
+    token_last_sync: str | None = None  # last attempt, successful or not
+    token_error: str | None = None
+    token_warnings: list[str] = []
+    materials: bool = False  # also save weekly learning materials (token sync)
 
 
 class LmsChannel(BaseModel):
@@ -109,6 +121,15 @@ class LmsExtensionUpdate(BaseModel):
 
 class LmsToken(BaseModel):
     token: str
+
+
+class LmsTokenConnect(BaseModel):
+    url: str = Field(min_length=1, max_length=500)
+    token: str = Field(min_length=1, max_length=500, repr=False)
+
+
+class LmsMaterials(BaseModel):
+    enabled: bool
 
 
 class LmsCourse(BaseModel):
@@ -147,16 +168,19 @@ class LmsItem(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def school_url(cls, value: str) -> str:
+    def school_url(cls, value: str, info: ValidationInfo) -> str:
+        # The token sync validates against its configured LMS; extension requests
+        # against the school its host permissions cover.
+        context: dict[str, set[str]] = info.context or {}
         url = urlsplit(value)
         if (
             url.scheme != "https"
-            or url.hostname not in HOSTS
+            or url.hostname not in context.get("hosts", HOSTS)
             or url.username
             or url.password
             or url.port not in {None, 443}
         ):
-            raise ValueError("고려대 LMS 주소가 필요해요")
+            raise ValueError("연결한 LMS 주소가 필요해요")
         return value
 
 
@@ -223,6 +247,8 @@ class LmsMaterialDownload(LmsMaterialUpload):
 async def status(request: Request, session: Session, config: Config) -> LmsStatus:
     build = await asyncio.to_thread(lms_extension.installed, config.data_dir)
     seen: dict[str, str] = await services.get_setting(session, "lms_extension_seen") or {}
+    canvas: dict[str, str] = await services.get_setting(session, lms_canvas.CANVAS_SETTING) or {}
+    sync: lms_canvas.LmsSync = request.app.state.lms_sync
     return LmsStatus(
         connected=bool(await services.get_setting(session, TOKEN_KEY)),
         last_sync=await services.get_setting(session, "lms_last_sync"),
@@ -242,7 +268,84 @@ async def status(request: Request, session: Session, config: Config) -> LmsStatu
             session, config.lms_summary_min_chars
         ),
         summary_available=request.app.state.summarizer is not None,
+        token_url=canvas.get("url"),
+        token_user=canvas.get("user"),
+        token_syncing=sync.status.running,
+        token_last_sync=sync.status.last_sync_at.isoformat() if sync.status.last_sync_at else None,
+        token_error=sync.status.last_error if canvas else None,
+        token_warnings=sync.status.warnings if canvas else [],
+        materials=bool(await services.get_setting(session, lms_canvas.MATERIALS_SETTING)),
     )
+
+
+@router.put("/token", dependencies=[Depends(local_settings_request)])
+async def connect_token(
+    body: LmsTokenConnect, request: Request, session: Session, config: Config
+) -> LmsStatus:
+    """Check the token against Canvas, then keep it in the Keychain and sync."""
+    sync: lms_canvas.LmsSync = request.app.state.lms_sync
+    token = body.token.strip()
+    try:
+        origin = lms_canvas.normalize_url(body.url)
+        canvas = sync.canvas(origin, token)
+        try:
+            me = await lms_canvas.profile(canvas)
+        finally:
+            await canvas.aclose()
+    except lms_canvas.CanvasAuthError as exc:
+        raise HTTPException(
+            422, "토큰이 맞지 않아요. LMS에서 새로 발급한 토큰을 붙여 넣어 주세요"
+        ) from exc
+    except lms_canvas.CanvasError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    previous: dict[str, str] | None = await services.get_setting(session, lms_canvas.CANVAS_SETTING)
+    try:
+        await asyncio.to_thread(sync.keychain.set, origin, token)
+        if previous and previous.get("url") != origin:
+            await asyncio.to_thread(sync.keychain.delete, previous["url"])
+    except keyring.errors.KeyringError as exc:
+        raise HTTPException(500, "키체인에 토큰을 저장하지 못했어요") from exc
+    name = me.get("short_name") or me.get("name") or me.get("login_id") or ""
+    await services.set_setting_quietly(
+        session,
+        lms_canvas.CANVAS_SETTING,
+        {"url": origin, "user": str(name)[:200], "account_id": str(me["id"])},
+    )
+    sync.status = lms_canvas.SyncStatus()
+    sync.start_soon()
+    return await status(request, session, config)
+
+
+@router.delete("/token", dependencies=[Depends(local_settings_request)])
+async def disconnect_token(request: Request, session: Session, config: Config) -> LmsStatus:
+    """Forget the token. Imported courses, tasks and notices stay."""
+    sync: lms_canvas.LmsSync = request.app.state.lms_sync
+    saved: dict[str, str] | None = await services.get_setting(session, lms_canvas.CANVAS_SETTING)
+    if saved:
+        try:
+            await asyncio.to_thread(sync.keychain.delete, saved["url"])
+        except keyring.errors.KeyringError as exc:
+            raise HTTPException(500, "키체인에서 토큰을 지우지 못했어요") from exc
+    await services.set_setting_quietly(session, lms_canvas.CANVAS_SETTING, None)
+    sync.status = lms_canvas.SyncStatus()
+    return await status(request, session, config)
+
+
+@router.post("/token/sync", dependencies=[Depends(local_settings_request)])
+async def sync_now(request: Request, session: Session, config: Config) -> LmsStatus:
+    sync: lms_canvas.LmsSync = request.app.state.lms_sync
+    if not await services.get_setting(session, lms_canvas.CANVAS_SETTING):
+        raise HTTPException(409, "LMS 토큰을 먼저 연결해 주세요")
+    await sync.run()
+    return await status(request, session, config)
+
+
+@router.put("/materials", dependencies=[Depends(local_settings_request)])
+async def materials_setting(
+    body: LmsMaterials, request: Request, session: Session, config: Config
+) -> LmsStatus:
+    await services.set_setting_quietly(session, lms_canvas.MATERIALS_SETTING, body.enabled)
+    return await status(request, session, config)
 
 
 @router.put("/course-names", dependencies=[Depends(local_settings_request)])

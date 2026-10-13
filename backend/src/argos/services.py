@@ -583,8 +583,9 @@ async def import_lms(
     courses: Sequence[dict[str, Any]],
     items: Sequence[dict[str, Any]],
     summary_min_chars: int = 0,
+    origin: str = "https://lms.korea.ac.kr",
 ) -> dict[str, Any]:
-    """Commit an extension batch once; absent items never mean remote deletion.
+    """Commit an LMS batch once; absent items never mean remote deletion.
 
     Remote edits refresh titles, descriptions and dates, preserving local task status
     and ordering. LMS bodies are plain text, not executable HTML or Markdown.
@@ -631,7 +632,7 @@ async def import_lms(
                     external_id=channel_key,
                     object_type="channel",
                     object_id=channel.id,
-                    container="https://lms.korea.ac.kr",
+                    container=origin,
                     container_name=course["name"],
                     uid=channel_key,
                     last_synced_at=now,

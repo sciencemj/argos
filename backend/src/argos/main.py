@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from argos import (
     caldav_sync,
+    lms,
+    lms_canvas,
     lms_extension,
     notify,
     onboarding,
@@ -63,6 +65,15 @@ def create_app(config: Settings = settings) -> FastAPI:
             app.state.sessionmaker, lambda: app.state.summarizer, lambda: app.state.settings
         )
         await app.state.lms_summaries.start()
+        app.state.lms_sync = lms_canvas.LmsSync(
+            app.state.sessionmaker,
+            lambda: app.state.settings,
+            lambda: app.state.lms_summaries,
+            lms_canvas.Keychain(),
+            lms.sync_lock,
+        )
+        if config.lms_poll_minutes > 0:
+            app.state.lms_sync.start()
         app.state.backups = ops.Backups(lambda: app.state.settings)
         if config.auto_backup:
             app.state.backups.start()
@@ -104,6 +115,7 @@ def create_app(config: Settings = settings) -> FastAPI:
         await app.state.vault_sync.stop()
         await app.state.usage.stop()
         await app.state.notifier.stop()
+        await app.state.lms_sync.stop()
         await app.state.lms_summaries.stop()
         await app.state.backups.stop()
         await app.state.calendar_sync.stop()

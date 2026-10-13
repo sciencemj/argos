@@ -1713,6 +1713,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lms/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Connect Token
+         * @description Check the token against Canvas, then keep it in the Keychain and sync.
+         */
+        put: operations["connect_token_api_v1_lms_token_put"];
+        post?: never;
+        /**
+         * Disconnect Token
+         * @description Forget the token. Imported courses, tasks and notices stay.
+         */
+        delete: operations["disconnect_token_api_v1_lms_token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/token/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Now */
+        post: operations["sync_now_api_v1_lms_token_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lms/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Materials Setting */
+        put: operations["materials_setting_api_v1_lms_materials_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lms/course-names": {
         parameters: {
             query?: never;
@@ -2682,6 +2740,11 @@ export interface components {
             /** Download Url */
             download_url: string;
         };
+        /** LmsMaterials */
+        LmsMaterials: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** LmsMaterialsNeeded */
         LmsMaterialsNeeded: {
             /** Item Ids */
@@ -2744,6 +2807,29 @@ export interface components {
              * @default false
              */
             summary_available: boolean;
+            /** Token Url */
+            token_url?: string | null;
+            /** Token User */
+            token_user?: string | null;
+            /**
+             * Token Syncing
+             * @default false
+             */
+            token_syncing: boolean;
+            /** Token Last Sync */
+            token_last_sync?: string | null;
+            /** Token Error */
+            token_error?: string | null;
+            /**
+             * Token Warnings
+             * @default []
+             */
+            token_warnings: string[];
+            /**
+             * Materials
+             * @default false
+             */
+            materials: boolean;
         };
         /** LmsSummarySetting */
         LmsSummarySetting: {
@@ -2752,6 +2838,13 @@ export interface components {
         };
         /** LmsToken */
         LmsToken: {
+            /** Token */
+            token: string;
+        };
+        /** LmsTokenConnect */
+        LmsTokenConnect: {
+            /** Url */
+            url: string;
             /** Token */
             token: string;
         };
@@ -6891,6 +6984,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    connect_token_api_v1_lms_token_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsTokenConnect"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_token_api_v1_lms_token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    sync_now_api_v1_lms_token_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+        };
+    };
+    materials_setting_api_v1_lms_materials_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LmsMaterials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmsStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

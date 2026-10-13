@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     notify_hermes_target: str | None = None  # e.g. "discord" or "discord:#general"
     # LMS notices at least this long (characters) get an AI summary; 0 turns it off.
     lms_summary_min_chars: int = 300
+    # Canvas access-token sync (PLAN Phase 17): minutes between syncs; 0 turns it off.
+    lms_poll_minutes: int = 15
     hermes_bin: str = "hermes"
     inbox_stale_hours: int = 24
     undated_after_days: int = 3

@@ -71,6 +71,7 @@ def settings(tmp_path: Path) -> Settings:
         db_path=tmp_path / "test.db",
         seed_path=SEED_EXAMPLE,
         caldav_poll_minutes=0,
+        lms_poll_minutes=0,  # no LMS token sync (it reads the Keychain); tests run it
         usage_poll_minutes=0,  # no Codex polling; Claude usage read from a temp folder
         notify_interval_minutes=0,  # tests run notification passes themselves
         auto_backup=False,
