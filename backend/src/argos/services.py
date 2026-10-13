@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from dateutil.rrule import rrulestr
 from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from argos import attachments
 from argos.course_names import clean_course_name
@@ -797,6 +798,7 @@ async def import_lms(
             )
         ):
             summarize.append(notice_id)
+    await _drop_stream_copies(session, changes)
     # Bookkeeping belongs to this same transaction, including the last successful sync.
     setting = await session.scalar(select(AppSetting).where(AppSetting.key == "lms_last_sync"))
     if setting is None:
@@ -807,6 +809,44 @@ async def import_lms(
     for type_, obj, fields in changes:
         await _publish(type_, obj, fields)
     return {**counts, "summarize": summarize}
+
+
+async def _drop_stream_copies(
+    session: AsyncSession, changes: list[tuple[str, Record, dict[str, Any]]]
+) -> None:
+    """Removes activity-stream cards that repeat an announcement or message of the same
+    channel (imported before the stream's copies were skipped)."""
+    original, copy = aliased(LmsNotice), aliased(LmsNotice)
+    original_message, copy_message = aliased(Message), aliased(Message)
+    repeats = (
+        select(original.id)
+        .join(original_message, original_message.id == original.message_id)
+        .where(
+            original.kind.in_(("announcement", "conversation")),
+            original.title == copy.title,
+            original_message.channel_id == copy_message.channel_id,
+        )
+        .exists()
+    )
+    rows = await session.execute(
+        select(copy, copy_message)
+        .join(copy_message, copy_message.id == copy.message_id)
+        .where(copy.kind == "activity", repeats)
+    )
+    for notice, message in rows.tuples():
+        links = await session.scalars(
+            select(SourceLink).where(
+                SourceLink.source == "learningx", SourceLink.object_id == message.id
+            )
+        )
+        for link in links:
+            await session.delete(link)
+        before = snapshot(message)
+        _log(session, message, "deleted", "system:lms", before=before)
+        await session.delete(notice)
+        await session.delete(message)
+        changes.append(("object.deleted", message, before))
+    await session.flush()
 
 
 def _lms_posted(value: Any, now: datetime) -> datetime | None:

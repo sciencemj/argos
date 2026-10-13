@@ -193,6 +193,8 @@ export async function collectLms(mode = "sync", materials = false) {
     ]) {
       try {
         for (const row of await list(path)) {
+          // The stream repeats announcements and messages the other lists bring in.
+          if (kind === "activity" && ["Announcement", "Conversation"].includes(row.type)) continue;
           const course = courses.find((c) => c.id === String(row.course_id));
           add(kind, { ...row, id: `${row.type ?? kind}:${row.id}` }, course,
             row.title ?? row.subject ?? row.type, row.message ?? row.last_message,

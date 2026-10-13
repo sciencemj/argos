@@ -113,7 +113,28 @@ class FakeCanvas:
             return self.json({"public_url": "https://files.storage.example/b/99?sig=signed-secret"})
         if path.startswith("/api/v1/courses/8/"):
             return self.json([])
-        if path in {"/api/v1/users/self/activity_stream", "/api/v1/conversations"}:
+        if path == "/api/v1/users/self/activity_stream":
+            return self.json(
+                [
+                    {  # the stream's copy of the announcement above
+                        "id": 900,
+                        "type": "Announcement",
+                        "course_id": 7,
+                        "title": "휴강 안내",
+                        "message": "<p>다음 주 휴강</p>",
+                        "created_at": "2026-10-12T01:00:02Z",
+                    },
+                    {
+                        "id": 901,
+                        "type": "Message",
+                        "course_id": 7,
+                        "title": "Assignment Created - 과제 1",
+                        "message": "새 과제",
+                        "created_at": "2026-10-10T00:00:00Z",
+                    },
+                ]
+            )
+        if path == "/api/v1/conversations":
             return self.json([])
         return httpx.Response(404, json={})
 
@@ -384,3 +405,40 @@ def test_split_course_channels_merge_into_the_users_one(
     assert any("휴강 안내" in m.body for m in rows(settings, Message) if m.channel_id == mine)
     sync(app)  # stable afterwards
     assert {c.id for c in rows(settings, Channel)} == channels
+
+
+def notice_titles(settings: Settings) -> list[str]:
+    return sorted(n.title for n in rows(settings, LmsNotice))
+
+
+def test_activity_stream_copies_are_skipped(app: TestClient, settings: Settings) -> None:
+    connect(app)
+    sync(app)
+    titles = notice_titles(settings)
+    assert titles.count("휴강 안내") == 1
+    assert "Assignment Created - 과제 1" in titles  # only the stream tells this
+
+
+def test_stream_copies_imported_before_are_removed(app: TestClient, settings: Settings) -> None:
+    connect(app)
+    sync(app)
+    code = app.post("/api/v1/lms/connection").json()["token"]
+    copy = {  # what an older extension or sync stored
+        "account_id": "42",
+        "courses": [{"id": "7", "name": "2026-2 알고리즘(01)"}],
+        "items": [
+            {
+                "id": "Announcement:900",
+                "course_id": "7",
+                "kind": "activity",
+                "title": "휴강 안내",
+                "text": "다음 주 휴강",
+                "url": "https://lms.korea.ac.kr/courses/7",
+            }
+        ],
+    }
+    headers = {"Authorization": f"Bearer {code}"}
+    assert app.post("/api/v1/lms/import", json=copy, headers=headers).status_code == 200
+    assert notice_titles(settings).count("휴강 안내") == 1  # removed in the same import
+    sync(app)
+    assert notice_titles(settings).count("휴강 안내") == 1

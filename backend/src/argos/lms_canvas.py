@@ -36,6 +36,8 @@ KEYCHAIN_SERVICE = "Argos LMS access token"
 CANVAS_SETTING = "lms_canvas"  # {"url": origin, "user": display name, "account_id": id}
 MATERIALS_SETTING = "lms_canvas_materials"
 FILE_LIMIT = 25 * 1024 * 1024
+# Activity-stream entries that repeat what the announcement and message lists bring in.
+STREAM_COPIES = {"Announcement", "Conversation"}
 MAX_PAGES = 50
 
 
@@ -513,6 +515,8 @@ async def collect(canvas: Canvas, *, materials: bool, tz: ZoneInfo) -> Collected
     ):
         try:
             for row in await canvas.list(path):
+                if kind == "activity" and row.get("type") in STREAM_COPIES:
+                    continue
                 course = by_id.get(str(row.get("course_id")))
                 add(
                     kind,
