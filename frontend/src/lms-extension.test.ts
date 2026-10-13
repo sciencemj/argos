@@ -324,7 +324,7 @@ test("assignments keep submission guidance, body links and announcement dates", 
             id: 3,
             name: "보고서",
             description:
-              '<p>양식 참고</p><a href="/courses/7/files/9">양식.docx</a><a href="javascript:x()">x</a>',
+              '<p>양식 참고</p><a href="/courses/7/files/9">양식.docx</a><a href="javascript:x()">x</a><a href="https://hw.example/em/1?authkey=s3&user_id=9&lg=ko">HW</a>',
             due_at: "2026-10-20T14:59:00Z",
             submission_types: ["online_upload"],
             allowed_extensions: ["pdf", "docx"],
@@ -352,6 +352,8 @@ test("assignments keep submission guidance, body links and announcement dates", 
     "- 양식.docx: https://lms.korea.ac.kr/courses/7/files/9",
   );
   expect(assignment?.text).not.toContain("javascript");
+  expect(assignment?.text).toContain("- HW: https://hw.example/em/1?lg=ko");
+  expect(assignment?.text).not.toMatch(/authkey|user_id/);
   expect(assignment?.text).toContain("제출 방식: 파일 업로드");
   expect(assignment?.text).toContain("허용 파일 형식: pdf, docx");
   expect(assignment?.text).toContain("제출 가능 횟수: 제한 없음");

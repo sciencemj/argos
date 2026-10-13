@@ -80,6 +80,10 @@ export async function collectLms(mode = "sync", materials = false) {
       try {
         const url = new URL(a.getAttribute("href"), origin);
         if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) continue;
+        // Links to other school systems can carry the student's access key or id.
+        for (const name of [...url.searchParams.keys()]) {
+          if (/auth|token|key|sig|session|pass|secret|user_?id|uid/i.test(name)) url.searchParams.delete(name);
+        }
         const label = (a.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 200) || url.href;
         if (!out.some((line) => line.endsWith(url.href))) out.push(`- ${label}: ${url.href}`);
       } catch { /* Skip malformed links. */ }
@@ -97,6 +101,7 @@ export async function collectLms(mode = "sync", materials = false) {
     online_upload: "파일 업로드", online_text_entry: "텍스트 입력", online_url: "웹 주소",
     media_recording: "미디어 녹화", online_quiz: "퀴즈", discussion_topic: "토론 참여",
     external_tool: "외부 도구", on_paper: "오프라인(종이) 제출", none: "제출 없음",
+    not_graded: "채점 없음", wiki_page: "페이지 작성", student_annotation: "문서에 주석 달기",
   };
   // How to hand an assignment in, from Canvas assignment fields (null fields are skipped).
   const submissionGuide = (row) => {

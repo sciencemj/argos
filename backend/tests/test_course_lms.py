@@ -114,3 +114,12 @@ def test_course_question_gets_its_assignment_and_notices(app: TestClient, local:
     assert "https://lms.korea.ac.kr/courses/7/assignments/10" in context
     assert "휴강 안내" in context
     assert "운영체제 과제 안내" not in context  # another course's notice
+
+
+def test_activity_repeats_rank_below_the_original() -> None:
+    original = doc("과거 시험문제 공개", "시험 범위 안내", day=1)
+    repeat = doc("과거 시험문제 공개", "시험 범위 안내", kind="activity", day=2)
+    assert rank([repeat, original], "시험 범위", 2) == [original, repeat]
+    assert rank([repeat, original], "", 2) == [original, repeat]
+    section = context_section([repeat], "", 2000, SEOUL)
+    assert "과거 시험문제" not in section  # activity is never listed on its own

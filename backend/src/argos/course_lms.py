@@ -111,17 +111,25 @@ def _bigrams(text: str) -> set[str]:
     return grams
 
 
+# The activity stream and inbox mostly repeat notices and assignments ("과제 생성됨",
+# "공지 등록됨"); they rank below the originals. Real LMS data: 458 of 511 items.
+SECONDARY = {"activity", "conversation"}
+
+
 def rank(docs: list[LmsDoc], query: str, limit: int) -> list[LmsDoc]:
-    """Best matches first (title counts triple); ties and an empty query keep the
-    newest-first order. Items sharing nothing with the query are left out."""
+    """Best matches first (title counts triple, activity/messages half); ties and an
+    empty query keep the newest-first order, originals before activity. Items sharing
+    nothing with the query are left out."""
     wanted = _bigrams(query)
     if not wanted:
-        return docs[:limit]
+        return sorted(docs, key=lambda d: d.kind in SECONDARY)[:limit]
     scored: list[tuple[float, int, LmsDoc]] = []
     for index, doc in enumerate(docs):
         title = _bigrams(doc.title)
         body = _bigrams(doc.text)
         score = sum(3.0 if g in title else 1.0 if g in body else 0.0 for g in wanted)
+        if doc.kind in SECONDARY:
+            score /= 2
         if score > 0:
             scored.append((score / len(wanted), index, doc))
     scored.sort(key=lambda row: (-row[0], row[1]))
@@ -167,7 +175,8 @@ def context_section(
     listed: list[str] = []
     title = "Other recent items:" if en else "그 밖의 최근 자료:"
     used += len(title) + 1
-    for doc in [d for d in docs if id(d) not in shown][:15]:
+    others = [d for d in docs if id(d) not in shown and d.kind not in SECONDARY]
+    for doc in others[:15]:
         when = doc.date_text(tz, language)
         line = f"- [{doc.label(language)}] {doc.title}" + (f" ({when})" if when else "")
         line += f" {doc.url}"
