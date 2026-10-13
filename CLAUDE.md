@@ -131,6 +131,22 @@ vitest, build), api-types 최신 여부.
 - E2E는 저장소에 없다. 필요하면 별도 포트 스택(백엔드 `ARGOS_PORT=8001 ARGOS_DB_PATH=<임시 db>`,
   프런트 `ARGOS_BACKEND=http://127.0.0.1:8001 bunx vite --port 5174`)을 띄워 사용자의 개발 DB를 건드리지 않는다.
 
+## 화면 확인 (UI 피드백 루프)
+
+UI를 바꾸면 테스트 통과로 끝내지 말고 실제 화면을 보고 확인한다(라이트/다크 둘 다, 디자인 캔버스와 비교).
+아래 도구는 저장소에 없는 개인 환경용이다. Orca 터미널(`TERM_PROGRAM=Orca`)이고 해당 스킬이 있을 때만
+쓰고, 없으면 건너뛰고 보고에 "화면 확인 못 함"이라고 적는다.
+
+- **웹 화면**: `orca-cli` 스킬의 Orca 내장 브라우저. 개발 서버 `http://127.0.0.1:5273/argos/`(안 떠 있으면
+  앱 `http://127.0.0.1:8000/`). 테마는 `orca set media --color-scheme light|dark`, 모바일은 `orca set device`.
+  연 탭은 끝나면 `orca tab close --page <id>`로 닫는다.
+- **일부분 자세히 보기**: `ui-crop` 스킬. `python3 .claude/skills/ui-crop/crop.py --selector '<CSS>'`가 잘린
+  PNG 경로를 출력하면 그 파일을 Read한다. 데스크톱 창 스크린샷은 `crop.py <state.json> --rect x,y,w,h --scale 2`.
+- **데스크톱 앱(Tauri 창·빠른 입력 창)**: `computer-use` 스킬(`orca computer ... --app app.argos.desktop`).
+  Claude 내장 computer-use보다 이것을 쓴다(다른 앱을 숨기지 않고, 웹뷰 내용이 접근성 트리로 나와 요소 번호로
+  조작). 창을 닫으면 숨겨지므로 `window_not_found`면 `open -b app.argos.desktop`. 앱은 사용자의 실제 데이터
+  (`~/Library/Application Support/Argos`)를 쓰므로 메시지 전송·삭제·설정 변경 같은 조작은 먼저 묻는다.
+
 ## 관련 문서
 
 - `docs/PLAN.md`: 전체 설계, Phase별 범위와 완료 기준, 보안·동기화·볼트 안전 규칙(§8)
