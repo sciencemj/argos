@@ -2670,6 +2670,8 @@ export interface components {
             url: string;
             /** Due At */
             due_at?: string | null;
+            /** Posted At */
+            posted_at?: string | null;
             file?: components["schemas"]["LmsFile"] | null;
         };
         /** LmsMaterialDownload */
