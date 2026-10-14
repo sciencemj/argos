@@ -48,6 +48,12 @@ async def lms(session: AsyncSession, item_id: str, text: str) -> None:
     )
 
 
+def just_after() -> datetime:
+    """A minute after now, read when called: LMS rows carry the real time they were
+    stored, which on a slow test run is well past the module's NOW."""
+    return datetime.now(UTC) + timedelta(minutes=1)
+
+
 def seoul_today(settings: Settings, hour: int) -> datetime:
     local = NOW.astimezone(settings.zoneinfo)
     return local.replace(hour=hour, minute=0, second=0).astimezone(UTC)
@@ -83,7 +89,7 @@ async def test_digest_data_collects_today_lms_and_attention(
         actor="u",
     )
     await lms(session, "a1", LONG)
-    data = await notify.morning_digest_data(session, NOW + timedelta(minutes=1), settings)
+    data = await notify.morning_digest_data(session, just_after(), settings)
     assert data["attention"]["overlaps"] == [["세미나", "면담"]]
     assert data["attention"]["overdue"] == 1
     assert [item["title"] for item in data["lms"]] == ["공지 a1"]
@@ -99,7 +105,7 @@ async def test_digest_prefers_summaries_and_skips_old_lms(
     assert notice is not None
     notice.summary_state, notice.summary = "done", "- 3~7장"
     await session.commit()
-    data = await notify.morning_digest_data(session, NOW + timedelta(minutes=1), settings)
+    data = await notify.morning_digest_data(session, just_after(), settings)
     assert data["lms"][0]["summary"] == "- 3~7장" and data["lms"][0]["text"] is None
     later = await notify.morning_digest_data(session, NOW + timedelta(days=2), settings)
     assert later["lms"] == []
@@ -108,7 +114,7 @@ async def test_digest_prefers_summaries_and_skips_old_lms(
 async def test_digest_caps_lms_items(session: AsyncSession, settings: Settings) -> None:
     for i in range(notify.DIGEST_LMS + 3):
         await lms(session, f"n{i:02d}", "내용 " * 10)
-    data = await notify.morning_digest_data(session, NOW + timedelta(minutes=1), settings)
+    data = await notify.morning_digest_data(session, just_after(), settings)
     assert len(data["lms"]) == notify.DIGEST_LMS
 
 
@@ -356,7 +362,7 @@ async def test_backfilled_lms_cards_are_not_news(session: AsyncSession, settings
     assert notice is not None
     notice.kind = None  # a card made by 15a's backfill for an old message
     await session.commit()
-    data = await notify.morning_digest_data(session, NOW + timedelta(minutes=1), settings)
+    data = await notify.morning_digest_data(session, just_after(), settings)
     assert data["lms"] == []
 
 
