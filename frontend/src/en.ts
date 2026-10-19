@@ -233,6 +233,7 @@ export const en: Record<string, string> = {
   발자국: "Activity",
   "옆으로 좁히기": "Narrow view",
   "넓게 보기": "Wide view",
+  "스레드 넓게 보기": "Open thread wide",
   "이 메시지를 찾을 수 없어요.": "Message not found.",
   "에이전트가 지우려는 항목이에요. 승인하기 전에는 아무것도 삭제되지 않아요.":
     "An agent has requested to delete this item. Nothing will be deleted until you approve.",

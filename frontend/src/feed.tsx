@@ -43,6 +43,7 @@ import {
   CalendarIcon,
   CheckIcon,
   DogIcon,
+  ExpandIcon,
   KanbanIcon,
   PaperclipIcon,
   PinIcon,
@@ -65,10 +66,13 @@ const SLASH = COMMANDS.map((c) => c.name);
 
 export function useOpenThread() {
   const [params, setParams] = useSearchParams();
-  return (id: string) => {
+  /** `wide`: the thread takes the feed's place ("넓게 보기") in one click. */
+  return (id: string, wide = false) => {
     const next = new URLSearchParams(params);
     next.delete("task");
     next.set("thread", id);
+    if (wide) next.set("wide", "1");
+    else next.delete("wide");
     setParams(next);
   };
 }
@@ -194,7 +198,7 @@ export function MessageItem({
 }: {
   message: Message;
   channel: Channel;
-  onThread?: (id: string) => void;
+  onThread?: (id: string, wide?: boolean) => void;
   /** The thread panel lists replies itself, so it turns the inline answer cards off. */
   inlineReplies?: boolean;
 }) {
@@ -276,16 +280,28 @@ export function MessageItem({
           />
         )}
         {onThread && message.reply_count > 0 && (
-          <button
-            type="button"
-            onClick={() => onThread(message.id)}
-            className="cursor-pointer self-start text-[12.5px] font-medium text-text-2 underline underline-offset-[3px]"
-          >
-            {t(
-              `답글 ${message.reply_count}`,
-              `${message.reply_count} ${message.reply_count === 1 ? "reply" : "replies"}`,
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 self-start">
+            <button
+              type="button"
+              onClick={() => onThread(message.id)}
+              className="cursor-pointer text-[12.5px] font-medium text-text-2 underline underline-offset-[3px]"
+            >
+              {t(
+                `답글 ${message.reply_count}`,
+                `${message.reply_count} ${message.reply_count === 1 ? "reply" : "replies"}`,
+              )}
+            </button>
+            <button
+              type="button"
+              aria-label={tr("스레드 넓게 보기")}
+              title={tr("스레드 넓게 보기")}
+              // Phones already show the thread full screen.
+              className="grid size-6 cursor-pointer place-items-center rounded-full text-text-3 hover:bg-inset hover:text-ink max-md:hidden"
+              onClick={() => onThread(message.id, true)}
+            >
+              <ExpandIcon size={13} />
+            </button>
+          </div>
         )}
       </div>
       {onThread && <QuickActions message={message} onThread={onThread} />}
@@ -440,7 +456,7 @@ function QuickActions({
   onThread,
 }: {
   message: Message;
-  onThread: (id: string) => void;
+  onThread: (id: string, wide?: boolean) => void;
 }) {
   const pin = usePinMessage();
   const convert = useConvertMessage();
@@ -502,6 +518,15 @@ function QuickActions({
         onClick={() => onThread(message.id)}
       >
         {tr("스레드")}
+      </button>
+      <button
+        type="button"
+        aria-label={tr("스레드 넓게 보기")}
+        title={tr("스레드 넓게 보기")}
+        className={`${icon} max-md:hidden`}
+        onClick={() => onThread(message.id, true)}
+      >
+        <ExpandIcon />
       </button>
       <EventFromMessage
         message={message}

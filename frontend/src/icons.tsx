@@ -131,6 +131,12 @@ export const CloseIcon = ({ size = 16 }: P) => (
   </Stroke>
 );
 
+export const ExpandIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />
+  </Stroke>
+);
+
 export const SettingsIcon = ({ size = 16 }: P) => (
   <Stroke size={size}>
     <circle cx="12" cy="12" r="3" />
