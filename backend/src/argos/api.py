@@ -1640,7 +1640,7 @@ async def set_calendar_channel(
     return await _icloud_out(request, session, config)
 
 
-CHANGELOG_SEEN = "changelog_seen"
+CHANGELOG_SEEN = services.CHANGELOG_SEEN
 VERSION = r"^\d+\.\d+\.\d+$"
 
 

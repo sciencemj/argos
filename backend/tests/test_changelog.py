@@ -28,3 +28,17 @@ def test_seen_version_is_kept(app: TestClient) -> None:
 @pytest.mark.parametrize("bad", ["", "latest", "0.1", "0.1.17-beta", None])
 def test_only_plain_versions_are_accepted(app: TestClient, bad: str | None) -> None:
     assert app.put("/api/v1/settings/changelog", json={"seen": bad}).status_code == 422
+
+
+def test_an_existing_database_starts_from_the_release_before_the_changelog(
+    settings: Settings,
+) -> None:
+    """Users updating from 0.1.16 (no changelog_seen yet) must see the new notes,
+    unlike a new install."""
+    with TestClient(create_app(settings)) as first:  # new install
+        assert first.get("/api/v1/settings/changelog").json() == {"seen": None}
+    with TestClient(create_app(settings)) as again:  # same DB, next start
+        assert again.get("/api/v1/settings/changelog").json() == {"seen": "0.1.16"}
+        again.put("/api/v1/settings/changelog", json={"seen": "0.1.17"})
+    with TestClient(create_app(settings)) as later:
+        assert later.get("/api/v1/settings/changelog").json() == {"seen": "0.1.17"}

@@ -3,8 +3,10 @@ CalDAV client's requests against canned iCloud-style responses."""
 
 # pyright: reportUnknownMemberType=false
 
+import asyncio
 import base64
 import itertools
+import threading
 import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
@@ -28,7 +30,7 @@ from argos.caldav_sync import (
 )
 from argos.config import Settings
 from argos.main import create_app
-from argos.models import SourceLink, Task
+from argos.models import AppSetting, SourceLink, Task
 
 PASSWORD = "abcd-efgh-ijkl-mnop"
 HOME = "https://p01-caldav.icloud.com/123/calendars/"
@@ -78,6 +80,8 @@ class FakeCalDAV:
         self.requests.append(("PUT", target, etag))
         if etag is not None and self.resources[target][1] != etag:
             raise PreconditionFailed("changed")
+        if href is None and target in self.resources:
+            raise PreconditionFailed("exists")  # If-None-Match: *
         new = f'"{next(self._etags)}"'
         self.resources[target] = (calendar_url, new, ics)
         return target, new
@@ -793,6 +797,86 @@ def test_orphan_deadline_is_replaced_not_imported(app: TestClient, server: FakeC
     assert len(deadlines_in(server, "Argos · 학업")) == 1
 
 
+def forget_links(app: TestClient) -> None:
+    """A restored backup: the calendar keeps Argos's deadlines, the DB lost the links
+    and the remembered area calendars."""
+
+    async def drop() -> None:
+        async with app.app.state.sessionmaker() as session:  # type: ignore[attr-defined]
+            await session.execute(delete(SourceLink).where(SourceLink.object_type == "task"))
+            await session.execute(
+                delete(AppSetting).where(AppSetting.key == caldav_sync.CALENDAR_AREAS)
+            )
+            await session.commit()
+
+    assert app.portal is not None
+    app.portal.call(drop)
+
+
+def test_area_calendar_found_by_name_keeps_its_deadlines(
+    app: TestClient, server: FakeCalDAV
+) -> None:
+    connect(app)
+    task_on(app, "운영체제", "과제 3", "2026-10-30T14:59:00Z")
+    sync(app)
+    forget_links(app)
+    first = sync(app)
+    assert (first["created"], first["failed"]) == (0, 0)
+    assert events(app) == []
+    assert len(deadlines_in(server, "Argos · 학업")) == 1
+    assert sync(app)["failed"] == 0
+
+
+def test_deadlines_of_another_argos_are_left_alone(app: TestClient, server: FakeCalDAV) -> None:
+    """The desktop app and a dev server can share one iCloud account."""
+    argos = server.add_calendar("Argos")
+    href = server.store(
+        argos,
+        "theirs",
+        vevent("task-not-ours@argos", "마감 · 남의 것", ":20261030T142900Z", ":20261030T145900Z"),
+    )
+    connect(app)
+    sync(app)
+    assert events(app) == []
+    assert href in server.resources
+    assert ("DELETE", href, None) not in [(m, h, None) for m, h, _ in server.requests]
+
+
+def test_deadline_moved_to_a_personal_calendar_is_not_duplicated(
+    app: TestClient, server: FakeCalDAV
+) -> None:
+    connect(app)
+    task_on(app, "운영체제", "과제 3", "2026-10-30T14:59:00Z")
+    sync(app)
+    href = deadline_href(server)
+    _, etag, body = server.resources.pop(href)
+    personal = server.calendars_[f"{HOME}개인/"]
+    server.resources[f"{personal.url}moved.ics"] = (personal.url, etag, body)
+    result = sync(app)
+    assert (result["created"], result["failed"]) == (0, 0)
+    assert events(app) == []
+    assert len(deadlines_in(server, "Argos · 학업")) == 1
+
+
+def test_unreadable_deadline_still_on_the_server_is_rewritten(
+    app: TestClient, server: FakeCalDAV
+) -> None:
+    connect(app)
+    task = task_on(app, "운영체제", "과제 3", "2026-10-30T14:59:00Z")
+    sync(app)
+    href = deadline_href(server)
+    cal, _, _ = server.resources[href]
+    broken = vevent(
+        f"task-{task['id']}@argos",
+        "바뀜",
+        ":20261030T142900Z",
+        extra="RECURRENCE-ID:20261030T142900Z",
+    )
+    server.resources[href] = (cal, '"phone"', broken)  # parse() reads nothing from it
+    assert sync(app)["failed"] == 0
+    assert "마감 · 과제 3".encode() in server.resources[href][2]
+
+
 def test_auth_error_while_pushing_fails_the_sync(app: TestClient, server: FakeCalDAV) -> None:
     connect(app)
     task_on(app, "운영체제", "과제 3", "2026-10-30T14:59:00Z")
@@ -832,6 +916,29 @@ def test_task_changes_reach_the_calendar_within_seconds(
     wait_until(lambda: len(deadlines_in(server, "Argos · 학업")) == 1)
     app.post(f"/api/v1/tasks/{task['id']}/move", json={"status": "done"})
     wait_until(lambda: deadlines_in(server, "Argos · 학업") == [])
+
+
+def test_a_change_during_a_sync_is_synced_right_after(app: TestClient, server: FakeCalDAV) -> None:
+    """A nudge that lands while a sync runs (here: after it read the tasks, while it
+    writes one) must not wait for the next poll."""
+    connect(app)
+    app.app.state.calendar_sync.debounce = 0.05  # type: ignore[attr-defined]
+    real = server.put
+    writing = threading.Event()
+
+    async def slow(
+        calendar_url: str, uid: str, ics: bytes, href: str | None, etag: str | None
+    ) -> tuple[str, str | None]:
+        if b"UID:task-" in ics:
+            writing.set()
+            await asyncio.sleep(0.3)
+        return await real(calendar_url, uid, ics, href, etag)
+
+    server.put = slow  # type: ignore[method-assign]
+    task_on(app, "운영체제", "먼저", "2026-10-30T14:59:00Z")
+    assert writing.wait(3)
+    task_on(app, "운영체제", "도는 중에", "2026-10-31T14:59:00Z")
+    wait_until(lambda: len(deadlines_in(server, "Argos · 학업")) == 2)
 
 
 def test_feed_leaves_out_deadlines_that_sync(app: TestClient, server: FakeCalDAV) -> None:

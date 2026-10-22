@@ -1,7 +1,10 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { searchForWorkspaceRoot } from "vite";
 import { defineConfig } from "vitest/config";
+
+const CHANGELOG = fileURLToPath(new URL("../CHANGELOG.md", import.meta.url));
 
 // The dev backend (make dev) runs on 8100; 8000 belongs to the desktop app.
 // ARGOS_BACKEND lets a second dev stack (e.g. an E2E run) proxy to another port.
@@ -18,7 +21,7 @@ const devBase =
   );
 const prefix = devBase.replace(/\/$/, "");
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   base: command === "serve" ? devBase : "/",
   plugins: [
     react(),
@@ -39,7 +42,16 @@ export default defineConfig(({ command }) => ({
   ],
   server: {
     // CHANGELOG.md lives at the repository root, outside this package (Phase 19).
-    fs: { allow: [searchForWorkspaceRoot(process.cwd()), ".."] },
+    // Only that file: the dev server can be opened over the tailnet, and the rest of
+    // the repository holds the dev database and attachments.
+    // Vitest never listens on the network; it reads the repo root (CHANGELOG.md,
+    // tauri.conf.json for the version check) with ?raw, which a file entry misses.
+    fs: {
+      allow: [
+        searchForWorkspaceRoot(process.cwd()),
+        mode === "test" ? ".." : CHANGELOG,
+      ],
+    },
     // IPv4 loopback explicitly: `localhost` can resolve to ::1 only, which
     // `tailscale serve` (proxying to 127.0.0.1:5273) cannot reach.
     host: "127.0.0.1",

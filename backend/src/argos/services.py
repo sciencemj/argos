@@ -64,6 +64,8 @@ from argos.models import (
 POSITION_STEP = 1024.0
 MIN_POSITION_GAP = 1e-6
 SYSTEM_CHANNELS = ("today", "inbox")
+CHANGELOG_SEEN = "changelog_seen"  # last version whose notes the user dismissed (Phase 19)
+CHANGELOG_BEFORE = "0.1.16"  # the last release without an in-app changelog
 PERSONAL_CHANNEL = "일상"
 
 
@@ -2785,6 +2787,11 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
     """Ensures the system channels, then loads the demo areas/channels from the seed
     config only into an empty database: afterwards the user owns the list and a
     deleted course must not come back on restart."""
+    existing = await session.scalar(select(Channel.id).limit(1)) is not None
+    if existing and await get_setting(session, CHANGELOG_SEEN) is None:
+        # Updated from a version before the changelog (Phase 19): show what came
+        # since. A new install records its own version on first open instead.
+        await set_setting_quietly(session, CHANGELOG_SEEN, CHANGELOG_BEFORE)
     for order, name in enumerate(SYSTEM_CHANNELS, start=-len(SYSTEM_CHANNELS)):
         exists = await session.scalar(select(Channel.id).where(Channel.name == name))
         if exists is None:

@@ -372,7 +372,7 @@ def render(uid: str, fields: Fields, now: datetime) -> bytes:
     return cal.to_ical()
 
 
-DEADLINE_UID = re.compile(r"task-.+@argos")
+DEADLINE_UID = re.compile(r"task-(.+)@argos")
 
 
 def render_deadline(task: Task, channel: str | None, now: datetime) -> bytes:
@@ -536,7 +536,21 @@ async def sync(
     targets = Targets(
         session, server, target, calendars, split=opts.split_areas, remembered=remembered
     )
-    owned = targets.owned
+    # Ours to write: the Argos and remembered calendars, any named like an area's
+    # (remembered ones can be lost, e.g. a restored backup) and any we wrote to.
+    area_names = {
+        f"{target.name} · {name}" for name in (await session.scalars(select(Area.name))).all()
+    }
+    written = await session.scalars(
+        select(SourceLink.container).where(
+            SourceLink.source == SOURCE, SourceLink.read_only.is_(False)
+        )
+    )
+    owned = (
+        targets.owned
+        | {c.url for c in calendars if c.name in area_names}
+        | {url for url in written.all() if url}
+    )
     start, end = now - PAST, now + FUTURE
     seen: set[str] = set()
     deadlines: dict[str, str | None] = {}  # href → ETag of the pushed deadlines listed
@@ -546,16 +560,19 @@ async def sync(
         writable = cal.url in owned
         for item in await server.items(cal.url, start, end):
             seen.add(item.href)
+            link = await _link_for(session, item.href)
+            if link is not None and link.object_type == "task":
+                deadlines[item.href] = item.etag  # even if unreadable: rewritten below
+                continue
             parsed = parse(item.ics, tz)
             if parsed is None:
                 continue
             uid, remote = parsed
-            link = await _link_for(session, item.href)
-            if link is not None and link.object_type == "task":
-                deadlines[item.href] = item.etag
-                continue
-            if link is None and writable and DEADLINE_UID.fullmatch(uid):
-                orphans.append((item.href, item.etag))  # never an event; pushed again below
+            if link is None and (ours := DEADLINE_UID.fullmatch(uid)):
+                # A deadline is never an event. One of this database's tasks whose
+                # link was lost is replaced below; another Argos's is left alone.
+                if writable and await session.get(Task, ours.group(1)) is not None:
+                    orphans.append((item.href, item.etag))
                 continue
             if link is None:
                 event = await services.create_event(
@@ -645,7 +662,7 @@ async def sync(
         end=end,
         result=result,
     )
-    result.owned = sorted(targets.owned)
+    result.owned = sorted(owned | targets.owned)
     return result
 
 
@@ -843,8 +860,9 @@ async def _push_task(
         href, etag = await server.put(cal.url, uid, body, None, None)
         if listed:
             await server.delete(link.external_id, deadlines[link.external_id])
-    elif not listed:  # deleted on the phone, or the whole calendar was
-        href, etag = await server.put(cal.url, uid, body, None, None)
+    elif not listed:  # deleted, moved away or out of the window on the phone
+        # No precondition: whatever is (or is not) at our href is replaced.
+        href, etag = await server.put(cal.url, uid, body, link.external_id, None)
     elif digest != link.content_hash or deadlines[link.external_id] != link.etag:
         try:
             href, etag = await server.put(
@@ -953,12 +971,19 @@ class CalendarSync:
         self.debounce = 3.0  # seconds after an Argos-side change before syncing it
         self._soon: asyncio.TimerHandle | None = None
         self._tasks: set[asyncio.Task[SyncStatus]] = set()
+        self._again = False  # nudged while running: run once more when it ends
+        self._stopped = False
 
     def nudge(self) -> None:
-        """An event changed in Argos: sync shortly instead of at the next poll, so a
-        created or deleted event reaches the phone in seconds. Changes made by the sync
-        itself arrive while it runs and are ignored; bursts collapse into one run."""
-        if self.status.running or self._soon is not None:
+        """Something changed in Argos: sync shortly instead of at the next poll, so a
+        created or deleted event or deadline reaches the phone in seconds. Bursts
+        collapse into one run. A nudge during a run (the sync's own changes, or the
+        user's) means one more run afterwards, which finds nothing to do if only the
+        sync's changes came in."""
+        if self._stopped or self._soon is not None:
+            return
+        if self.status.running:
+            self._again = True
             return
 
         def fire() -> None:
@@ -1019,6 +1044,9 @@ class CalendarSync:
             finally:
                 self.status.running = False
                 self.status.last_sync_at = datetime.now(UTC)
+                if self._again:
+                    self._again = False
+                    self.nudge()
             return self.status
 
     def start(self) -> None:
@@ -1030,6 +1058,7 @@ class CalendarSync:
         self._loop = asyncio.create_task(loop())
 
     async def stop(self) -> None:
+        self._stopped = True
         if self._soon is not None:
             self._soon.cancel()
         for task in list(self._tasks):
