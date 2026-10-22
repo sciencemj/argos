@@ -15,6 +15,7 @@ import httpx2
 import keyring.errors
 import pytest
 from fastapi.testclient import TestClient
+from icalendar import Calendar
 
 from argos import caldav_sync
 from argos.caldav_sync import (
@@ -26,6 +27,7 @@ from argos.caldav_sync import (
 )
 from argos.config import Settings
 from argos.main import create_app
+from argos.models import Task
 
 PASSWORD = "abcd-efgh-ijkl-mnop"
 HOME = "https://p01-caldav.icloud.com/123/calendars/"
@@ -689,3 +691,25 @@ def test_render_round_trips_through_parse() -> None:
     )
     parsed = caldav_sync.parse(caldav_sync.render("u1", fields, datetime.now(UTC)), tz)
     assert parsed == ("u1", fields)
+
+
+def test_deadline_resource_matches_the_feed() -> None:
+    task = Task(
+        id="t1",
+        channel_id="c1",
+        title="보고서",
+        position=1.0,
+        due_at=datetime(2026, 10, 23, 14, 59, tzinfo=UTC),
+    )
+    task.updated_at = datetime(2026, 10, 1, tzinfo=UTC)
+    body = caldav_sync.render_deadline(task, "운영체제", datetime(2026, 10, 22, tzinfo=UTC))
+    [item] = Calendar.from_ical(body).events
+    assert str(item["UID"]) == "task-t1@argos"
+    assert caldav_sync.DEADLINE_UID.fullmatch(str(item["UID"]))
+    assert str(item["SUMMARY"]) == "마감 · 보고서"
+    assert item.DTSTART == datetime(2026, 10, 23, 14, 29, tzinfo=UTC)
+    assert item.end == datetime(2026, 10, 23, 14, 59, tzinfo=UTC)
+    assert str(item["TRANSP"]) == "TRANSPARENT"
+    same = caldav_sync.deadline_digest(task, "운영체제")
+    assert same == caldav_sync.deadline_digest(task, "운영체제")
+    assert same != caldav_sync.deadline_digest(task, "인공지능")

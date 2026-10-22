@@ -82,17 +82,23 @@ def render(
         cal.add_component(item)
 
     for task in tasks:
-        assert task.due_at is not None
-        item = _base(f"task-{task.id}", f"마감 · {task.title}", task.updated_at, now)
-        item.add("dtstart", task.due_at - DEADLINE_LENGTH)
-        item.add("dtend", task.due_at)
-        item.add("transp", "TRANSPARENT")  # a deadline does not make the user busy
-        if task.description:
-            item.add("description", task.description)
-        _channel(item, channels.get(task.channel_id))
-        cal.add_component(item)
+        cal.add_component(deadline_event(task, channels.get(task.channel_id), now))
 
     return cal.to_ical()
+
+
+def deadline_event(task: Task, channel: str | None, now: datetime) -> VEvent:
+    """A task's deadline as the half hour before it, shown as free time. The feed and
+    the CalDAV sync (Phase 18) both use it, so a deadline looks the same either way."""
+    assert task.due_at is not None
+    item = _base(f"task-{task.id}", f"마감 · {task.title}", task.updated_at, now)
+    item.add("dtstart", task.due_at - DEADLINE_LENGTH)
+    item.add("dtend", task.due_at)
+    item.add("transp", "TRANSPARENT")  # a deadline does not make the user busy
+    if task.description:
+        item.add("description", task.description)
+    _channel(item, channel)
+    return item
 
 
 def _base(uid: str, summary: str, modified: datetime, now: datetime) -> VEvent:

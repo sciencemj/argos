@@ -24,6 +24,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
@@ -41,9 +42,9 @@ from icalendar.error import IncompleteComponent, InvalidCalendar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import services
+from argos import ics, services
 from argos.config import Settings
-from argos.models import Event, SourceLink
+from argos.models import Event, SourceLink, Task
 
 log = logging.getLogger(__name__)
 
@@ -355,6 +356,28 @@ def render(uid: str, fields: Fields, now: datetime) -> bytes:
         item.add("rrule", vRecur.from_ical(fields.rrule))
     cal.add_component(item)
     return cal.to_ical()
+
+
+DEADLINE_UID = re.compile(r"task-.+@argos")
+
+
+def render_deadline(task: Task, channel: str | None, now: datetime) -> bytes:
+    cal = Calendar()
+    cal.add("prodid", "-//Argos//Argos//KO")
+    cal.add("version", "2.0")
+    cal.add_component(ics.deadline_event(task, channel, now))
+    return cal.to_ical()
+
+
+def deadline_digest(task: Task, channel: str | None) -> str:
+    """What a pushed deadline shows; a change means the resource must be rewritten."""
+    data = {
+        "title": task.title,
+        "due_at": task.due_at.isoformat() if task.due_at else None,
+        "description": task.description,
+        "channel": channel,
+    }
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
 # --- sync -------------------------------------------------------------------------------
