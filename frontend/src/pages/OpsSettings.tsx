@@ -24,6 +24,7 @@ import {
 } from "../desktop";
 import { t, tr, tt } from "../i18n";
 import { btn, card, Dialog, ErrorText, field, label } from "../ui";
+import { ChangelogButton } from "../whatsNew";
 
 const WEEKDAYS = [
   tr("월"),
@@ -442,7 +443,20 @@ export function AppUpdateSection() {
     const id = setInterval(read, 5000); // follow a download started in the background
     return () => clearInterval(id);
   }, []);
-  if (!inDesktopApp() || !state) return null;
+  // Outside the desktop app there is no update to manage, only the changelog.
+  if (!inDesktopApp())
+    return (
+      <section
+        aria-label={t("변경 내역", "What's new")}
+        className={`${card} flex w-full items-center gap-3 p-6`}
+      >
+        <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
+          {t("변경 내역", "What's new")}
+        </h2>
+        <ChangelogButton />
+      </section>
+    );
+  if (!state) return null;
 
   const status = state.checking
     ? tr("확인하는 중…")
@@ -461,9 +475,12 @@ export function AppUpdateSection() {
       aria-label={tr("앱 업데이트")}
       className={`${card} flex w-full flex-col gap-3 p-6`}
     >
-      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        {tr("앱 업데이트")}
-      </h2>
+      <div className="flex items-baseline gap-2">
+        <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
+          {tr("앱 업데이트")}
+        </h2>
+        <ChangelogButton />
+      </div>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
         {tr(
           "새 버전이 나오면 알아서 받아 설치해 두고, 다음에 다시 시작할 때 적용해요(6시간마다 확인). 데이터는 그대로이고, 업데이트 전에 DB를 백업해요.",

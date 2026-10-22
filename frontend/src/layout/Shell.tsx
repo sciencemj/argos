@@ -14,6 +14,7 @@ import { DogIcon, MenuIcon, SearchIcon } from "../icons";
 import { useRealtime } from "../realtime";
 import { Toaster } from "../toast";
 import { btn, useEnterOnChange, useIsMobile } from "../ui";
+import { WhatsNew } from "../whatsNew";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
@@ -118,6 +119,7 @@ export function Shell() {
       {threadId && !wide && <ThreadPanel messageId={threadId} />}
       <StatusBar link={link} />
       <Toaster />
+      <WhatsNew />
       <QuickSwitcher
         open={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
@@ -180,6 +182,7 @@ function MobileShell({
         </button>
       </header>
       {children}
+      <WhatsNew />
       {(taskId || threadId) && (
         <div className="fixed inset-0 z-30 grid grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           {taskId ? (
