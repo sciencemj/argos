@@ -9,6 +9,7 @@ import {
   useCalendarChannel,
   useCalendarConflicts,
   useCalendarFeed,
+  useCalendarOptions,
   useChannels,
   useClassifierSettings,
   useConnectICloud,
@@ -806,15 +807,17 @@ const RESULT_TEXT: [string, string][] = [
   ["pushed", tr("보냄")],
   ["deleted", tr("지움")],
   ["conflicts", tr("충돌")],
+  ["failed", t("실패", "failed")],
 ];
 
 /** Two-way iCloud calendar sync (PLAN 7b): connect, calendars → channels, conflicts. */
-function ICloudSection() {
+export function ICloudSection() {
   const icloud = useICloud();
   const connect = useConnectICloud();
   const disconnect = useDisconnectICloud();
   const sync = useSyncCalendars();
   const setChannel = useCalendarChannel();
+  const options = useCalendarOptions();
   const channels = useChannels();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -847,8 +850,8 @@ function ICloudSection() {
       </div>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
         {t(
-          `모든 캘린더의 일정을 Argos로 가져오고, Argos에서 만든 일정은 "${data?.write_calendar ?? "Argos"}" 캘린더에만 써요.`,
-          `Argos imports events from all calendars and writes new events only to the “${data?.write_calendar ?? "Argos"}” calendar.`,
+          `모든 캘린더의 일정을 Argos로 가져오고, Argos에서 만든 일정과 칸반 마감은 "${data?.write_calendar ?? "Argos"}" 캘린더(영역별로 나누면 "${data?.write_calendar ?? "Argos"} · 영역 이름")에만 써요.`,
+          `Argos imports events from all calendars and writes its own events and kanban deadlines only to the “${data?.write_calendar ?? "Argos"}” calendar (or “${data?.write_calendar ?? "Argos"} · area name” per area).`,
         )}
         {data && data.poll_minutes > 0
           ? tt` ${data.poll_minutes}분마다 자동으로 맞춰요.`
@@ -937,6 +940,51 @@ function ICloudSection() {
               {tr("지금 동기화")}
             </button>
           </div>
+          <div className="flex flex-col gap-2">
+            {(
+              [
+                [
+                  "push_tasks",
+                  t(
+                    "칸반 마감을 캘린더에 올리기",
+                    "Put kanban deadlines in the calendar",
+                  ),
+                  t(
+                    '마감 30분 전부터 "마감 · 제목"으로 보이고, 완료하면 사라져요. 캘린더에서 고쳐도 칸반 내용으로 돌아와요.',
+                    "Shown as “Deadline · title” for the half hour before; gone once done. Edits in Calendar are replaced by the kanban.",
+                  ),
+                ],
+                [
+                  "split_areas",
+                  t("영역별 캘린더로 나누기", "One calendar per area"),
+                  t(
+                    `새 일정과 마감을 "${data.write_calendar} · 영역 이름" 캘린더에 써요. 이미 있는 일정은 옮기지 않아요.`,
+                    `New events and deadlines go to “${data.write_calendar} · area name”. Existing events stay where they are.`,
+                  ),
+                ],
+              ] as const
+            ).map(([key, title, hint]) => (
+              <label key={key} className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1 accent-[var(--ink)]"
+                  checked={data[key]}
+                  disabled={options.isPending}
+                  onChange={(e) =>
+                    options.mutate({
+                      push_tasks: data.push_tasks,
+                      split_areas: data.split_areas,
+                      [key]: e.target.checked,
+                    })
+                  }
+                />
+                <span>
+                  {title}
+                  <span className="block text-xs text-meta">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
           {status?.last_error && !running && (
             <p
               role="alert"
@@ -985,7 +1033,12 @@ function ICloudSection() {
             </div>
           )}
           <ErrorText
-            error={sync.error ?? setChannel.error ?? disconnect.error}
+            error={
+              sync.error ??
+              setChannel.error ??
+              options.error ??
+              disconnect.error
+            }
           />
           <ConflictList />
           <div>

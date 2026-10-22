@@ -933,6 +933,11 @@ export const useCalendarChannel = () =>
     call(client.PUT("/api/v1/settings/icloud/channels", { body })),
   );
 
+export const useCalendarOptions = () =>
+  useICloudWrite((body: Schemas["CalendarOptionsIn"]) =>
+    call(client.PUT("/api/v1/settings/icloud/options", { body })),
+  );
+
 export const useCalendarConflicts = () =>
   useQuery({
     queryKey: ["conflicts"],
