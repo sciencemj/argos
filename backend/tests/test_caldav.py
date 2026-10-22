@@ -53,7 +53,7 @@ class FakeCalDAV:
         return href
 
     def in_calendar(self, name: str) -> dict[str, bytes]:
-        url = next(c.url for c in self.calendars_.values() if c.name == name)
+        url = next((c.url for c in self.calendars_.values() if c.name == name), None)
         return {h: ics for h, (c, _, ics) in self.resources.items() if c == url}
 
     async def calendars(self) -> list[RemoteCalendar]:
@@ -84,6 +84,10 @@ class FakeCalDAV:
     async def delete(self, href: str, etag: str | None) -> None:
         self.requests.append(("DELETE", href, etag))
         self.resources.pop(href, None)
+
+    async def rename(self, url: str, name: str) -> None:
+        self.requests.append(("PROPPATCH", url, name))
+        self.calendars_[url] = RemoteCalendar(url, name)
 
 
 class FakeKeychain:
@@ -188,6 +192,28 @@ def channel_named(client: TestClient, name: str) -> str:
     return next(c["id"] for c in channels if c["name"] == name)
 
 
+def area_named(client: TestClient, name: str) -> str:
+    areas = client.get("/api/v1/channels").json()["areas"]
+    return next(a["id"] for a in areas if a["name"] == name)
+
+
+def set_options(client: TestClient, *, push_tasks: bool = True, split_areas: bool = True) -> None:
+    response = client.put(
+        "/api/v1/settings/icloud/options",
+        json={"push_tasks": push_tasks, "split_areas": split_areas},
+    )
+    assert response.status_code == 200, response.text
+
+
+def event_on(client: TestClient, channel: str, title: str, day: str) -> dict[str, Any]:
+    response = client.post(
+        "/api/v1/events",
+        json={"channel_id": channel_named(client, channel), "title": title, "start_date": day},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_wrong_password_is_refused_and_not_kept(app: TestClient, keychain: FakeKeychain) -> None:
     refused = app.put(
         "/api/v1/settings/icloud", json={"username": "me@icloud.com", "password": "nope"}
@@ -255,7 +281,7 @@ def test_keychain_delete_failure_keeps_connection(app: TestClient, keychain: Fak
     assert app.get("/api/v1/settings/icloud").json()["connected"] is True
 
 
-def test_first_sync_reads_every_calendar_and_writes_only_to_argos(
+def test_first_sync_reads_every_calendar_and_writes_only_to_argos_calendars(
     app: TestClient, server: FakeCalDAV
 ) -> None:
     personal = server.calendars_[f"{HOME}개인/"]
@@ -283,8 +309,11 @@ def test_first_sync_reads_every_calendar_and_writes_only_to_argos(
 
     connect(app)  # syncs in the background right after connecting
     status = app.get("/api/v1/settings/icloud").json()
-    assert {c["name"] for c in status["calendars"]} == {"개인", "학교", "Argos"}
+    assert {c["name"] for c in status["calendars"]} == {"개인", "학교", "Argos", "Argos · 학업"}
     assert ("MKCALENDAR", "Argos", None) in server.requests
+    assert ("MKCALENDAR", "Argos · 학업", None) in server.requests
+    writable = {c["name"] for c in status["calendars"] if c["writable"]}
+    assert writable == {"Argos", "Argos · 학업"}
 
     shown = {e["title"]: e for e in events(app)}
     dentist = shown["치과"]
@@ -295,13 +324,13 @@ def test_first_sync_reads_every_calendar_and_writes_only_to_argos(
         "2026-10-20",
         "2026-10-23",
     )
-    assert (shown["스터디"]["source"], shown["스터디"]["read_only"]) == ("Argos", False)
+    assert (shown["스터디"]["source"], shown["스터디"]["read_only"]) == ("Argos · 학업", False)
 
-    [pushed] = server.in_calendar("Argos").values()
+    [pushed] = server.in_calendar("Argos · 학업").values()
     assert f"UID:event-{ours['id']}@argos".encode() in pushed
     assert b"SUMMARY:\xec\x8a\xa4\xed\x84\xb0\xeb\x94\x94" in pushed  # 스터디
     assert server.in_calendar("개인") and all(
-        method != "PUT" or href.startswith(f"{HOME}argos/") for method, href, _ in server.requests
+        method != "PUT" or href.startswith(f"{HOME}argos") for method, href, _ in server.requests
     )
 
 
@@ -314,7 +343,14 @@ def test_second_sync_changes_nothing(app: TestClient, server: FakeCalDAV) -> Non
     )
     connect(app)
     before = (events(app), len(server.requests))
-    assert sync(app) == {"created": 0, "updated": 0, "pushed": 0, "deleted": 0, "conflicts": 0}
+    assert sync(app) == {
+        "created": 0,
+        "updated": 0,
+        "pushed": 0,
+        "deleted": 0,
+        "conflicts": 0,
+        "failed": 0,
+    }
     assert sync(app)["created"] == 0
     assert (events(app), len(server.requests)) == before
 
@@ -363,7 +399,7 @@ def test_argos_changes_go_to_the_argos_calendar_only(app: TestClient, server: Fa
     ).json()
     assert sync(app)["pushed"] == 1
     [(href, (_, etag, _))] = [
-        (h, r) for h, r in server.resources.items() if h.startswith(f"{HOME}argos/")
+        (h, r) for h, r in server.resources.items() if h.startswith(f"{HOME}argos · 학업/")
     ]
 
     app.patch(
@@ -390,10 +426,10 @@ def test_argos_changes_sync_within_seconds(app: TestClient, server: FakeCalDAV) 
         "/api/v1/events",
         json={"channel_id": course, "title": "곧바로", "start_date": "2026-10-21"},
     ).json()
-    wait_until(lambda: len(server.in_calendar("Argos")) == 1)
+    wait_until(lambda: len(server.in_calendar("Argos · 학업")) == 1)
 
     app.delete(f"/api/v1/events/{event['id']}")
-    wait_until(lambda: server.in_calendar("Argos") == {})
+    wait_until(lambda: server.in_calendar("Argos · 학업") == {})
 
 
 def wait_until(check: Callable[[], bool]) -> None:
@@ -449,8 +485,8 @@ def test_both_sides_changed_waits_for_the_user(app: TestClient, server: FakeCalD
         },
     ).json()
     sync(app)
-    [href] = server.in_calendar("Argos")
-    argos = server.calendars_[f"{HOME}argos/"]
+    [href] = server.in_calendar("Argos · 학업")
+    argos = server.calendars_[f"{HOME}argos · 학업/"]
     uid = f"event-{event['id']}@argos"
     server.store(
         argos,
@@ -472,7 +508,14 @@ def test_both_sides_changed_waits_for_the_user(app: TestClient, server: FakeCalD
     ).json()
     assert (kept["title"], kept["starts_at"]) == ("면담 (폰에서 수정)", "2026-10-14T07:00:00Z")
     assert app.get("/api/v1/calendar/conflicts").json() == []
-    assert sync(app) == {"created": 0, "updated": 0, "pushed": 0, "deleted": 0, "conflicts": 0}
+    assert sync(app) == {
+        "created": 0,
+        "updated": 0,
+        "pushed": 0,
+        "deleted": 0,
+        "conflicts": 0,
+        "failed": 0,
+    }
 
 
 def test_keeping_the_app_version_overwrites_the_calendar(
@@ -485,8 +528,8 @@ def test_keeping_the_app_version_overwrites_the_calendar(
         json={"channel_id": course, "title": "발표", "start_date": "2026-10-16"},
     ).json()
     sync(app)
-    [href] = server.in_calendar("Argos")
-    argos = server.calendars_[f"{HOME}argos/"]
+    [href] = server.in_calendar("Argos · 학업")
+    argos = server.calendars_[f"{HOME}argos · 학업/"]
     server.store(
         argos,
         href.rsplit("/", 1)[1].removesuffix(".ics"),
@@ -554,6 +597,64 @@ def test_today_counts_a_series_occurrence(app: TestClient, server: FakeCalDAV) -
     connect(app)
     titles = [e["title"] for e in app.get("/api/v1/today").json()["events"]]
     assert titles == ["아침 운동"]
+
+
+def test_channels_without_an_area_write_to_argos(app: TestClient, server: FakeCalDAV) -> None:
+    connect(app)
+    event_on(app, "일상", "장보기", "2026-10-24")
+    assert sync(app)["pushed"] == 1
+    assert len(server.in_calendar("Argos")) == 1
+    assert not any(c.name.startswith("Argos ·") for c in server.calendars_.values())
+
+
+def test_split_off_writes_everything_to_argos(app: TestClient, server: FakeCalDAV) -> None:
+    connect(app)
+    set_options(app, split_areas=False)
+    event_on(app, "운영체제", "퀴즈", "2026-10-24")
+    sync(app)
+    assert len(server.in_calendar("Argos")) == 1
+    assert app.get("/api/v1/settings/icloud").json()["split_areas"] is False
+
+
+def test_events_already_in_argos_stay_there(app: TestClient, server: FakeCalDAV) -> None:
+    """User decision 2026-10-22: existing Argos-calendar events are not moved."""
+    connect(app)
+    set_options(app, split_areas=False)
+    event_on(app, "운영체제", "퀴즈", "2026-10-24")
+    sync(app)
+    set_options(app, split_areas=True)
+    before = len(server.requests)
+    assert sync(app)["pushed"] == 0
+    assert len(server.in_calendar("Argos")) == 1
+    assert not [r for r in server.requests[before:] if r[0] in ("PUT", "DELETE")]
+
+
+def test_area_rename_renames_its_calendar(app: TestClient, server: FakeCalDAV) -> None:
+    connect(app)
+    event_on(app, "운영체제", "퀴즈", "2026-10-24")
+    sync(app)
+    app.patch(f"/api/v1/areas/{area_named(app, '학업')}", json={"name": "공부"})
+    event_on(app, "운영체제", "발표", "2026-10-25")
+    sync(app)
+    assert len(server.in_calendar("Argos · 공부")) == 2
+    assert [r for r in server.requests if r[0] == "MKCALENDAR" and "공부" in r[1]] == []
+    assert any(r[0] == "PROPPATCH" and r[2] == "Argos · 공부" for r in server.requests)
+
+
+def test_rename_failure_keeps_using_the_calendar(app: TestClient, server: FakeCalDAV) -> None:
+    connect(app)
+    event_on(app, "운영체제", "퀴즈", "2026-10-24")
+    sync(app)
+
+    async def refuse(url: str, name: str) -> None:
+        raise caldav_sync.CalDAVError("iCloud가 요청을 거절했어요 (PROPPATCH 403)")
+
+    server.rename = refuse  # type: ignore[method-assign]
+    app.patch(f"/api/v1/areas/{area_named(app, '학업')}", json={"name": "공부"})
+    event_on(app, "운영체제", "발표", "2026-10-25")
+    sync(app)  # asserts no last_error
+    assert len(server.in_calendar("Argos · 학업")) == 2
+    assert "Argos · 공부" not in {c.name for c in server.calendars_.values()}
 
 
 def test_feed_leaves_out_synced_events(app: TestClient, server: FakeCalDAV) -> None:
@@ -630,6 +731,8 @@ def canned(request: httpx2.Request, seen: list[httpx2.Request]) -> httpx2.Respon
         return httpx2.Response(201, headers={"ETag": '"e2"'})
     if method == "DELETE":
         return httpx2.Response(404)
+    if method == "PROPPATCH":
+        return multistatus((url, "<d:displayname/>"))
     return httpx2.Response(400)
 
 
@@ -670,6 +773,15 @@ async def test_client_writes_only_what_it_saw(
     with pytest.raises(PreconditionFailed):
         await dav.put(f"{HOME}argos/", "event-1@argos", b"ICS", href, '"stale"')
     await dav.delete(href, None)  # already gone (404) is fine
+
+
+async def test_client_renames_a_calendar(dav: CalDAVClient, seen: list[httpx2.Request]) -> None:
+    await dav.rename(f"{HOME}home/", "Argos · <연구> & 실험")
+    assert seen[-1].method == "PROPPATCH"
+    assert (
+        "<d:displayname>Argos · &lt;연구&gt; &amp; 실험</d:displayname>".encode()
+        in seen[-1].content
+    )
 
 
 async def test_client_reports_bad_credentials_without_leaking_them() -> None:

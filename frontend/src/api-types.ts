@@ -698,6 +698,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/icloud/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Calendar Options
+         * @description Deadlines to the calendar, one calendar per area (Phase 18); applied right away.
+         */
+        put: operations["set_calendar_options_api_v1_settings_icloud_options_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/sync": {
         parameters: {
             query?: never;
@@ -2202,6 +2222,13 @@ export interface components {
             /** Url */
             url: string | null;
         };
+        /** CalendarOptionsIn */
+        CalendarOptionsIn: {
+            /** Push Tasks */
+            push_tasks: boolean;
+            /** Split Areas */
+            split_areas: boolean;
+        };
         /** ChannelCreate */
         ChannelCreate: {
             /** Name */
@@ -2529,6 +2556,10 @@ export interface components {
             connected: boolean;
             /** Write Calendar */
             write_calendar: string;
+            /** Push Tasks */
+            push_tasks: boolean;
+            /** Split Areas */
+            split_areas: boolean;
             /** Poll Minutes */
             poll_minutes: number;
             /** Calendars */
@@ -5047,6 +5078,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CalendarChannelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_calendar_options_api_v1_settings_icloud_options_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarOptionsIn"];
             };
         };
         responses: {

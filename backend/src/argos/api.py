@@ -1482,6 +1482,8 @@ class ICloudOut(BaseModel):
     username: str | None
     connected: bool  # a password for username is in the Keychain
     write_calendar: str
+    push_tasks: bool  # kanban deadlines go to the calendar (Phase 18)
+    split_areas: bool  # one calendar per area
     poll_minutes: int
     calendars: list[ICloudCalendarOut]
     conflicts: int
@@ -1496,6 +1498,11 @@ class ICloudLogin(BaseModel):
 class CalendarChannelIn(BaseModel):
     calendar_url: str
     channel_id: str | None
+
+
+class CalendarOptionsIn(BaseModel):
+    push_tasks: bool
+    split_areas: bool
 
 
 class ConflictOut(BaseModel):
@@ -1520,23 +1527,26 @@ async def _icloud_out(request: Request, session: AsyncSession, config: Settings)
     mapping: dict[str, str] = (
         await services.get_setting(session, caldav_sync.CALENDAR_CHANNELS) or {}
     )
-    listed: list[dict[str, str]] = (
+    listed: list[dict[str, Any]] = (
         await services.get_setting(session, caldav_sync.ICLOUD_CALENDARS) or []
     )
     conflicts = await session.scalar(
         select(func.count()).select_from(SourceLink).where(SourceLink.conflict.is_not(None))
     )
+    opts = await caldav_sync.options(session)
     return ICloudOut(
         username=username,
         connected=creds is not None,
         write_calendar=config.caldav_write_calendar,
+        push_tasks=opts.push_tasks,
+        split_areas=opts.split_areas,
         poll_minutes=config.caldav_poll_minutes,
         calendars=[
             ICloudCalendarOut(
                 url=c["url"],
                 name=c["name"],
                 channel_id=mapping.get(c["url"]),
-                writable=c["name"] == config.caldav_write_calendar,
+                writable=c.get("writable", c["name"] == config.caldav_write_calendar),
             )
             for c in listed
         ],
@@ -1620,6 +1630,17 @@ async def set_calendar_channel(
         event = await session.get(Event, link.object_id)
         if event is not None and event.channel_id != target:
             await services.update_event(session, event.id, {"channel_id": target}, USER)
+    return await _icloud_out(request, session, config)
+
+
+@router.put("/settings/icloud/options")
+async def set_calendar_options(
+    request: Request, session: Session, config: Config, body: CalendarOptionsIn
+) -> ICloudOut:
+    """Deadlines to the calendar, one calendar per area (Phase 18); applied right away."""
+    await services.set_setting(session, caldav_sync.PUSH_TASKS, body.push_tasks, USER)
+    await services.set_setting(session, caldav_sync.SPLIT_AREAS, body.split_areas, USER)
+    _calendar_sync(request).nudge()
     return await _icloud_out(request, session, config)
 
 

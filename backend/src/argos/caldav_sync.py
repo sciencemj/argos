@@ -1,7 +1,8 @@
 """Two-way sync with iCloud calendars over CalDAV (PLAN Phase 7b).
 
-Every calendar is read into Argos events; only the Argos calendar is ever written
-(events made in Argos are created, changed and deleted there). Each synced event has a
+Every calendar is read into Argos events; Argos writes only to its own calendars —
+"Argos" and, split by area, "Argos · <area>" (Phase 18) — where events made in Argos
+are created, changed and deleted. Each synced event has a
 `source_link` holding the remote href, ETag and a hash of the remote fields, so a sync
 can tell what changed on which side since the last one:
 
@@ -44,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import ics, services
 from argos.config import Settings
-from argos.models import Event, SourceLink, Task
+from argos.models import Area, Channel, Event, SourceLink, Task
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class CalendarServer(Protocol):
         self, calendar_url: str, uid: str, ics: bytes, href: str | None, etag: str | None
     ) -> tuple[str, str | None]: ...
     async def delete(self, href: str, etag: str | None) -> None: ...
+    async def rename(self, url: str, name: str) -> None: ...
 
 
 NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav"}
@@ -98,6 +100,10 @@ NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav"}
 
 def _xml(body: str) -> bytes:
     return f'<?xml version="1.0" encoding="utf-8"?>{body}'.encode()
+
+
+def _escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _utc_stamp(value: datetime) -> str:
@@ -187,7 +193,7 @@ class CalDAVClient:
 
     async def create_calendar(self, name: str) -> RemoteCalendar:
         url = urljoin(await self._calendar_home(), f"{uuid.uuid4()}/")
-        escaped = name.replace("&", "&amp;").replace("<", "&lt;")
+        escaped = _escape(name)
         body = _xml(
             f'<c:mkcalendar xmlns:d="DAV:" xmlns:c="{NS["c"]}"><d:set><d:prop>'
             f"<d:displayname>{escaped}</d:displayname>"
@@ -234,6 +240,14 @@ class CalDAVClient:
 
     async def delete(self, href: str, etag: str | None) -> None:
         await self._send("DELETE", href, None, {"If-Match": etag} if etag else None)
+
+    async def rename(self, url: str, name: str) -> None:
+        body = _xml(
+            '<d:propertyupdate xmlns:d="DAV:"><d:set><d:prop>'
+            f"<d:displayname>{_escape(name)}</d:displayname>"
+            "</d:prop></d:set></d:propertyupdate>"
+        )
+        await self._send("PROPPATCH", url, body, {"Content-Type": "application/xml; charset=utf-8"})
 
 
 # --- iCalendar <-> event fields --------------------------------------------------------
@@ -386,11 +400,101 @@ def deadline_digest(task: Task, channel: str | None) -> str:
 @dataclass
 class SyncResult:
     calendars: list[RemoteCalendar] = field(default_factory=list)
+    owned: list[str] = field(default_factory=list)  # URLs of the calendars Argos writes
     created: int = 0  # new in Argos
     updated: int = 0  # changed in Argos from the calendar
-    pushed: int = 0  # written to the Argos calendar
+    pushed: int = 0  # written to an Argos calendar
     deleted: int = 0  # removed on either side
     conflicts: int = 0
+    failed: int = 0  # deadlines that could not be written; tried again next sync
+
+
+PUSH_TASKS = "calendar_push_tasks"
+SPLIT_AREAS = "calendar_split_areas"
+CALENDAR_AREAS = "calendar_areas"  # {area id: url} of the area calendars Argos made
+
+
+@dataclass
+class Options:
+    push_tasks: bool = True  # kanban deadlines go to the calendar (Phase 18)
+    split_areas: bool = True  # one "<Argos> · <area>" calendar per area
+
+
+async def options(session: AsyncSession) -> Options:
+    push = await services.get_setting(session, PUSH_TASKS)
+    split = await services.get_setting(session, SPLIT_AREAS)
+    return Options(push_tasks=push is not False, split_areas=split is not False)
+
+
+class Targets:
+    """The calendars Argos writes to: the Argos calendar and, split by area, one
+    "<Argos> · <area>" calendar per area, made the first time something goes there.
+    An area calendar is remembered by URL, so renaming the area renames it."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        server: CalendarServer,
+        base: RemoteCalendar,
+        calendars: list[RemoteCalendar],
+        *,
+        split: bool,
+        remembered: dict[str, str],
+    ) -> None:
+        self._session = session
+        self._server = server
+        self.base = base
+        self.calendars = calendars
+        self._split = split
+        self._remembered = remembered
+        self._areas: dict[str, RemoteCalendar] = {}
+        self._channel_areas: dict[str, str | None] = {}
+
+    @property
+    def owned(self) -> set[str]:
+        return {self.base.url, *self._remembered.values()}
+
+    async def for_channel(self, channel_id: str) -> RemoteCalendar:
+        if not self._split:
+            return self.base
+        if channel_id not in self._channel_areas:
+            channel = await self._session.get(Channel, channel_id)
+            self._channel_areas[channel_id] = channel.area_id if channel else None
+        area_id = self._channel_areas[channel_id]
+        if area_id is None:
+            return self.base
+        if area_id not in self._areas:
+            area = await self._session.get(Area, area_id)
+            if area is None:
+                return self.base
+            self._areas[area_id] = await self._area_calendar(area)
+        return self._areas[area_id]
+
+    async def _area_calendar(self, area: Area) -> RemoteCalendar:
+        name = f"{self.base.name} · {area.name}"
+        cal = next((c for c in self.calendars if c.url == self._remembered.get(area.id)), None)
+        if cal is not None and cal.name != name:
+            try:
+                await self._server.rename(cal.url, name)
+            except AuthError:
+                raise
+            except CalDAVError:
+                log.warning("could not rename calendar to %r; trying again next sync", name)
+            else:
+                renamed = RemoteCalendar(cal.url, name)
+                self.calendars[:] = [renamed if c.url == cal.url else c for c in self.calendars]
+                cal = renamed
+        if cal is None:
+            cal = next((c for c in self.calendars if c.name == name), None)
+        if cal is None:
+            cal = await self._server.create_calendar(name)
+            self.calendars.append(cal)
+        if self._remembered.get(area.id) != cal.url:
+            self._remembered[area.id] = cal.url
+            await services.set_setting_quietly(
+                self._session, CALENDAR_AREAS, dict(self._remembered)
+            )
+        return cal
 
 
 def _in_window(event: Event, start: datetime, end: datetime) -> bool:
@@ -427,11 +531,17 @@ async def sync(
         target = await server.create_calendar(write_calendar)
         calendars.append(target)
     result.calendars = calendars
+    opts = await options(session)
+    remembered: dict[str, str] = dict(await services.get_setting(session, CALENDAR_AREAS) or {})
+    targets = Targets(
+        session, server, target, calendars, split=opts.split_areas, remembered=remembered
+    )
+    owned = targets.owned
     start, end = now - PAST, now + FUTURE
     seen: set[str] = set()
 
-    for cal in calendars:
-        writable = cal.url == target.url
+    for cal in list(calendars):
+        writable = cal.url in owned
         for item in await server.items(cal.url, start, end):
             seen.add(item.href)
             parsed = parse(item.ics, tz)
@@ -514,7 +624,8 @@ async def sync(
             await session.commit()
 
     await _settle_unseen(session, server, seen, start, end, result)
-    await _push_new(session, server, target, now, start, end, result)
+    await _push_new(session, server, targets, now, start, end, result)
+    result.owned = sorted(targets.owned)
     return result
 
 
@@ -557,13 +668,14 @@ async def _settle_unseen(
 async def _push_new(
     session: AsyncSession,
     server: CalendarServer,
-    target: RemoteCalendar,
+    targets: Targets,
     now: datetime,
     start: datetime,
     end: datetime,
     result: SyncResult,
 ) -> None:
-    """Events made in Argos (no link, no source calendar) go to the Argos calendar."""
+    """Events made in Argos (no link, no source calendar) go to their channel's Argos
+    calendar."""
     linked = select(SourceLink.object_id).where(SourceLink.source == SOURCE)
     events = (
         await session.scalars(
@@ -573,17 +685,18 @@ async def _push_new(
     for event in events:
         if not _in_window(event, start, end):
             continue
+        cal = await targets.for_channel(event.channel_id)
         uid = f"event-{event.id}@argos"
         ours = Fields.of(event)
-        href, etag = await server.put(target.url, uid, render(uid, ours, now), None, None)
+        href, etag = await server.put(cal.url, uid, render(uid, ours, now), None, None)
         session.add(
             SourceLink(
                 object_type="event",
                 object_id=event.id,
                 source=SOURCE,
                 external_id=href,
-                container=target.url,
-                container_name=target.name,
+                container=cal.url,
+                container_name=cal.name,
                 uid=uid,
                 etag=etag,
                 content_hash=ours.digest(),
@@ -735,10 +848,14 @@ class CalendarSync:
                     await services.set_setting_quietly(
                         session,
                         ICLOUD_CALENDARS,
-                        [{"url": c.url, "name": c.name} for c in result.calendars],
+                        [
+                            {"url": c.url, "name": c.name, "writable": c.url in result.owned}
+                            for c in result.calendars
+                        ],
                     )
                 counts = asdict(result)
                 counts.pop("calendars")
+                counts.pop("owned")
                 self.status.last_result = counts
                 self.status.last_error = None
             except CalDAVError as exc:
