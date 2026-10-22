@@ -65,6 +65,7 @@ app:
 release:
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z"; exit 1; }
 	@test -z "$$(git status --porcelain)" || { echo "commit or stash your changes first"; exit 1; }
+	@grep -q "^## $(VERSION) · " CHANGELOG.md || { echo "CHANGELOG.md has no '## $(VERSION) · YYYY-MM-DD' section"; exit 1; }
 	python3 -c "import json,sys; p='desktop/src-tauri/tauri.conf.json'; d=json.load(open(p)); d['version']='$(VERSION)'; open(p,'w').write(json.dumps(d, indent=2, ensure_ascii=False)+'\n')"
 	sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' desktop/src-tauri/Cargo.toml
 	cd desktop/src-tauri && cargo update -p argos-desktop --offline -q

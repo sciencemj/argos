@@ -46,12 +46,19 @@ jobs:
           cp "$bundle/Argos.app.tar.gz.sig" out/Argos_aarch64.app.tar.gz.sig
           cp desktop/build/Argos.dmg "out/Argos_${VERSION}_aarch64.dmg"
           python3 - <<'PY'
-          import json, os, datetime
+          import json, os, datetime, re
           version = os.environ["VERSION"]
+          # The release notes are this version's CHANGELOG.md section (Phase 19).
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          match = re.search(rf"^## {re.escape(version)} · .*?\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          notes = match.group(1).strip()
+          open("release-notes.md", "w", encoding="utf-8").write(notes + "\n")
           base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{version}"
           manifest = {
               "version": version,
-              "notes": f"Argos {version}",
+              "notes": notes,
               "pub_date": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
               "platforms": {
                   "darwin-aarch64": {
@@ -65,4 +72,4 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" out/* --title "Argos $VERSION" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" out/* --title "Argos $VERSION" --notes-file release-notes.md
