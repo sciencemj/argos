@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import ics, services
 from argos.config import Settings
-from argos.models import Area, Channel, Event, SourceLink, Task
+from argos.models import Area, Channel, Event, SourceLink, Task, TaskStatus
 
 log = logging.getLogger(__name__)
 
@@ -539,6 +539,8 @@ async def sync(
     owned = targets.owned
     start, end = now - PAST, now + FUTURE
     seen: set[str] = set()
+    deadlines: dict[str, str | None] = {}  # href → ETag of the pushed deadlines listed
+    orphans: list[tuple[str, str | None]] = []  # our deadlines whose link is gone
 
     for cal in list(calendars):
         writable = cal.url in owned
@@ -549,6 +551,12 @@ async def sync(
                 continue
             uid, remote = parsed
             link = await _link_for(session, item.href)
+            if link is not None and link.object_type == "task":
+                deadlines[item.href] = item.etag
+                continue
+            if link is None and writable and DEADLINE_UID.fullmatch(uid):
+                orphans.append((item.href, item.etag))  # never an event; pushed again below
+                continue
             if link is None:
                 event = await services.create_event(
                     session,
@@ -625,6 +633,18 @@ async def sync(
 
     await _settle_unseen(session, server, seen, start, end, result)
     await _push_new(session, server, targets, now, start, end, result)
+    await _push_tasks(
+        session,
+        server,
+        targets,
+        deadlines,
+        orphans,
+        enabled=opts.push_tasks,
+        now=now,
+        start=start,
+        end=end,
+        result=result,
+    )
     result.owned = sorted(targets.owned)
     return result
 
@@ -646,7 +666,11 @@ async def _settle_unseen(
 ) -> None:
     """Links the calendars did not list: gone remotely, deleted in Argos, or just
     outside the sync window."""
-    links = (await session.scalars(select(SourceLink).where(SourceLink.source == SOURCE))).all()
+    links = (
+        await session.scalars(
+            select(SourceLink).where(SourceLink.source == SOURCE, SourceLink.object_type == "event")
+        )
+    ).all()
     for link in links:
         if link.external_id in seen:
             continue
@@ -707,6 +731,135 @@ async def _push_new(
         )
         await session.commit()
         result.pushed += 1
+
+
+async def _push_tasks(
+    session: AsyncSession,
+    server: CalendarServer,
+    targets: Targets,
+    deadlines: dict[str, str | None],
+    orphans: list[tuple[str, str | None]],
+    *,
+    enabled: bool,
+    now: datetime,
+    start: datetime,
+    end: datetime,
+    result: SyncResult,
+) -> None:
+    """Kanban deadlines, one way (Phase 18): the kanban is the source, so a deadline
+    changed or deleted on the phone is written again, and one whose task is done,
+    undated, deleted or out of the window is removed."""
+    for href, etag in orphans:
+        await server.delete(href, etag)
+    wanted: dict[str, Task] = {}
+    if enabled:
+        tasks = await session.scalars(
+            select(Task).where(
+                Task.due_at.is_not(None),
+                Task.due_at >= start,
+                Task.due_at < end,
+                Task.status != TaskStatus.DONE,
+            )
+        )
+        wanted = {task.id: task for task in tasks}
+    links = {
+        link.object_id: link
+        for link in (
+            await session.scalars(
+                select(SourceLink).where(
+                    SourceLink.source == SOURCE, SourceLink.object_type == "task"
+                )
+            )
+        ).all()
+    }
+    names = {c.id: c.name for c in (await session.scalars(select(Channel))).all()}
+
+    for task_id, link in links.items():
+        if task_id in wanted:
+            continue
+        try:
+            await server.delete(link.external_id, deadlines.get(link.external_id))
+        except AuthError:
+            raise
+        except CalDAVError:
+            result.failed += 1
+            continue
+        await session.delete(link)
+        await session.commit()
+        result.deleted += 1
+
+    for task in wanted.values():
+        try:
+            written = await _push_task(
+                session, server, targets, task, links.get(task.id), deadlines, names, now
+            )
+        except AuthError:
+            raise
+        except CalDAVError:
+            await session.rollback()
+            result.failed += 1
+            continue
+        await session.commit()
+        result.pushed += written
+
+
+async def _push_task(
+    session: AsyncSession,
+    server: CalendarServer,
+    targets: Targets,
+    task: Task,
+    link: SourceLink | None,
+    deadlines: dict[str, str | None],
+    names: dict[str, str],
+    now: datetime,
+) -> bool:
+    """Writes one deadline if the calendar does not show it as it is; True if it did."""
+    cal = await targets.for_channel(task.channel_id)
+    channel = names.get(task.channel_id)
+    digest = deadline_digest(task, channel)
+    uid = f"task-{task.id}@argos"
+    body = render_deadline(task, channel, now)
+    if link is None:
+        href, etag = await server.put(cal.url, uid, body, None, None)
+        session.add(
+            SourceLink(
+                object_type="task",
+                object_id=task.id,
+                source=SOURCE,
+                external_id=href,
+                container=cal.url,
+                container_name=cal.name,
+                uid=uid,
+                etag=etag,
+                content_hash=digest,
+                read_only=False,
+                local_updated_at=task.updated_at,
+                last_synced_at=now,
+            )
+        )
+        return True
+    listed = link.external_id in deadlines
+    if link.container != cal.url:  # the channel moved to another area
+        href, etag = await server.put(cal.url, uid, body, None, None)
+        if listed:
+            await server.delete(link.external_id, deadlines[link.external_id])
+    elif not listed:  # deleted on the phone, or the whole calendar was
+        href, etag = await server.put(cal.url, uid, body, None, None)
+    elif digest != link.content_hash or deadlines[link.external_id] != link.etag:
+        try:
+            href, etag = await server.put(
+                cal.url, uid, body, link.external_id, deadlines[link.external_id]
+            )
+        except PreconditionFailed:  # changed again since it was listed: ours wins
+            href, etag = await server.put(cal.url, uid, body, link.external_id, None)
+    else:
+        return False
+    link.external_id, link.etag = href, etag
+    link.container, link.container_name = cal.url, cal.name
+    link.content_hash = digest
+    link.local_updated_at = task.updated_at
+    link.last_synced_at = now
+    return True
 
 
 async def resolve(
