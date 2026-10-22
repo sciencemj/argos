@@ -1640,6 +1640,30 @@ async def set_calendar_channel(
     return await _icloud_out(request, session, config)
 
 
+CHANGELOG_SEEN = "changelog_seen"
+VERSION = r"^\d+\.\d+\.\d+$"
+
+
+class ChangelogSeen(BaseModel):
+    seen: str | None = Field(default=None, pattern=VERSION)
+
+
+class ChangelogSeenIn(BaseModel):
+    seen: str = Field(pattern=VERSION)
+
+
+@router.get("/settings/changelog")
+async def get_changelog_seen(session: Session) -> ChangelogSeen:
+    """The last version whose changelog the user dismissed (Phase 19)."""
+    return ChangelogSeen(seen=await services.get_setting(session, CHANGELOG_SEEN))
+
+
+@router.put("/settings/changelog")
+async def set_changelog_seen(session: Session, body: ChangelogSeenIn) -> ChangelogSeen:
+    await services.set_setting(session, CHANGELOG_SEEN, body.seen, USER)
+    return ChangelogSeen(seen=body.seen)
+
+
 @router.put("/settings/icloud/options")
 async def set_calendar_options(
     request: Request, session: Session, config: Config, body: CalendarOptionsIn

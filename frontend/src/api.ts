@@ -933,6 +933,22 @@ export const useCalendarChannel = () =>
     call(client.PUT("/api/v1/settings/icloud/channels", { body })),
   );
 
+/** The last version whose changelog the user dismissed (Phase 19). */
+export const useChangelogSeen = () =>
+  useQuery({
+    queryKey: ["settings", "changelog"],
+    queryFn: () => call(client.GET("/api/v1/settings/changelog")),
+  });
+
+export const useSaveChangelogSeen = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (seen: string) =>
+      call(client.PUT("/api/v1/settings/changelog", { body: { seen } })),
+    onSuccess: (data) => qc.setQueryData(["settings", "changelog"], data),
+  });
+};
+
 export const useCalendarOptions = () =>
   useICloudWrite((body: Schemas["CalendarOptionsIn"]) =>
     call(client.PUT("/api/v1/settings/icloud/options", { body })),

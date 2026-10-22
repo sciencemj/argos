@@ -698,6 +698,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Changelog Seen
+         * @description The last version whose changelog the user dismissed (Phase 19).
+         */
+        get: operations["get_changelog_seen_api_v1_settings_changelog_get"];
+        /** Set Changelog Seen */
+        put: operations["set_changelog_seen_api_v1_settings_changelog_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/icloud/options": {
         parameters: {
             query?: never;
@@ -2228,6 +2249,16 @@ export interface components {
             push_tasks: boolean;
             /** Split Areas */
             split_areas: boolean;
+        };
+        /** ChangelogSeen */
+        ChangelogSeen: {
+            /** Seen */
+            seen?: string | null;
+        };
+        /** ChangelogSeenIn */
+        ChangelogSeenIn: {
+            /** Seen */
+            seen: string;
         };
         /** ChannelCreate */
         ChannelCreate: {
@@ -5088,6 +5119,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ICloudOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_changelog_seen_api_v1_settings_changelog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangelogSeen"];
+                };
+            };
+        };
+    };
+    set_changelog_seen_api_v1_settings_changelog_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangelogSeenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangelogSeen"];
                 };
             };
             /** @description Validation Error */
