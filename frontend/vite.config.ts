@@ -1,5 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { searchForWorkspaceRoot } from "vite";
 import { defineConfig } from "vitest/config";
 
 // The dev backend (make dev) runs on 8100; 8000 belongs to the desktop app.
@@ -37,6 +38,8 @@ export default defineConfig(({ command }) => ({
     },
   ],
   server: {
+    // CHANGELOG.md lives at the repository root, outside this package (Phase 19).
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), ".."] },
     // IPv4 loopback explicitly: `localhost` can resolve to ::1 only, which
     // `tailscale serve` (proxying to 127.0.0.1:5273) cannot reach.
     host: "127.0.0.1",
