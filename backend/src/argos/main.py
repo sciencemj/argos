@@ -86,9 +86,11 @@ def create_app(config: Settings = settings) -> FastAPI:
 
         def on_change(_type: str, data: dict[str, Any]) -> None:
             kind = data.get("object_type")
-            if kind == "event":  # push Argos-side edits right away
+            # Push Argos-side edits right away: events, deadlines, and the channel or
+            # area that decides a deadline's calendar (Phase 18).
+            if kind in ("event", "task", "channel", "area"):
                 app.state.calendar_sync.nudge()
-            elif kind == "task":  # a linked task may need its checkbox ticked
+            if kind == "task":  # a linked task may need its checkbox ticked
                 app.state.vault_sync.nudge()
             if _type == "agent.done":  # a run used up some of the plan: look again soon
                 app.state.usage.refresh_soon()

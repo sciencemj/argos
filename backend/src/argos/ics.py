@@ -20,7 +20,10 @@ DEADLINE_LENGTH = timedelta(minutes=30)  # a deadline shows as the half hour bef
 REFRESH = timedelta(minutes=10)  # how often subscribers should poll
 
 
-async def build_feed(session: AsyncSession, now: datetime, tz_name: str) -> bytes:
+async def build_feed(
+    session: AsyncSession, now: datetime, tz_name: str, *, deadlines: bool = True
+) -> bytes:
+    """`deadlines=False` when the CalDAV sync already puts them in the calendar."""
     since = now - HISTORY
     events = (
         await session.scalars(
@@ -37,12 +40,16 @@ async def build_feed(session: AsyncSession, now: datetime, tz_name: str) -> byte
         )
     ).all()
     tasks = (
-        await session.scalars(
-            select(Task).where(
-                Task.due_at.is_not(None), Task.due_at >= since, Task.status != TaskStatus.DONE
+        (
+            await session.scalars(
+                select(Task).where(
+                    Task.due_at.is_not(None), Task.due_at >= since, Task.status != TaskStatus.DONE
+                )
             )
-        )
-    ).all()
+        ).all()
+        if deadlines
+        else []
+    )
     channels = {c.id: c.name for c in (await session.scalars(select(Channel))).all()}
     return render(events, tasks, channels, now, tz_name)
 

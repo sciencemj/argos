@@ -1449,11 +1449,18 @@ async def rotate_calendar_token(session: Session, config: Config) -> CalendarFee
     response_class=Response,
     responses={200: {"content": {"text/calendar": {}}}},
 )
-async def calendar_feed(session: Session, config: Config, token: str = "") -> Response:
+async def calendar_feed(
+    request: Request, session: Session, config: Config, token: str = ""
+) -> Response:
     expected = await services.feed_token(session)
     if not secrets.compare_digest(token.encode(), expected.encode()):
         raise services.NotFoundError("calendar", "feed")  # no hint that the path exists
-    body = await ics.build_feed(session, datetime.now(UTC), config.timezone)
+    # Deadlines the CalDAV sync already writes would show twice (Phase 18).
+    synced = (
+        await _calendar_sync(request).credentials(session) is not None
+        and (await caldav_sync.options(session)).push_tasks
+    )
+    body = await ics.build_feed(session, datetime.now(UTC), config.timezone, deadlines=not synced)
     return Response(
         body,
         media_type="text/calendar; charset=utf-8",

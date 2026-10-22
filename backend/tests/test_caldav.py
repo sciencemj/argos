@@ -823,6 +823,27 @@ def test_one_failed_deadline_does_not_stop_the_rest(app: TestClient, server: Fak
     assert (result["pushed"], result["failed"]) == (1, 1)
 
 
+def test_task_changes_reach_the_calendar_within_seconds(
+    app: TestClient, server: FakeCalDAV
+) -> None:
+    connect(app)
+    app.app.state.calendar_sync.debounce = 0.05  # type: ignore[attr-defined]
+    task = task_on(app, "운영체제", "곧바로", "2026-10-30T14:59:00Z")
+    wait_until(lambda: len(deadlines_in(server, "Argos · 학업")) == 1)
+    app.post(f"/api/v1/tasks/{task['id']}/move", json={"status": "done"})
+    wait_until(lambda: deadlines_in(server, "Argos · 학업") == [])
+
+
+def test_feed_leaves_out_deadlines_that_sync(app: TestClient, server: FakeCalDAV) -> None:
+    task_on(app, "운영체제", "과제 3", "2026-10-30T14:59:00Z")
+    path = app.get("/api/v1/settings/calendar").json()["path"]
+    assert "과제 3" in app.get(path).text  # not connected: the feed carries deadlines
+    connect(app)
+    assert "과제 3" not in app.get(path).text
+    set_options(app, push_tasks=False)
+    assert "과제 3" in app.get(path).text
+
+
 def test_feed_leaves_out_synced_events(app: TestClient, server: FakeCalDAV) -> None:
     server.store(
         server.calendars_[f"{HOME}개인/"], "trip", vevent("t1", "여행", ";VALUE=DATE:20261101")
