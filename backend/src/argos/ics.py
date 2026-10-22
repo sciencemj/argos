@@ -39,7 +39,7 @@ async def build_feed(
             )
         )
     ).all()
-    tasks = (
+    tasks: Sequence[Task] = (
         (
             await session.scalars(
                 select(Task).where(
