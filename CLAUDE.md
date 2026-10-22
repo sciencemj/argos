@@ -83,6 +83,9 @@ vitest, build), api-types 최신 여부.
   `/api/v1/`로만, GET만, 리다이렉트는 따르지 않음(저장소는 토큰 없이). `LmsSync`는 `lms.sync_lock`을 확장 수신
   API와 공유. 테스트는 httpx `MockTransport` 가짜 Canvas. 확장 프로그램(`lms_extension.py`, `integrations/
   learningx-extension`)은 설정에서 접힌 대안.
+- **`caldav_sync.py`**: iCloud CalDAV 양방향(Phase 7b) + 칸반 마감 단방향(Phase 18). 쓰기는 Argos 캘린더(`Argos`,
+  영역별 `Argos · 영역`, `Targets`)에만. 링크는 `source_link(source="icloud")`, 마감은 `object_type="task"`.
+  테스트는 `tests/test_caldav.py`의 `FakeCalDAV`.
 - **`notify.py` 아침 요약**(Phase 15b): `Notifier.run()`이 잠금 안에서 `MorningDigest.start_if_due`를 불러 설정
   시각~정오 사이 하루 한 번(알림 키 `digest:날짜`) #today에 루트 메시지를 만들고, 별도 태스크에서 고른 에이전트를
   `run_turn(no_tools=True)`로 실행해 그 스레드에 쓰게 한 뒤 같은 글을 `hermes send`로 보낸다. 에이전트가 없거나
