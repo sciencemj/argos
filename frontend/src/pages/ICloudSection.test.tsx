@@ -56,3 +56,9 @@ test("the split toggle names the area calendars", () => {
   expect(screen.getByRole("checkbox", { name: /영역별 캘린더/ })).toBeChecked();
   expect(screen.getAllByText(/Argos · 영역 이름/).length).toBeGreaterThan(0);
 });
+
+test("the English hint names the title the calendar shows", () => {
+  localStorage.setItem("argos-language", "en");
+  render(<ICloudSection />);
+  expect(screen.getByText(/“Due · title”/)).toBeInTheDocument();
+});

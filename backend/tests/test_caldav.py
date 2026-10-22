@@ -951,6 +951,21 @@ def test_feed_leaves_out_deadlines_that_sync(app: TestClient, server: FakeCalDAV
     assert "과제 3" in app.get(path).text
 
 
+def test_deadline_title_follows_the_app_language(app: TestClient, server: FakeCalDAV) -> None:
+    connect(app)
+    task_on(app, "운영체제", "Essay", "2026-10-30T14:59:00Z")
+    sync(app)
+    href = deadline_href(server)
+    assert "마감 · Essay".encode() in server.resources[href][2]
+
+    assert app.put("/api/v1/settings/language", json={"language": "en"}).status_code == 200
+    assert sync(app)["pushed"] == 1  # rewritten, not duplicated
+    assert b"SUMMARY:Due \xc2\xb7 Essay" in server.resources[href][2]
+    path = app.get("/api/v1/settings/calendar").json()["path"]
+    set_options(app, push_tasks=False)
+    assert "Due · Essay" in app.get(path).text  # the feed says the same
+
+
 def test_feed_leaves_out_synced_events(app: TestClient, server: FakeCalDAV) -> None:
     server.store(
         server.calendars_[f"{HOME}개인/"], "trip", vevent("t1", "여행", ";VALUE=DATE:20261101")
@@ -1119,3 +1134,7 @@ def test_deadline_resource_matches_the_feed() -> None:
     same = caldav_sync.deadline_digest(task, "운영체제")
     assert same == caldav_sync.deadline_digest(task, "운영체제")
     assert same != caldav_sync.deadline_digest(task, "인공지능")
+    english = caldav_sync.render_deadline(task, None, datetime(2026, 10, 22, tzinfo=UTC), "en")
+    [item] = Calendar.from_ical(english).events
+    assert str(item["SUMMARY"]) == "Due · 보고서"
+    assert caldav_sync.deadline_digest(task, "운영체제", "en") != same

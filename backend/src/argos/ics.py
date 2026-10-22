@@ -21,7 +21,12 @@ REFRESH = timedelta(minutes=10)  # how often subscribers should poll
 
 
 async def build_feed(
-    session: AsyncSession, now: datetime, tz_name: str, *, deadlines: bool = True
+    session: AsyncSession,
+    now: datetime,
+    tz_name: str,
+    *,
+    deadlines: bool = True,
+    language: str = "ko",
 ) -> bytes:
     """`deadlines=False` when the CalDAV sync already puts them in the calendar."""
     since = now - HISTORY
@@ -51,7 +56,7 @@ async def build_feed(
         else []
     )
     channels = {c.id: c.name for c in (await session.scalars(select(Channel))).all()}
-    return render(events, tasks, channels, now, tz_name)
+    return render(events, tasks, channels, now, tz_name, language)
 
 
 def render(
@@ -60,6 +65,7 @@ def render(
     channels: dict[str, str],
     now: datetime,
     tz_name: str,
+    language: str = "ko",
 ) -> bytes:
     cal = Calendar()
     cal.add("prodid", "-//Argos//Argos//KO")
@@ -89,16 +95,23 @@ def render(
         cal.add_component(item)
 
     for task in tasks:
-        cal.add_component(deadline_event(task, channels.get(task.channel_id), now))
+        cal.add_component(deadline_event(task, channels.get(task.channel_id), now, language))
 
     return cal.to_ical()
 
 
-def deadline_event(task: Task, channel: str | None, now: datetime) -> VEvent:
+DEADLINE_PREFIX = {"ko": "마감", "en": "Due"}  # in the app's language (Settings.language)
+
+
+def deadline_title(task: Task, language: str = "ko") -> str:
+    return f"{DEADLINE_PREFIX.get(language, DEADLINE_PREFIX['ko'])} · {task.title}"
+
+
+def deadline_event(task: Task, channel: str | None, now: datetime, language: str = "ko") -> VEvent:
     """A task's deadline as the half hour before it, shown as free time. The feed and
     the CalDAV sync (Phase 18) both use it, so a deadline looks the same either way."""
     assert task.due_at is not None
-    item = _base(f"task-{task.id}", f"마감 · {task.title}", task.updated_at, now)
+    item = _base(f"task-{task.id}", deadline_title(task, language), task.updated_at, now)
     item.add("dtstart", task.due_at - DEADLINE_LENGTH)
     item.add("dtend", task.due_at)
     item.add("transp", "TRANSPARENT")  # a deadline does not make the user busy

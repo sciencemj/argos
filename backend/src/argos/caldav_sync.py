@@ -375,18 +375,18 @@ def render(uid: str, fields: Fields, now: datetime) -> bytes:
 DEADLINE_UID = re.compile(r"task-(.+)@argos")
 
 
-def render_deadline(task: Task, channel: str | None, now: datetime) -> bytes:
+def render_deadline(task: Task, channel: str | None, now: datetime, language: str = "ko") -> bytes:
     cal = Calendar()
     cal.add("prodid", "-//Argos//Argos//KO")
     cal.add("version", "2.0")
-    cal.add_component(ics.deadline_event(task, channel, now))
+    cal.add_component(ics.deadline_event(task, channel, now, language))
     return cal.to_ical()
 
 
-def deadline_digest(task: Task, channel: str | None) -> str:
+def deadline_digest(task: Task, channel: str | None, language: str = "ko") -> str:
     """What a pushed deadline shows; a change means the resource must be rewritten."""
     data = {
-        "title": task.title,
+        "title": ics.deadline_title(task, language),
         "due_at": task.due_at.isoformat() if task.due_at else None,
         "description": task.description,
         "channel": channel,
@@ -523,6 +523,7 @@ async def sync(
     channel_for: Callable[[str], Awaitable[str]],
     now: datetime,
     tz: ZoneInfo,
+    language: str = "ko",
 ) -> SyncResult:
     result = SyncResult()
     calendars = await server.calendars()
@@ -657,6 +658,7 @@ async def sync(
         deadlines,
         orphans,
         enabled=opts.push_tasks,
+        language=language,
         now=now,
         start=start,
         end=end,
@@ -758,6 +760,7 @@ async def _push_tasks(
     orphans: list[tuple[str, str | None]],
     *,
     enabled: bool,
+    language: str,
     now: datetime,
     start: datetime,
     end: datetime,
@@ -808,7 +811,15 @@ async def _push_tasks(
     for task in wanted.values():
         try:
             written = await _push_task(
-                session, server, targets, task, links.get(task.id), deadlines, names, now
+                session,
+                server,
+                targets,
+                task,
+                links.get(task.id),
+                deadlines,
+                names,
+                now,
+                language,
             )
         except AuthError:
             raise
@@ -829,13 +840,14 @@ async def _push_task(
     deadlines: dict[str, str | None],
     names: dict[str, str],
     now: datetime,
+    language: str,
 ) -> bool:
     """Writes one deadline if the calendar does not show it as it is; True if it did."""
     cal = await targets.for_channel(task.channel_id)
     channel = names.get(task.channel_id)
-    digest = deadline_digest(task, channel)
+    digest = deadline_digest(task, channel, language)
     uid = f"task-{task.id}@argos"
-    body = render_deadline(task, channel, now)
+    body = render_deadline(task, channel, now, language)
     if link is None:
         href, etag = await server.put(cal.url, uid, body, None, None)
         session.add(
@@ -1019,6 +1031,7 @@ class CalendarSync:
                             channel_for=lambda url: channel_for(session, url),
                             now=datetime.now(UTC),
                             tz=config.zoneinfo,
+                            language=config.language,
                         )
                     finally:
                         if isinstance(server, CalDAVClient):

@@ -1403,6 +1403,7 @@ async def put_language(request: Request, session: Session, body: LanguageIn) -> 
         request.app.state.base_settings, overrides
     )
     request.app.state.runner.settings = request.app.state.settings
+    _calendar_sync(request).nudge()  # deadline titles are in the app's language
     return body
 
 
@@ -1460,7 +1461,13 @@ async def calendar_feed(
         await _calendar_sync(request).credentials(session) is not None
         and (await caldav_sync.options(session)).push_tasks
     )
-    body = await ics.build_feed(session, datetime.now(UTC), config.timezone, deadlines=not synced)
+    body = await ics.build_feed(
+        session,
+        datetime.now(UTC),
+        config.timezone,
+        deadlines=not synced,
+        language=config.language,
+    )
     return Response(
         body,
         media_type="text/calendar; charset=utf-8",

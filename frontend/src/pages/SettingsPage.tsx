@@ -951,7 +951,7 @@ export function ICloudSection() {
                   ),
                   t(
                     '마감 30분 전부터 "마감 · 제목"으로 보이고, 완료하면 사라져요. 캘린더에서 고쳐도 칸반 내용으로 돌아와요.',
-                    "Shown as “Deadline · title” for the half hour before; gone once done. Edits in Calendar are replaced by the kanban.",
+                    "Shown as “Due · title” for the half hour before; gone once done. Edits in Calendar are replaced by the kanban.",
                   ),
                 ],
                 [
