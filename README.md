@@ -56,6 +56,9 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   ([setup](docs/lms-extension.md)).
 - **Notices and weekly review**: deadline and stale-inbox notices in the app, as macOS notifications
   or through Hermes to your messenger; weekly reviews are available on the Review page.
+- **Model providers**: register several model servers (Ollama or any OpenAI-compatible server) — keep a
+  small classifier on this Mac and run bigger models on a GPU box in your network or a cloud service. Custom
+  agents and the inbox classifier each pick one; settings label each as this device, your network or cloud.
 - **Morning digest**: at the hour you pick, the agent you choose gathers today's events, deadlines and new
   LMS posts into a briefing in a #today thread and sends the same text to your messenger. Reply to keep talking.
 
@@ -130,10 +133,10 @@ After an update, Argos refreshes the skills and MCP addresses it installed — a
 
 - The server listens on `127.0.0.1:8000` only; nothing is exposed to your network.
 - Your data stays in `~/Library/Application Support/Argos` (SQLite, daily backups).
-- The iCloud app-specific password lives in the Keychain; the Hermes key is read from Hermes' own
+- The iCloud app-specific password and model provider API keys live in the Keychain; the Hermes key is read from Hermes' own
   `.env`; Claude and Codex use their own logins. Argos never stores or logs OAuth tokens.
-- Text leaves your Mac only through the agents and models you choose (and Ollama `*-cloud` models,
-  which the settings label as such).
+- Text leaves your Mac only through the agents and models you choose (model providers outside your
+  network and Ollama `*-cloud` models are labeled as such in settings).
 - Agents cannot delete anything directly: deletions through MCP become approval requests.
 
 ## Development
