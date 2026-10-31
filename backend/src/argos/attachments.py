@@ -188,7 +188,7 @@ class ImagePart:
     name: str
     mime: str
     data: bytes  # shrunk when large
-    path: Path  # the stored original
+    path: Path | None = None  # the stored original; None for private chat (memory only)
 
 
 @dataclass(frozen=True)
@@ -225,8 +225,11 @@ def human_size(size: int) -> str:
 
 
 def _image(path: Path, mime: str) -> tuple[bytes, str]:
-    data = path.read_bytes()
-    with Image.open(path) as image:
+    return _image_bytes(path.read_bytes(), mime)
+
+
+def _image_bytes(data: bytes, mime: str) -> tuple[bytes, str]:
+    with Image.open(io.BytesIO(data)) as image:
         upright = _orientation(image) in (1, 0)
         if upright and max(image.size) <= MAX_IMAGE_SIDE and len(data) <= MAX_IMAGE_BYTES:
             return data, mime
@@ -239,9 +242,13 @@ def _image(path: Path, mime: str) -> tuple[bytes, str]:
 
 
 def _pdf_text(path: Path) -> str:
+    return _pdf_text_bytes(path.read_bytes())
+
+
+def _pdf_text_bytes(data: bytes) -> str:
     chunks: list[str] = []
     total = 0
-    for page in PdfReader(path).pages:
+    for page in PdfReader(io.BytesIO(data)).pages:
         text = page.extract_text() or ""
         chunks.append(text)
         total += len(text)
@@ -284,6 +291,34 @@ def to_part(attachment: AttachmentRef, *, pdf_native: bool) -> AgentPart:
                 return TextPart(f"[첨부: {attachment.name}, {size} — 내용 읽기 불가]")
     except Exception:  # Pillow and pypdf raise many kinds of errors on bad files
         return TextPart(f"[첨부: {attachment.name} — 읽지 못함]")
+
+
+def part_from_bytes(name: str, data: bytes, *, pdf_native: bool = False) -> AgentPart:
+    """One file as an agent reads it, entirely in memory (private chat, PLAN Phase 21):
+    nothing is written, not even a temporary file. Same rules and notes as to_part."""
+    try:
+        kind, mime = sniff(data[:_HEAD], name)
+        match kind:
+            case "heic":
+                with Image.open(io.BytesIO(data)) as image:
+                    out = io.BytesIO()
+                    image.convert("RGB").save(out, "JPEG", quality=90)
+                shrunk, mime = _image_bytes(out.getvalue(), "image/jpeg")
+                return ImagePart(name, mime, shrunk)
+            case "image":
+                shrunk, mime = _image_bytes(data, mime)
+                return ImagePart(name, mime, shrunk)
+            case "pdf" if pdf_native and len(data) <= PDF_NATIVE_BYTES:
+                return PdfPart(name, data)
+            case "pdf":
+                return _fenced(name, _pdf_text_bytes(data))
+            case "text":
+                encoding = text_encoding(data[:_HEAD]) or "utf-8"
+                return _fenced(name, data.decode(encoding, errors="replace"))
+            case _:
+                return TextPart(f"[첨부: {name}, {human_size(len(data))} — 내용 읽기 불가]")
+    except Exception:  # Pillow and pypdf raise many kinds of errors on bad files
+        return TextPart(f"[첨부: {name} — 읽지 못함]")
 
 
 def parts_for(
