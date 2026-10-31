@@ -5,10 +5,11 @@ import { CustomAgentsSection } from "./CustomAgents";
 const mocks = vi.hoisted(() => ({
   save: { mutate: vi.fn(), isPending: false, error: null as unknown },
   modelsFor: vi.fn(),
+  agents: [] as Record<string, unknown>[],
 }));
 vi.mock("../api", () => ({
   agentExportUrl: (name: string) => `/export/${name}`,
-  useAgents: () => ({ data: [] }),
+  useAgents: () => ({ data: mocks.agents }),
   useAgentTools: () => ({ data: [] }),
   useChannels: () => ({ data: { channels: [] } }),
   useDeleteAgent: () => ({ mutate: vi.fn(), isPending: false, error: null }),
@@ -77,6 +78,7 @@ beforeEach(() => {
   localStorage.setItem("argos-language", "ko");
   mocks.save.mutate.mockReset();
   mocks.modelsFor.mockReset();
+  mocks.agents = [];
 });
 afterEach(cleanup);
 
@@ -145,6 +147,65 @@ test("default provider is sent as null", () => {
   fireEvent.click(screen.getByRole("button", { name: "만들기" }));
   expect(mocks.save.mutate).toHaveBeenCalledWith(
     expect.objectContaining({ provider_id: null }),
+    expect.anything(),
+  );
+});
+
+test("renames an existing agent", () => {
+  mocks.agents = [
+    {
+      id: "a1",
+      name: "gemma",
+      display_name: "Gemma",
+      avatar: null,
+      backend: "ollama",
+      model: "gemma4:e4b",
+      is_builtin: false,
+      system_prompt: null,
+      tools: [],
+      channel_ids: [],
+      available: true,
+      problem: null,
+      provider_id: "gpu",
+      send_images: false,
+    },
+  ];
+  render(<CustomAgentsSection />);
+  fireEvent.click(screen.getByRole("button", { name: "수정" }));
+  const handle = screen.getByLabelText("@이름") as HTMLInputElement;
+  expect(handle.disabled).toBe(false);
+  fireEvent.change(handle, { target: { value: "Gem2" } });
+  fireEvent.click(screen.getByRole("button", { name: "저장" }));
+  expect(mocks.save.mutate).toHaveBeenCalledWith(
+    expect.objectContaining({ editing: "gemma", name: "gem2" }),
+    expect.anything(),
+  );
+});
+
+test("unchanged handle is not sent when editing", () => {
+  mocks.agents = [
+    {
+      id: "a1",
+      name: "gemma",
+      display_name: "Gemma",
+      avatar: null,
+      backend: "claude_code",
+      model: null,
+      is_builtin: false,
+      system_prompt: null,
+      tools: [],
+      channel_ids: [],
+      available: true,
+      problem: null,
+      provider_id: null,
+      send_images: false,
+    },
+  ];
+  render(<CustomAgentsSection />);
+  fireEvent.click(screen.getByRole("button", { name: "수정" }));
+  fireEvent.click(screen.getByRole("button", { name: "저장" }));
+  expect(mocks.save.mutate).toHaveBeenCalledWith(
+    expect.objectContaining({ editing: "gemma", name: undefined }),
     expect.anything(),
   );
 });

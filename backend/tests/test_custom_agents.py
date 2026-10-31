@@ -230,3 +230,15 @@ def test_import_old_yaml_without_provider(client: TestClient) -> None:
     text = "name: tutor\ndisplay_name: T\nbackend: llm\n"
     body = client.post("/api/v1/agents/import", json={"yaml": text}).json()
     assert (body["provider_id"], body["send_images"], body["notice"]) == (None, False, None)
+
+
+def test_rename_agent_moves_its_dm(client: TestClient) -> None:
+    client.post("/api/v1/agents", json=TUTOR)
+    dm = client.post("/api/v1/agents/tutor/dm").json()
+    renamed = client.patch("/api/v1/agents/tutor", json={"name": "coach"})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "coach"
+    channels = {c["id"]: c["name"] for c in client.get("/api/v1/channels").json()["channels"]}
+    assert channels.get(dm["id"]) == "dm-coach"
+    assert client.post("/api/v1/agents/coach/dm").json()["id"] == dm["id"]
+    assert client.patch("/api/v1/agents/coach", json={"name": "claude"}).status_code == 409

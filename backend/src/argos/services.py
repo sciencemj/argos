@@ -2473,6 +2473,13 @@ async def update_agent(
     agent = await _update(session, agent, changes, actor)
     if agent.name != old_name:
         await follow_digest_agent(session, old_name, agent.name, actor)
+        dm = await session.scalar(
+            select(Channel).where(
+                Channel.kind == ChannelKind.DM, Channel.default_agent_id == agent.id
+            )
+        )
+        if dm is not None:
+            await _update(session, dm, {"name": f"dm-{agent.name}"}, actor)
     return agent
 
 

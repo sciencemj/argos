@@ -193,7 +193,8 @@ function AgentDialog({
     save.mutate(
       {
         editing: agent?.name,
-        name: agent ? undefined : name.trim(),
+        // Renaming keeps the agent, its DM and its runs; only the @handle changes.
+        name: agent && name.trim() === agent.name ? undefined : name.trim(),
         display_name: displayName.trim(),
         avatar: avatar.trim() || null,
         backend: backend as Agent["backend"],
@@ -229,8 +230,7 @@ function AgentDialog({
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase())}
               placeholder="tutor"
-              disabled={Boolean(agent)}
-              required={!agent}
+              required
             />
           </label>
           <label className="flex flex-col gap-1">
