@@ -653,6 +653,7 @@ OVERRIDABLE = (
     "classifier_model",
     "classifier_title_model",
     "classifier_title_mode",
+    "classifier_provider_id",
     "default_agent",
     "job_roots",
     "vault_path",

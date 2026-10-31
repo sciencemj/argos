@@ -3,8 +3,10 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from argos.providers import ProviderConfig
 
 
 class Settings(BaseSettings):
@@ -52,9 +54,16 @@ class Settings(BaseSettings):
     # "parallel": both models fit in memory, the title is written alongside the decision.
     # "sequential": they do not; the suggestion comes first, the title after it.
     classifier_title_mode: Literal["parallel", "sequential"] = "parallel"
+    # hermes: read on every start. ollama: only the first start reads it, to create the
+    # default model provider (PLAN Phase 20); after that the app's provider settings rule.
     classifier_base_url: str | None = None  # default per provider, see classifier.py
     classifier_api_key: SecretStr | None = None  # Hermes needs one; never logged
     classifier_timeout: float = 60.0
+    # The model provider the Ollama classifier uses (app setting; None = the default one).
+    classifier_provider_id: str | None = None
+    # Snapshot of the model_provider rows, keys included, loaded at startup and whenever
+    # they change (providers.load_providers). Not configurable from the environment.
+    model_providers: tuple[ProviderConfig, ...] = Field(default=(), exclude=True)
     # Thinking models (e.g. qwen3.5) can reason for minutes before answering; a one-line
     # classification does not need it. Unset = "none" for ollama, omitted for hermes.
     classifier_reasoning_effort: Literal["none", "low", "medium", "high"] | None = None

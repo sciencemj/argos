@@ -88,3 +88,24 @@ class FakeSummarizer:
         if self.error:
             raise SummaryError("fake failure")
         return self.answer
+
+
+class FakeKeychain:
+    """In-memory providers.Keychain; `fail` makes set() raise like a locked Keychain."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.saved: dict[str, str] = {}
+        self.fail = fail
+
+    def get(self, key: str) -> str | None:
+        return self.saved.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        if self.fail:
+            from keyring.errors import PasswordSetError
+
+            raise PasswordSetError("locked")
+        self.saved[key] = value
+
+    def delete(self, key: str) -> None:
+        self.saved.pop(key, None)

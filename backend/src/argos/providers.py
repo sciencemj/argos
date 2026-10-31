@@ -5,14 +5,22 @@ Rows live in `model_provider`; API keys live in the macOS Keychain. Runtime code
 `ProviderConfig` snapshot from `Settings.model_providers`, so sync builders such as
 `agents.build_adapter` need no database session."""
 
+import asyncio
 import ipaddress
 from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from urllib.parse import urlsplit
 
 import httpx2
 import keyring
 from openai import AsyncOpenAI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from argos.models import ModelProvider
+
+if TYPE_CHECKING:
+    from argos.config import Settings
 
 type ProviderKind = Literal["ollama", "openai"]
 type Locality = Literal["device", "network", "cloud"]
@@ -27,6 +35,8 @@ NETWORKS = tuple(
 NETWORK_SUFFIXES = (".ts.net", ".local")
 LIST_TIMEOUT = 5
 KEYCHAIN_SERVICE = "Argos model provider API key"
+DEFAULT_NAME = "이 Mac"
+DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 
 
 class ProviderError(Exception):
@@ -161,6 +171,12 @@ async def vision(p: ProviderConfig, model: str) -> bool:
     return _VISION[key]
 
 
+class KeyStore(Protocol):
+    def get(self, provider_id: str, /) -> str | None: ...
+    def set(self, provider_id: str, key: str, /) -> None: ...
+    def delete(self, provider_id: str, /) -> None: ...
+
+
 class Keychain:
     """Provider API keys in the macOS Keychain, one item per provider id."""
 
@@ -175,3 +191,72 @@ class Keychain:
     def delete(self, provider_id: str) -> None:
         if self.get(provider_id) is not None:
             keyring.delete_password(KEYCHAIN_SERVICE, provider_id)
+
+
+# --- the snapshot runtime code reads ----------------------------------------------------
+
+
+def resolve(settings: "Settings", provider_id: str | None) -> ProviderConfig:
+    """The chosen provider; a missing or deleted choice falls back to the default."""
+    for p in settings.model_providers:
+        if p.id == provider_id:
+            return p
+    return _default(settings)
+
+
+def classifier_provider(settings: "Settings") -> ProviderConfig:
+    """Where the Ollama classifier (and the built-in local agent) run."""
+    return resolve(settings, settings.classifier_provider_id)
+
+
+def _default(settings: "Settings") -> ProviderConfig:
+    for p in settings.model_providers:
+        if p.is_default:
+            return p
+    # Before the snapshot is loaded (and in tests that build Settings directly): the
+    # address .env gives, as the pre-provider code used it.
+    base = settings.classifier_base_url or DEFAULT_BASE_URL
+    key = settings.classifier_api_key.get_secret_value() if settings.classifier_api_key else None
+    return ProviderConfig("", DEFAULT_NAME, "ollama", base, key, locality_of(base), True)
+
+
+def with_providers(settings: "Settings", loaded: tuple[ProviderConfig, ...]) -> "Settings":
+    return settings.model_copy(update={"model_providers": loaded})
+
+
+async def ensure_default_provider(
+    session: AsyncSession, base: "Settings", keychain: KeyStore
+) -> None:
+    """First start after the upgrade (or ever): make "이 Mac" from what .env says. A Hermes
+    classifier's address and key are Hermes's, so they stay out of it."""
+    from argos import services
+
+    if await session.scalar(select(ModelProvider.id).limit(1)) is not None:
+        return
+    ollama = base.classifier_provider == "ollama"
+    url = (base.classifier_base_url if ollama else None) or DEFAULT_BASE_URL
+    key = base.classifier_api_key.get_secret_value() if ollama and base.classifier_api_key else None
+    provider = await services.create_provider(
+        session,
+        {"name": DEFAULT_NAME, "kind": "ollama", "base_url": url, "has_api_key": key is not None},
+        "system",
+    )
+    provider.is_default = True
+    await session.commit()
+    if key is not None:
+        await asyncio.to_thread(keychain.set, provider.id, key)
+
+
+async def load_providers(session: AsyncSession, keychain: KeyStore) -> tuple[ProviderConfig, ...]:
+    rows = (await session.scalars(select(ModelProvider).order_by(ModelProvider.name))).all()
+    loaded: list[ProviderConfig] = []
+    for row in rows:
+        key = await asyncio.to_thread(keychain.get, row.id) if row.has_api_key else None
+        locality = effective_locality(
+            locality_of(row.base_url), cast(Locality | None, row.strict_locality)
+        )
+        kind = cast(ProviderKind, row.kind)
+        loaded.append(
+            ProviderConfig(row.id, row.name, kind, row.base_url, key, locality, row.is_default)
+        )
+    return tuple(loaded)

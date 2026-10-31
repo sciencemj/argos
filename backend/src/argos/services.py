@@ -24,7 +24,6 @@ from argos import attachments, providers
 from argos.course_names import clean_course_name
 from argos.hub import hub
 from argos.models import (
-    ModelProvider,
     ActivityLog,
     Agent,
     AgentBackend,
@@ -48,6 +47,7 @@ from argos.models import (
     InboxStatus,
     LmsNotice,
     Message,
+    ModelProvider,
     NoteRef,
     Notification,
     Record,

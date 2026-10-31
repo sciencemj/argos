@@ -16,6 +16,7 @@ from argos import (
     notify,
     onboarding,
     ops,
+    providers,
     remote,
     services,
     usage,
@@ -32,7 +33,9 @@ from argos.runner import Runner
 from argos.summarizer import LmsSummaries, build_summarizer
 
 
-def create_app(config: Settings = settings) -> FastAPI:
+def create_app(
+    config: Settings = settings, provider_keychain: providers.KeyStore | None = None
+) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,9 +45,12 @@ def create_app(config: Settings = settings) -> FastAPI:
         async with app.state.sessionmaker() as session:
             seed = await asyncio.to_thread(services.load_seed, config.seed_path)
             await services.seed_defaults(session, seed)
+            app.state.provider_keychain = provider_keychain or providers.Keychain()
+            await providers.ensure_default_provider(session, config, app.state.provider_keychain)
+            loaded = await providers.load_providers(session, app.state.provider_keychain)
             overrides = await services.get_settings_overrides(session)
-        app.state.base_settings = config
-        app.state.settings = apply_overrides(config, overrides)
+        app.state.base_settings = providers.with_providers(config, loaded)
+        app.state.settings = apply_overrides(app.state.base_settings, overrides)
         app.state.classifier = build_classifier(app.state.settings)
         app.state.summarizer = build_summarizer(app.state.settings)
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
