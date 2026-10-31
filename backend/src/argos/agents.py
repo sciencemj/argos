@@ -25,7 +25,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, cast
 
-import httpx2
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
@@ -36,8 +35,9 @@ from claude_agent_sdk import (
     get_session_info,
     query,
 )
-from openai import AsyncOpenAI
+from openai import APIConnectionError, AsyncOpenAI
 
+from argos import providers
 from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, data_url, parts_for
 from argos.config import Settings
 from argos.models import Agent, AgentBackend
@@ -186,26 +186,6 @@ def chat_messages(
     return messages
 
 
-_VISION: dict[tuple[str, str], bool] = {}
-
-
-async def ollama_vision(base_url: str, model: str) -> bool:
-    """Whether an Ollama model takes images (`/api/show` capabilities). A server that
-    does not answer that (another OpenAI-compatible one) gets the images and decides."""
-    key = (base_url, model)
-    if key not in _VISION:
-        root = base_url.rstrip("/").removesuffix("/v1")
-        try:
-            async with httpx2.AsyncClient(timeout=5) as http:
-                response = await http.post(f"{root}/api/show", json={"model": model})
-                response.raise_for_status()
-                capabilities = cast(list[str], response.json().get("capabilities") or [])
-        except (httpx2.HTTPError, ValueError):
-            return True
-        _VISION[key] = "vision" in capabilities
-    return _VISION[key]
-
-
 async def _sees_images(
     pairs: list[tuple[Turn, list[Media]]], vision: Callable[[], Awaitable[bool]] | None
 ) -> bool:
@@ -217,6 +197,13 @@ async def _sees_images(
 # --- OpenAI-compatible (Hermes, Ollama) ---------------------------------------------------
 
 
+def _unavailable(exc: Exception, unreachable: str | None) -> AgentUnavailable:
+    """A connection failure (timeouts included) reads as the provider's own message."""
+    if unreachable is not None and isinstance(exc, APIConnectionError):
+        return AgentUnavailable(unreachable)
+    return AgentUnavailable(f"{type(exc).__name__}: {exc}")
+
+
 class OpenAICompatAdapter:
     def __init__(
         self,
@@ -225,12 +212,14 @@ class OpenAICompatAdapter:
         name: str,
         extra: dict[str, Any] | None = None,
         vision: Callable[[], Awaitable[bool]] | None = None,
+        unreachable: str | None = None,
     ) -> None:
         self._client = client
         self._model = model
         self._name = name
-        self._extra = extra or {}
+        self._extra = extra
         self._vision = vision  # None: send images and let the server decide
+        self._unreachable = unreachable  # the provider's "cannot connect" text
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
@@ -248,11 +237,13 @@ class OpenAICompatAdapter:
                 extra_body=self._extra,
             )
         except Exception as exc:
-            raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+            raise _unavailable(exc, self._unreachable) from exc
         try:
             async for chunk in response:
                 if chunk.choices and (text := chunk.choices[0].delta.content):
                     yield Token(text)
+        except APIConnectionError as exc:
+            raise _unavailable(exc, self._unreachable) from exc
         finally:
             await response.close()
 
@@ -307,6 +298,7 @@ class LLMToolAdapter:
         tools: list[str],
         connect: Callable[[str], Any] = mcp_tools,
         vision: Callable[[], Awaitable[bool]] | None = None,
+        unreachable: str | None = None,
     ) -> None:
         self._client = client
         self._model = model
@@ -315,6 +307,7 @@ class LLMToolAdapter:
         self._tools = tools
         self._connect = connect
         self._vision = vision
+        self._unreachable = unreachable
 
     async def stream(
         self, transcript: list[Turn], context: str, session: str
@@ -337,7 +330,7 @@ class LLMToolAdapter:
                         tools=cast(Any, specs),
                     )
                 except Exception as exc:
-                    raise AgentUnavailable(f"{type(exc).__name__}: {exc}") from exc
+                    raise _unavailable(exc, self._unreachable) from exc
                 message = response.choices[0].message
                 calls = message.tool_calls or []
                 if not calls:
@@ -1113,18 +1106,38 @@ def build_adapter(
             model = agent.model or settings.classifier_title_model or settings.classifier_model
             if not model:
                 raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
-            base = settings.classifier_base_url or "http://127.0.0.1:11434/v1"
+            # The built-in local agent runs where the classifier does; a Hermes classifier
+            # has no provider, so it gets the default one.
+            if not agent.is_builtin:
+                p = providers.resolve(settings, agent.provider_id)
+            elif settings.classifier_provider == "hermes":
+                p = providers.resolve(settings, None)
+            else:
+                p = providers.classifier_provider(settings)
+            extra: dict[str, Any] | None = None
+            sees: Callable[[], Awaitable[bool]] | None = None  # None: the server decides
+            if p.kind == "ollama":
+                extra = {"reasoning_effort": "none"}
 
-            async def sees() -> bool:
-                return await ollama_vision(base, model)
+                async def ollama_sees() -> bool:
+                    return await providers.vision(p, model)
 
-            client = AsyncOpenAI(
-                base_url=base, api_key="ollama", timeout=settings.agent_timeout, max_retries=0
-            )
+                sees = ollama_sees
+            elif not agent.send_images:
+                # OpenAI-compatible servers do not say; the agent's switch does.
+
+                async def no_images() -> bool:
+                    return False
+
+                sees = no_images
+            client = providers.chat_client(p, timeout=settings.agent_timeout, max_retries=0)
+            unreachable = providers.unreachable_text(p)
             if tools:  # a custom agent with tools: the model calls them through MCP
-                return LLMToolAdapter(client, model, agent.name, mcp, tools, vision=sees)
+                return LLMToolAdapter(
+                    client, model, agent.name, mcp, tools, vision=sees, unreachable=unreachable
+                )
             return OpenAICompatAdapter(
-                client, model, agent.name, extra={"reasoning_effort": "none"}, vision=sees
+                client, model, agent.name, extra=extra, vision=sees, unreachable=unreachable
             )
         case AgentBackend.CLAUDE_CODE:
             cli = shutil.which(settings.claude_bin)
