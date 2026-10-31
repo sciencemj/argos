@@ -20,10 +20,11 @@ from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from argos import attachments
+from argos import attachments, providers
 from argos.course_names import clean_course_name
 from argos.hub import hub
 from argos.models import (
+    ModelProvider,
     ActivityLog,
     Agent,
     AgentBackend,
@@ -2341,7 +2342,97 @@ async def _check_agent_fields(
         fields["tools_json"] = tools
     if "avatar" in fields and fields["avatar"] is not None:
         fields["avatar"] = str(fields["avatar"]).strip()[:10] or None
+    if fields.get("provider_id") is not None:
+        if await session.get(ModelProvider, fields["provider_id"]) is None:
+            raise InvalidError("없는 모델 연결이에요")
+    if "send_images" in fields:
+        fields["send_images"] = bool(fields["send_images"])
     return fields
+
+
+# --- model providers (PLAN Phase 20) ---------------------------------------------------
+
+PROVIDER_KINDS = ("ollama", "openai")
+STRICT_LOCALITIES = ("network", "cloud")  # the user may only mark a provider stricter
+
+
+async def list_providers(session: AsyncSession) -> list[ModelProvider]:
+    rows = await session.scalars(
+        select(ModelProvider).order_by(ModelProvider.is_default.desc(), ModelProvider.name)
+    )
+    return list(rows.all())
+
+
+async def _check_provider_fields(
+    session: AsyncSession, fields: dict[str, Any], current: ModelProvider | None
+) -> dict[str, Any]:
+    if "name" in fields:
+        name = str(fields["name"]).strip()[:60]
+        if not name:
+            raise InvalidError("연결 이름을 적어 주세요")
+        taken = await session.scalar(
+            select(ModelProvider).where(func.lower(ModelProvider.name) == name.lower())
+        )
+        if taken is not None and (current is None or taken.id != current.id):
+            raise ConflictError(f"'{name}' 연결이 이미 있어요")
+        fields["name"] = name
+    kind = fields.get("kind", current.kind if current else None)
+    if kind not in PROVIDER_KINDS:
+        raise InvalidError("연결 종류는 Ollama나 OpenAI 호환이에요")
+    if "base_url" in fields or "kind" in fields:
+        url = fields.get("base_url", current.base_url if current else "")
+        try:
+            fields["base_url"] = providers.normalize_base_url(kind, str(url))
+        except ValueError as exc:
+            raise InvalidError(str(exc)) from exc
+    strict = fields.get("strict_locality")
+    if strict is not None and strict not in STRICT_LOCALITIES:
+        raise InvalidError("위치는 더 엄격하게만 표시할 수 있어요")
+    if "has_api_key" in fields:
+        fields["has_api_key"] = bool(fields["has_api_key"])
+    return fields
+
+
+async def create_provider(
+    session: AsyncSession, fields: dict[str, Any], actor: str
+) -> ModelProvider:
+    fields = await _check_provider_fields(session, dict(fields), None)
+    allowed = ("name", "kind", "base_url", "has_api_key", "strict_locality")
+    return await _create(
+        session, ModelProvider(**{k: fields[k] for k in allowed if k in fields}), actor
+    )
+
+
+async def update_provider(
+    session: AsyncSession, provider_id: str, changes: dict[str, Any], actor: str
+) -> ModelProvider:
+    provider = await _get(session, ModelProvider, provider_id)
+    changes = await _check_provider_fields(session, dict(changes), provider)
+    allowed = ("name", "kind", "base_url", "has_api_key", "strict_locality")
+    return await _update(
+        session, provider, {k: v for k, v in changes.items() if k in allowed}, actor
+    )
+
+
+async def provider_usage(session: AsyncSession, provider_id: str) -> list[str]:
+    """Where a provider is chosen, for the "in use" refusal."""
+    agents = await session.scalars(
+        select(Agent).where(Agent.provider_id == provider_id).order_by(Agent.name)
+    )
+    used = [f"@{a.name}" for a in agents.all()]
+    if await get_setting(session, "classifier_provider_id") == provider_id:
+        used.append("인박스 분류")
+    return used
+
+
+async def delete_provider(session: AsyncSession, provider_id: str, actor: str) -> None:
+    provider = await _get(session, ModelProvider, provider_id)
+    if provider.is_default:
+        raise ConflictError("기본 연결은 지울 수 없어요")
+    used = await provider_usage(session, provider_id)
+    if used:
+        raise ConflictError(f"{', '.join(used)}에서 쓰는 연결이에요")
+    await _delete(session, provider, actor)
 
 
 async def create_agent(

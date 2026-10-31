@@ -378,6 +378,20 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ModelProvider(Record):
+    """A named model server agents and the classifier choose between (PLAN Phase 20).
+    The API key, if any, is in the Keychain (providers.Keychain), never here."""
+
+    __tablename__ = "model_provider"
+
+    name: Mapped[str] = mapped_column(String(60), unique=True)
+    kind: Mapped[str] = mapped_column(String(20))  # providers.ProviderKind
+    base_url: Mapped[str] = mapped_column(String(500))  # normalized, ends with /v1 for ollama
+    has_api_key: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    strict_locality: Mapped[str | None] = mapped_column(String(20))  # user marked it stricter
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
 class Agent(Record):
     __tablename__ = "agent"
 
@@ -389,6 +403,12 @@ class Agent(Record):
     system_prompt: Mapped[str | None] = mapped_column(Text)
     tools_json: Mapped[list[str] | None] = mapped_column(JSON)  # Phase 10 whitelist
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Local-model agents: which provider (None = the default one) and, for
+    # OpenAI-compatible providers that cannot say, whether to send images.
+    provider_id: Mapped[str | None] = mapped_column(
+        ForeignKey("model_provider.id", ondelete="SET NULL")
+    )
+    send_images: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class AgentRun(Record):
