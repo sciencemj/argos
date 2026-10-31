@@ -74,6 +74,7 @@ from argos.models import (
     InboxStatus,
     LmsNotice,
     Message,
+    ModelProvider,
     NoteRef,
     Notification,
     RunStatus,
@@ -1227,17 +1228,26 @@ class ModelsOut(BaseModel):
 
 
 MODEL_CACHE_SECONDS = 600
+LOCALITY_TEXT = {
+    "device": "이 컴퓨터에서 실행",
+    "network": "내 네트워크에서 실행",
+    "cloud": "클라우드 · 입력이 외부로 전송돼요",
+}
+UNREACHABLE_TEXT = "연결할 수 없어요. 주소와 서버가 켜져 있는지 확인해 주세요."
 
 
 @router.get("/agents/models")
-async def agent_models(request: Request, config: Config, backend: AgentBackend) -> ModelsOut:
+async def agent_models(
+    request: Request, config: Config, backend: AgentBackend, provider_id: str | None = None
+) -> ModelsOut:
     """Models a custom agent can use on this backend, as the backend itself lists
     them (cached for a few minutes: listing starts the CLI)."""
     cache: dict[str, tuple[float, ModelsOut]] = request.app.state.__dict__.setdefault(
         "model_cache", {}
     )
     now = time_module.monotonic()
-    if (hit := cache.get(backend)) is not None and now - hit[0] < MODEL_CACHE_SECONDS:
+    key = f"{backend}:{provider_id or ''}"
+    if (hit := cache.get(key)) is not None and now - hit[0] < MODEL_CACHE_SECONDS:
         return hit[1]
     try:
         if backend == AgentBackend.CLAUDE_CODE:
@@ -1245,24 +1255,26 @@ async def agent_models(request: Request, config: Config, backend: AgentBackend) 
         elif backend == AgentBackend.CODEX:
             found = await agents.codex_models(config)
         elif backend == AgentBackend.OLLAMA:
+            chosen = providers.resolve(config, provider_id)
+            where = LOCALITY_TEXT[chosen.locality]
             found = [
                 agents.ModelChoice(
                     m.name,
                     m.name,
-                    "클라우드 · 입력이 ollama.com으로 전송돼요"
-                    if m.remote
-                    else "이 컴퓨터에서 실행",
+                    "클라우드 · 입력이 ollama.com으로 전송돼요" if m.remote else where,
                 )
-                for m in await classifier.list_ollama_models(config)
+                for m in await providers.list_models(chosen)
             ]
         else:
             return ModelsOut(models=[], error="Hermes 모델은 게이트웨이 설정에서 정해요")
     except (agents.AgentUnavailable, classifier.ClassifierError) as exc:
         return ModelsOut(models=[], error=str(exc))
+    except providers.ProviderError:
+        return ModelsOut(models=[], error=UNREACHABLE_TEXT)
     except Exception as exc:  # a CLI that changed its output: say so, keep the form usable
         return ModelsOut(models=[], error=f"모델 목록을 가져오지 못했어요 ({type(exc).__name__})")
     out = ModelsOut(models=[ModelOut(**asdict(m)) for m in found])
-    cache[backend] = (now, out)
+    cache[key] = (now, out)
     return out
 
 
@@ -2645,6 +2657,158 @@ async def list_classifier_models(
             for m in models
         ],
     )
+
+
+# --- model providers (PLAN Phase 20) ----------------------------------------------------
+
+
+class ProviderOut(Out):
+    id: str
+    name: str
+    kind: Literal["ollama", "openai"]
+    base_url: str
+    has_api_key: bool
+    strict_locality: Literal["network", "cloud"] | None
+    locality: Literal["device", "network", "cloud"] = "cloud"  # after strict_locality
+    is_default: bool
+
+
+class ProviderIn(BaseModel):
+    name: str | None = Field(default=None, max_length=60)
+    kind: Literal["ollama", "openai"] | None = None
+    base_url: str | None = Field(default=None, max_length=500)
+    # Omitted or null: keep (none for a new provider); "": remove; text: store in Keychain.
+    api_key: str | None = Field(default=None, max_length=1000)
+    strict_locality: Literal["network", "cloud"] | None = None
+
+
+class ProviderTestIn(BaseModel):
+    kind: Literal["ollama", "openai"]
+    base_url: str = Field(max_length=500)
+    api_key: str | None = Field(default=None, max_length=1000)
+    provider_id: str | None = None  # no key given: try with this provider's saved key
+
+
+class ProviderModelsOut(BaseModel):
+    reachable: bool
+    error: str | None = None
+    locality: Literal["device", "network", "cloud"]
+    models: list[OllamaModelOut] = Field(default_factory=list[OllamaModelOut])
+
+
+def _provider_out(row: ModelProvider) -> ProviderOut:
+    out = ProviderOut.model_validate(row)
+    out.locality = providers.effective_locality(
+        providers.locality_of(row.base_url), cast(Any, row.strict_locality)
+    )
+    return out
+
+
+async def _reload_providers(request: Request, session: AsyncSession) -> None:
+    """A provider changed: every holder of a Settings copy gets the new snapshot."""
+    state = request.app.state
+    loaded = await providers.load_providers(session, state.provider_keychain)
+    state.base_settings = providers.with_providers(state.base_settings, loaded)
+    overrides = await services.get_settings_overrides(session)
+    state.settings = classifier.apply_overrides(state.base_settings, overrides)
+    state.runner.settings = state.settings
+    state.classifier = classifier.build_classifier(state.settings)
+    state.summarizer = summarizer.build_summarizer(state.settings)
+    state.__dict__.pop("model_cache", None)
+
+
+async def _keychain(request: Request, action: str, provider_id: str, key: str = "") -> None:
+    keychain: providers.KeyStore = request.app.state.provider_keychain
+    try:
+        if action == "set":
+            await asyncio.to_thread(keychain.set, provider_id, key)
+        else:
+            await asyncio.to_thread(keychain.delete, provider_id)
+    except keyring.errors.KeyringError as exc:
+        raise services.InvalidError("키체인에 API 키를 저장하지 못했어요") from exc
+
+
+async def _models_out(p: providers.ProviderConfig) -> ProviderModelsOut:
+    try:
+        found = await providers.list_models(p)
+    except providers.ProviderError:
+        return ProviderModelsOut(reachable=False, error=UNREACHABLE_TEXT, locality=p.locality)
+    return ProviderModelsOut(
+        reachable=True,
+        locality=p.locality,
+        models=[
+            OllamaModelOut(
+                name=m.name, remote=m.remote, parameter_size=m.parameter_size, decision=m.decision
+            )
+            for m in found
+        ],
+    )
+
+
+@router.get("/providers")
+async def list_providers(session: Session) -> list[ProviderOut]:
+    return [_provider_out(p) for p in await services.list_providers(session)]
+
+
+@router.post("/providers", status_code=status.HTTP_201_CREATED)
+async def create_provider(request: Request, session: Session, body: ProviderIn) -> ProviderOut:
+    fields = body.model_dump(exclude={"api_key"}, exclude_none=True)
+    key = (body.api_key or "").strip()
+    row = await services.create_provider(session, {**fields, "has_api_key": bool(key)}, USER)
+    if key:
+        try:
+            await _keychain(request, "set", row.id, key)
+        except services.InvalidError:
+            await services.delete_provider(session, row.id, USER)
+            raise
+    await _reload_providers(request, session)
+    return _provider_out(row)
+
+
+@router.patch("/providers/{provider_id}")
+async def update_provider(
+    request: Request, session: Session, provider_id: str, body: ProviderIn
+) -> ProviderOut:
+    changes = body.model_dump(exclude={"api_key"}, exclude_unset=True)
+    if body.api_key is not None:
+        key = body.api_key.strip()
+        await services.get_provider(session, provider_id)  # 404 before touching the Keychain
+        await _keychain(request, "set" if key else "delete", provider_id, key)
+        changes["has_api_key"] = bool(key)
+    row = await services.update_provider(session, provider_id, changes, USER)
+    await _reload_providers(request, session)
+    return _provider_out(row)
+
+
+@router.delete("/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_provider(request: Request, session: Session, provider_id: str) -> None:
+    await services.delete_provider(session, provider_id, USER)
+    await _keychain(request, "delete", provider_id)
+    await _reload_providers(request, session)
+
+
+@router.post("/providers/test")
+async def try_provider(request: Request, body: ProviderTestIn) -> ProviderModelsOut:
+    """Tries an address before it is saved: reachable, which models, where it runs."""
+    try:
+        url = providers.normalize_base_url(body.kind, body.base_url)
+    except ValueError as exc:
+        raise services.InvalidError(str(exc)) from exc
+    key = (body.api_key or "").strip() or None
+    if key is None and body.provider_id:
+        keychain: providers.KeyStore = request.app.state.provider_keychain
+        key = await asyncio.to_thread(keychain.get, body.provider_id)
+    locality = providers.locality_of(url)
+    trial = providers.ProviderConfig("", "", body.kind, url, key, locality, False)
+    return await _models_out(trial)
+
+
+@router.get("/providers/{provider_id}/models")
+async def provider_models(config: Config, provider_id: str) -> ProviderModelsOut:
+    chosen = next((p for p in config.model_providers if p.id == provider_id), None)
+    if chosen is None:
+        raise services.NotFoundError("model_provider", provider_id)
+    return await _models_out(chosen)
 
 
 # --- first-run setup (PLAN Phase 12) ------------------------------------------------------

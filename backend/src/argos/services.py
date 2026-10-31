@@ -2363,6 +2363,10 @@ async def list_providers(session: AsyncSession) -> list[ModelProvider]:
     return list(rows.all())
 
 
+async def get_provider(session: AsyncSession, provider_id: str) -> ModelProvider:
+    return await _get(session, ModelProvider, provider_id)
+
+
 async def _check_provider_fields(
     session: AsyncSession, fields: dict[str, Any], current: ModelProvider | None
 ) -> dict[str, Any]:
