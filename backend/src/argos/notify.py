@@ -24,7 +24,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import services
+from argos import providers, services
 from argos.agents import Turn
 from argos.config import Settings
 from argos.hub import hub
@@ -367,8 +367,12 @@ async def idea_groups(
 
 def _ollama_embed(settings: Settings) -> Callable[[list[str]], Any]:
     async def embed(texts: list[str]) -> list[list[float]]:
-        base = settings.classifier_base_url or "http://127.0.0.1:11434/v1"
-        client = AsyncOpenAI(base_url=base, api_key="ollama", timeout=60, max_retries=0)
+        if settings.classifier_provider == "ollama":
+            p = providers.classifier_provider(settings)
+            base, key = p.base_url, p.api_key or "ollama"
+        else:  # a Hermes classifier: as before Phase 20, its .env address
+            base, key = settings.classifier_base_url or providers.DEFAULT_BASE_URL, "ollama"
+        client = AsyncOpenAI(base_url=base, api_key=key, timeout=60, max_retries=0)
         model = settings.review_embed_model or await _find_embed_model(base)
         if not model:
             raise LookupError("no embedding model installed")

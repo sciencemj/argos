@@ -44,6 +44,7 @@ from argos import (
     notify,
     onboarding,
     ops,
+    providers,
     remote,
     services,
     summarizer,
@@ -198,6 +199,7 @@ class ClassifierSettingsOut(BaseModel):
     enabled: bool
     title_model: str = ""  # chat model naming tasks/events for a decision model
     title_mode: Literal["parallel", "sequential"] = "parallel"
+    provider_id: str = ""  # the model provider it runs on ("" before providers load)
 
 
 class ClassifierSettingsIn(BaseModel):
@@ -206,6 +208,7 @@ class ClassifierSettingsIn(BaseModel):
     title_model: str | None = Field(default=None, max_length=200)
     # parallel: both models fit in memory; sequential: title written after the suggestion
     title_mode: Literal["parallel", "sequential"] | None = None
+    provider_id: str | None = None  # null keeps the saved one
 
 
 class OllamaModelOut(BaseModel):
@@ -1056,7 +1059,20 @@ async def _classifier_settings(request: Request, session: AsyncSession) -> Class
         enabled=request.app.state.classifier is not None,
         title_model=config.classifier_title_model,
         title_mode=config.classifier_title_mode,
+        provider_id=providers.classifier_provider(config).id,
     )
+
+
+def _classifier_on(config: Settings, provider_id: str | None) -> Settings:
+    """`config` with the classifier moved to another Ollama provider (None: where it is)."""
+    if provider_id is None:
+        return config
+    chosen = next((p for p in config.model_providers if p.id == provider_id), None)
+    if chosen is None:
+        raise services.NotFoundError("model_provider", provider_id)
+    if chosen.kind != "ollama":
+        raise services.InvalidError("인박스 분류는 Ollama 연결만 쓸 수 있어요")
+    return config.model_copy(update={"classifier_provider_id": provider_id})
 
 
 def _today(config: Settings) -> date:
@@ -2573,10 +2589,11 @@ async def put_classifier_settings(
     model = (body.model or "").strip()
     title = body.title_model.strip() if body.title_model is not None else None
     base: Settings = request.app.state.base_settings
+    target = _classifier_on(request.app.state.settings, body.provider_id)
     if (model or title) and base.classifier_provider == "ollama":
         try:
             installed = {
-                m.name: m for m in await classifier.list_ollama_models(base, decision=True)
+                m.name: m for m in await classifier.list_ollama_models(target, decision=True)
             }
         except classifier.ClassifierError as exc:
             raise services.InvalidError("Ollama에 연결할 수 없어요") from exc
@@ -2590,22 +2607,28 @@ async def put_classifier_settings(
         await services.set_setting(session, "classifier_title_model", title, USER)
     if body.title_mode is not None:
         await services.set_setting(session, "classifier_title_mode", body.title_mode, USER)
+    if body.provider_id is not None:
+        await services.set_setting(session, "classifier_provider_id", body.provider_id, USER)
     overrides = await services.get_settings_overrides(session)
     request.app.state.settings = classifier.apply_overrides(base, overrides)
+    request.app.state.runner.settings = request.app.state.settings  # the built-in local agent
     request.app.state.classifier = classifier.build_classifier(request.app.state.settings)
     request.app.state.summarizer = summarizer.build_summarizer(request.app.state.settings)
     return await _classifier_settings(request, session)
 
 
 @router.get("/settings/classifier/models")
-async def list_classifier_models(request: Request) -> OllamaModelsOut:
+async def list_classifier_models(
+    request: Request, provider_id: str | None = None
+) -> OllamaModelsOut:
     base: Settings = request.app.state.base_settings
     if base.classifier_provider != "ollama":
         return OllamaModelsOut(
             reachable=False, error="모델 목록은 ollama provider에서만 볼 수 있어요"
         )
+    target = _classifier_on(request.app.state.settings, provider_id)
     try:
-        models = await classifier.list_ollama_models(base, decision=True)
+        models = await classifier.list_ollama_models(target, decision=True)
     except classifier.ClassifierError:
         return OllamaModelsOut(
             reachable=False, error="Ollama에 연결할 수 없어요. 실행 중인지 확인해 주세요."

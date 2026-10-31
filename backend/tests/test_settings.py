@@ -58,7 +58,8 @@ def test_pick_model_persists_across_restart(settings: Settings, ollama: Any) -> 
     for client in app_client(settings):
         assert client.get("/api/v1/settings/classifier").json()["source"] == "none"
         picked = client.put("/api/v1/settings/classifier", json={"model": "qwen3.5:9b-mlx"})
-        assert picked.json() == {
+        assert picked.json().pop("provider_id")  # the default provider (Phase 20)
+        assert {k: v for k, v in picked.json().items() if k != "provider_id"} == {
             "provider": "ollama",
             "model": "qwen3.5:9b-mlx",
             "source": "app",

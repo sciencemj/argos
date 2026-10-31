@@ -11,7 +11,7 @@ from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from argos import services
-from argos.classifier import DEFAULT_BASE_URLS
+from argos.classifier import classifier_endpoint
 from argos.config import Settings
 from argos.models import LmsNotice
 
@@ -89,12 +89,7 @@ def classifier_chat(settings: Settings) -> tuple[AsyncOpenAI, str, str | None] |
     model = settings.classifier_title_model or settings.classifier_model
     if not model:
         return None
-    base_url = settings.classifier_base_url or DEFAULT_BASE_URLS[settings.classifier_provider]
-    api_key = (
-        settings.classifier_api_key.get_secret_value()
-        if settings.classifier_api_key
-        else settings.classifier_provider  # Ollama ignores the key but the SDK needs one.
-    )
+    base_url, api_key = classifier_endpoint(settings)
     client = AsyncOpenAI(
         base_url=base_url, api_key=api_key, timeout=settings.classifier_timeout, max_retries=1
     )

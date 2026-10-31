@@ -20,7 +20,7 @@ import httpx2
 from openai import AsyncOpenAI, BadRequestError
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
-from argos import commands
+from argos import commands, providers
 from argos.config import Settings
 
 log = logging.getLogger(__name__)
@@ -611,16 +611,24 @@ def anchor_dates(suggestion: Suggestion, text: str, ctx: ClassifyContext) -> Sug
     return suggestion
 
 
+def classifier_endpoint(settings: Settings) -> tuple[str, str]:
+    """Base URL and key the classifier talks to: its Ollama model provider (PLAN Phase 20),
+    or the Hermes gateway exactly as .env says."""
+    if settings.classifier_provider == "ollama":
+        p = providers.classifier_provider(settings)
+        return p.base_url, p.api_key or "ollama"  # Ollama ignores the key; the SDK needs one
+    key = settings.classifier_api_key
+    return (
+        settings.classifier_base_url or DEFAULT_BASE_URLS["hermes"],
+        key.get_secret_value() if key else "hermes",
+    )
+
+
 def build_classifier(settings: Settings) -> Classifier | None:
     """None when no model is configured: text still lands in the inbox, unclassified."""
     if not settings.classifier_model:
         return None
-    base_url = settings.classifier_base_url or DEFAULT_BASE_URLS[settings.classifier_provider]
-    api_key = (
-        settings.classifier_api_key.get_secret_value()
-        if settings.classifier_api_key
-        else settings.classifier_provider  # Ollama ignores the key but the SDK needs one.
-    )
+    base_url, api_key = classifier_endpoint(settings)
     client = AsyncOpenAI(
         base_url=base_url, api_key=api_key, timeout=settings.classifier_timeout, max_retries=1
     )
@@ -680,43 +688,17 @@ def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> Settings:
     return settings.model_copy(update=update) if update else settings
 
 
-@dataclass(frozen=True)
-class OllamaModel:
-    name: str
-    remote: bool  # "*-cloud" models run on ollama.com: text leaves this machine
-    parameter_size: str | None
-    decision: bool = False  # answers typed questions only (/v1/systemone), cannot chat
+# "*-cloud" models run on ollama.com (remote); decision models classify but cannot chat.
+OllamaModel = providers.ProviderModel
 
 
 async def list_ollama_models(settings: Settings, *, decision: bool = False) -> list[OllamaModel]:
-    """Chat-capable models installed in the local Ollama (embedding-only ones are left
-    out), plus decision models when `decision` (the classifier can use them, agents
-    cannot). Raises ClassifierError when Ollama cannot be reached."""
-    base = (settings.classifier_base_url or DEFAULT_BASE_URLS["ollama"]).removesuffix("/")
-    root = base.removesuffix("/v1")
+    """Chat-capable models on the classifier's Ollama provider (embedding-only ones are
+    left out), plus decision models when `decision` (the classifier can use them, agents
+    cannot). Raises ClassifierError when it cannot be reached."""
     try:
-        async with httpx2.AsyncClient(timeout=5) as http:
-            response = await http.get(f"{root}/api/tags")
-            response.raise_for_status()
-            data: dict[str, Any] = response.json()
-    except Exception as exc:
-        raise ClassifierError(f"cannot reach Ollama at {root}: {type(exc).__name__}") from exc
-    models: list[OllamaModel] = []
-    entries: list[dict[str, Any]] = data.get("models", [])
-    for m in entries:
-        capabilities: list[str] | None = m.get("capabilities")
-        is_decision = capabilities is not None and "decision" in capabilities
-        if capabilities is not None and "completion" not in capabilities:
-            if not (decision and is_decision):
-                continue
-        details: dict[str, Any] = m.get("details") or {}
-        size: str | None = details.get("parameter_size") or None
-        models.append(
-            OllamaModel(
-                name=str(m["name"]),
-                remote=bool(m.get("remote_host")),
-                parameter_size=size,
-                decision=is_decision,
-            )
+        return await providers.list_models(
+            providers.classifier_provider(settings), decision=decision
         )
-    return sorted(models, key=lambda m: (m.remote, m.name))
+    except providers.ProviderError as exc:
+        raise ClassifierError(str(exc)) from exc

@@ -2330,6 +2330,8 @@ export interface components {
             title_model?: string | null;
             /** Title Mode */
             title_mode?: ("parallel" | "sequential") | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /** ClassifierSettingsOut */
         ClassifierSettingsOut: {
@@ -2358,6 +2360,11 @@ export interface components {
              * @enum {string}
              */
             title_mode: "parallel" | "sequential";
+            /**
+             * Provider Id
+             * @default
+             */
+            provider_id: string;
         };
         /** ConfigOut */
         ConfigOut: {
@@ -6495,7 +6502,9 @@ export interface operations {
     };
     list_classifier_models_api_v1_settings_classifier_models_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6509,6 +6518,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OllamaModelsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
