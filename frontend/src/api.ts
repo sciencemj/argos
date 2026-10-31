@@ -44,7 +44,7 @@ export const client = createClient<paths>({
   baseUrl: `${globalThis.location?.origin}${BASE}`,
 });
 
-function errorText(message: string): string {
+export function errorText(message: string): string {
   if (language() === "ko") return message;
   const translated = t(message);
   if (translated !== message) return translated;
@@ -77,6 +77,7 @@ function errorText(message: string): string {
       "No classification model is configured.",
     ],
     [/^백업하지 못했어요: /, "Backup failed: "],
+    [/^(.+)에 연결할 수 없어요 \((.+)\)$/, "Can't reach $1 ($2)"],
   ];
   for (const [pattern, replacement] of replacements) {
     if (pattern.test(message)) return message.replace(pattern, replacement);
@@ -160,6 +161,13 @@ export function invalidateFor(
     lms_notice: [...feeds, ["materials"]],
     notification: [["notifications"]],
     area: [["channels"]],
+    // Agents and the classifier name their provider; model lists follow its address.
+    model_provider: [
+      ["providers"],
+      ["agents"],
+      ["settings", "classifier"],
+      ["settings", "ollama-models"],
+    ],
   };
   for (const key of keys[objectType] ?? []) {
     void qc.invalidateQueries({ queryKey: key });
@@ -1095,6 +1103,62 @@ function useUsageWrite(fn: () => Promise<Usage>) {
 
 export const useRefreshUsage = () =>
   useUsageWrite(() => call(client.POST("/api/v1/usage/refresh")));
+
+// --- model providers (Phase 20) ---------------------------------------------------
+
+export type Provider = Schemas["ProviderOut"];
+export type ProviderForm = Schemas["ProviderIn"];
+export type ProviderModels = Schemas["ProviderModelsOut"];
+
+export const useProviders = () =>
+  useQuery({
+    queryKey: ["providers"],
+    queryFn: () => call(client.GET("/api/v1/providers")),
+  });
+
+/** `editing`: the id of the provider being changed; without it a new one is made. */
+export const useSaveProvider = () =>
+  useWrite(
+    "model_provider",
+    ({ editing, ...body }: ProviderForm & { editing?: string }) =>
+      editing
+        ? call(
+            client.PATCH("/api/v1/providers/{provider_id}", {
+              params: { path: { provider_id: editing } },
+              body,
+            }),
+          )
+        : call(client.POST("/api/v1/providers", { body })),
+  );
+
+export const useDeleteProvider = () =>
+  useWrite("model_provider", (id: string) =>
+    call(
+      client.DELETE("/api/v1/providers/{provider_id}", {
+        params: { path: { provider_id: id } },
+      }),
+    ),
+  );
+
+/** Tries an address (and key) before it is saved; changes nothing. */
+export const useTestProvider = () =>
+  useMutation({
+    mutationFn: (body: Schemas["ProviderTestIn"]) =>
+      call(client.POST("/api/v1/providers/test", { body })),
+  });
+
+export const useProviderModels = (id: string | undefined) =>
+  useQuery({
+    queryKey: ["providers", id, "models"],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/providers/{provider_id}/models", {
+          params: { path: { provider_id: id ?? "" } },
+        }),
+      ),
+    enabled: Boolean(id),
+    staleTime: 60_000,
+  });
 
 // --- custom agents and debates (PLAN Phase 10) -------------------------------------
 

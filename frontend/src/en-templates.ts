@@ -61,4 +61,8 @@ export const enTemplates: Record<string, string> = {
   "지금 이 주소는 다른 곳({0})을 가리켜요. 켜기를 누르면 이 Argos로 바꿔요.":
     "This address points elsewhere now ({0}). Turning it on points it at this Argos.",
   "{0} 빼기": "Remove {0}",
+  '"{0}" 연결을 지울까요?': 'Remove the provider "{0}"?',
+  "연결됨 · 모델 {0}개": "Connected · {0} models",
+  "{0} 연결 수정": "Edit {0}",
+  "모델 {0}개": "{0} models",
 };

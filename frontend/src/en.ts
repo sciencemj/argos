@@ -747,4 +747,28 @@ export const en: Record<string, string> = {
   "이 tailnet에서 HTTPS(Serve)를 먼저 켜야 해요. 아래 링크에서 켠 뒤 다시 눌러 주세요":
     "Turn on HTTPS (Serve) for this tailnet first, using the link below, then try again.",
   "옵시디언, 애플 캘린더, LMS, 폰": "Obsidian, Apple Calendar, LMS, phone",
+  "OpenAI 호환": "OpenAI compatible",
+  "이 기기": "This device",
+  "내 네트워크": "My network",
+  "대화 내용이 이 컴퓨터와 내 네트워크 밖으로 나가요. 이 연결을 쓰는 에이전트와 분류에 보낸 글은 그 서비스가 받아요.":
+    "Conversations leave this computer and your network. That service receives what agents and classification using this provider send.",
+  "모델 연결": "Model providers",
+  "연결 추가": "Add provider",
+  "로컬 모델을 돌리는 서버(Ollama, OpenAI 호환 API)를 이름 붙여 등록해요. 커스텀 에이전트와 인박스 분류가 여기서 연결을 골라 써요.":
+    "Name the servers that run your models (Ollama or an OpenAI-compatible API). Custom agents and inbox classification pick a provider from here.",
+  "연결할 수 없어요": "Can't connect",
+  "예: 작업실 GPU": "e.g. Lab GPU",
+  종류: "Type",
+  주소: "Address",
+  "API 키 (선택)": "API key (optional)",
+  "새 키를 넣으면 바꿔요": "Enter a new key to replace it",
+  "저장하면 키를 지워요": "The key will be removed when you save",
+  저장됨: "Saved",
+  "키 지우기": "Remove key",
+  "더 엄격하게 표시": "Show as stricter",
+  자동: "Automatic",
+  "내 네트워크로": "As my network",
+  클라우드로: "As cloud",
+  "시험하는 중…": "Testing…",
+  "연결 시험": "Test connection",
 };

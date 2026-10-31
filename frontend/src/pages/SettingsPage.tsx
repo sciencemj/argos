@@ -43,6 +43,7 @@ import {
   OpsSection,
   UninstallSection,
 } from "./OpsSettings";
+import { ProviderSection } from "./ProviderSettings";
 import { RemoteSection } from "./RemoteSettings";
 import { ToolsSection } from "./Welcome";
 
@@ -169,6 +170,7 @@ export function SettingsPage() {
               <AgentSection />
               <ModelSection />
               <ToolsSection />
+              <ProviderSection />
               <CustomAgentsSection />
               <UsageSection />
             </>,
