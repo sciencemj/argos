@@ -2117,6 +2117,47 @@ export interface components {
          * @enum {string}
          */
         AgentBackend: "hermes" | "ollama" | "claude_code" | "codex";
+        /** AgentImportOut */
+        AgentImportOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /** Avatar */
+            avatar: string | null;
+            backend: components["schemas"]["AgentBackend"];
+            /** Model */
+            model: string | null;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** System Prompt */
+            system_prompt?: string | null;
+            /** Tools */
+            tools?: string[] | null;
+            /**
+             * Channel Ids
+             * @default []
+             */
+            channel_ids: string[];
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Problem */
+            problem?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+            /**
+             * Send Images
+             * @default false
+             */
+            send_images: boolean;
+            /** Notice */
+            notice?: string | null;
+        };
         /**
          * AgentIn
          * @description Create or change a custom agent (PLAN Phase 10 "봇 만들기").
@@ -2137,6 +2178,10 @@ export interface components {
             tools?: string[] | null;
             /** Channel Ids */
             channel_ids?: string[] | null;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Send Images */
+            send_images?: boolean | null;
         };
         /** AgentModelIn */
         AgentModelIn: {
@@ -2174,6 +2219,13 @@ export interface components {
             available: boolean;
             /** Problem */
             problem?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+            /**
+             * Send Images
+             * @default false
+             */
+            send_images: boolean;
         };
         /** AgentSettingsIn */
         AgentSettingsIn: {
@@ -4908,7 +4960,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentOut"];
+                    "application/json": components["schemas"]["AgentImportOut"];
                 };
             };
             /** @description Validation Error */

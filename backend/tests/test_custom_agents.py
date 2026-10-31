@@ -181,3 +181,52 @@ def test_local_model_calls_only_listed_tools() -> None:
     assert completions.requests[1]["messages"][-1] == {
         "role": "tool", "tool_call_id": "c1", "content": '[{"title": "캐시 정리"}]',
     }  # fmt: skip
+
+
+# --- model providers (PLAN Phase 20) -----------------------------------------------------
+
+
+def add_gpu(client: TestClient, name: str = "GPU") -> str:
+    body = {"name": name, "kind": "openai", "base_url": "http://gpu.test:1234/v1"}
+    return client.post("/api/v1/providers", json=body).json()["id"]
+
+
+def test_create_agent_with_provider(client: TestClient) -> None:
+    gpu = add_gpu(client)
+    made = client.post("/api/v1/agents", json=TUTOR | {"provider_id": gpu, "send_images": True})
+    assert made.status_code == 201, made.text
+    assert (made.json()["provider_id"], made.json()["send_images"]) == (gpu, True)
+    plain = client.post("/api/v1/agents", json=TUTOR | {"name": "plain"}).json()
+    assert (plain["provider_id"], plain["send_images"]) == (None, False)
+
+
+def test_export_writes_provider_name(client: TestClient) -> None:
+    gpu = add_gpu(client)
+    client.post("/api/v1/agents", json=TUTOR | {"provider_id": gpu, "send_images": True})
+    text = client.get("/api/v1/agents/tutor/export").text
+    assert "model: qwen3\nprovider: GPU\nsend_images: true\n" in text
+
+
+def test_import_matches_provider_by_name(client: TestClient) -> None:
+    gpu = add_gpu(client)
+    client.post("/api/v1/agents", json=TUTOR | {"provider_id": gpu})
+    text = client.get("/api/v1/agents/tutor/export").text
+    client.delete("/api/v1/agents/tutor")
+    imported = client.post("/api/v1/agents/import", json={"yaml": text}).json()
+    assert (imported["provider_id"], imported["notice"]) == (gpu, None)
+    assert imported["tools"] == TUTOR["tools"]
+
+
+def test_import_unknown_provider_falls_back(client: TestClient) -> None:
+    text = "name: tutor\ndisplay_name: T\nbackend: llm\nprovider: Elsewhere\n"
+    imported = client.post("/api/v1/agents/import", json={"yaml": text})
+    assert imported.status_code == 201, imported.text
+    body = imported.json()
+    assert body["provider_id"] is None
+    assert body["notice"] == "'Elsewhere' 연결이 없어 기본 연결로 가져왔어요"
+
+
+def test_import_old_yaml_without_provider(client: TestClient) -> None:
+    text = "name: tutor\ndisplay_name: T\nbackend: llm\n"
+    body = client.post("/api/v1/agents/import", json={"yaml": text}).json()
+    assert (body["provider_id"], body["send_images"], body["notice"]) == (None, False, None)

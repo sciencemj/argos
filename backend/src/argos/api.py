@@ -489,6 +489,12 @@ class AgentOut(Out):
     channel_ids: list[str] = []  # channels where it answers /ask
     available: bool = True
     problem: str | None = None  # why it cannot answer right now
+    provider_id: str | None = None  # local-model agents: None = the default provider
+    send_images: bool = False  # OpenAI-compatible providers: send attached images
+
+
+class AgentImportOut(AgentOut):
+    notice: str | None = None  # e.g. the YAML's provider is missing here
 
 
 class AgentIn(BaseModel):
@@ -502,6 +508,8 @@ class AgentIn(BaseModel):
     system_prompt: str | None = Field(default=None, max_length=20000)
     tools: list[str] | None = None
     channel_ids: list[str] | None = None
+    provider_id: str | None = None
+    send_images: bool | None = None
 
 
 class AgentYaml(BaseModel):
@@ -1337,6 +1345,8 @@ async def export_agent(session: Session, name: str) -> Response:
         "avatar": agent.avatar,
         "backend": YAML_NAMES.get(AgentBackend(agent.backend), str(agent.backend)),
         "model": agent.model,
+        "provider": await _provider_name(session, agent.provider_id),
+        "send_images": True if agent.send_images else None,
         "system_prompt": agent.system_prompt,
         "tools": agent.tools_json or [],
         "default_channels": [f"#{c}" for c in channels.all()],
@@ -1351,8 +1361,15 @@ async def export_agent(session: Session, name: str) -> Response:
     )
 
 
+async def _provider_name(session: AsyncSession, provider_id: str | None) -> str | None:
+    if provider_id is None:
+        return None
+    row = await session.get(ModelProvider, provider_id)
+    return row.name if row is not None else None
+
+
 @router.post("/agents/import", status_code=status.HTTP_201_CREATED)
-async def import_agent(session: Session, config: Config, body: AgentYaml) -> AgentOut:
+async def import_agent(session: Session, config: Config, body: AgentYaml) -> AgentImportOut:
     try:
         data = yaml.safe_load(body.yaml)
     except yaml.YAMLError as exc:
@@ -1377,6 +1394,15 @@ async def import_agent(session: Session, config: Config, body: AgentYaml) -> Age
         tools = [str(t) for t in cast(list[object], raw_tools)]
     else:
         tools = [str(raw_tools)] if raw_tools else []
+    provider_id: str | None = None
+    notice: str | None = None
+    if spec.get("provider"):
+        wanted_provider = str(spec["provider"]).strip()
+        provider_id = await session.scalar(
+            select(ModelProvider.id).where(ModelProvider.name == wanted_provider)
+        )
+        if provider_id is None:
+            notice = f"'{wanted_provider}' 연결이 없어 기본 연결로 가져왔어요"
     body_in = AgentIn(
         name=str(spec.get("name") or ""),
         display_name=str(spec.get("display_name") or spec.get("name") or ""),
@@ -1386,8 +1412,13 @@ async def import_agent(session: Session, config: Config, body: AgentYaml) -> Age
         system_prompt=str(spec["system_prompt"]) if spec.get("system_prompt") else None,
         tools=tools,
         channel_ids=channel_ids,
+        provider_id=provider_id,
+        send_images=spec.get("send_images") is True,
     )
-    return await _save_agent(session, config, body_in, None)
+    saved = await _save_agent(session, config, body_in, None)
+    return AgentImportOut.model_validate(
+        {**saved.model_dump(), "tools_json": saved.tools, "notice": notice}
+    )
 
 
 @router.post("/agents/{name}/dm")
