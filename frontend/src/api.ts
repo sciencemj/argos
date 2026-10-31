@@ -615,10 +615,15 @@ export const useClassifierSettings = () =>
     queryFn: () => call(client.GET("/api/v1/settings/classifier")),
   });
 
-export const useOllamaModels = () =>
+export const useOllamaModels = (providerId?: string) =>
   useQuery({
-    queryKey: ["settings", "ollama-models"],
-    queryFn: () => call(client.GET("/api/v1/settings/classifier/models")),
+    queryKey: ["settings", "ollama-models", providerId ?? ""],
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/settings/classifier/models", {
+          params: { query: providerId ? { provider_id: providerId } : {} },
+        }),
+      ),
     staleTime: 0,
   });
 
@@ -629,6 +634,7 @@ export function useSaveClassifier() {
       model: string | null;
       title_model?: string;
       title_mode?: "parallel" | "sequential";
+      provider_id?: string;
     }) => call(client.PUT("/api/v1/settings/classifier", { body })),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["settings"] });
@@ -1218,13 +1224,18 @@ export const useDebateToNote = () =>
     call(client.POST("/api/v1/debates/{debate_id}/note", debatePath(id))),
   );
 
-export const useAgentModels = (backend: string) =>
+export const useAgentModels = (backend: string, providerId?: string | null) =>
   useQuery({
-    queryKey: ["agents", "models", backend],
+    queryKey: ["agents", "models", backend, providerId ?? ""],
     queryFn: () =>
       call(
         client.GET("/api/v1/agents/models", {
-          params: { query: { backend: backend as Agent["backend"] } },
+          params: {
+            query: {
+              backend: backend as Agent["backend"],
+              ...(providerId ? { provider_id: providerId } : {}),
+            },
+          },
         }),
       ),
     staleTime: 10 * 60_000, // listing starts the CLI; the server caches too

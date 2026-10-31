@@ -9,6 +9,7 @@ import {
   useChannels,
   useDeleteAgent,
   useImportAgent,
+  useProviders,
   useSaveAgent,
 } from "../api";
 import { t, tr, tt } from "../i18n";
@@ -23,8 +24,8 @@ const BACKENDS = [
   { id: "codex", label: "Codex", hint: tr("Codex 로그인으로 동작") },
   {
     id: "ollama",
-    label: tr("로컬 모델"),
-    hint: tr("Ollama 모델, 이 컴퓨터에서만"),
+    label: tr("모델 연결"),
+    hint: tr("Ollama나 OpenAI 호환 서버의 모델"),
   },
 ] as const;
 
@@ -37,6 +38,7 @@ const KIND_TEXT = {
 /** Custom agents (PLAN Phase 10): "봇 만들기", YAML import/export. */
 export function CustomAgentsSection() {
   const agents = useAgents();
+  const providers = useProviders();
   const remove = useDeleteAgent();
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [importing, setImporting] = useState(false);
@@ -89,6 +91,9 @@ export function CustomAgentsSection() {
             </span>
             <span className="truncate text-[12px] text-text-3">
               {BACKENDS.find((b) => b.id === a.backend)?.label}
+              {a.provider_id
+                ? ` · ${providers.data?.find((p) => p.id === a.provider_id)?.name ?? ""}`
+                : ""}
               {a.model ? ` · ${a.model}` : ""}{" "}
               {t(
                 `· 도구 ${a.tools?.length ?? 0}개`,
@@ -152,6 +157,9 @@ function AgentDialog({
   const save = useSaveAgent();
   const tools = useAgentTools();
   const channels = useChannels();
+  const providers = useProviders();
+  const providerList = providers.data ?? [];
+  const defaultProvider = providerList.find((p) => p.is_default);
   const [name, setName] = useState(agent?.name ?? "");
   const [displayName, setDisplayName] = useState(agent?.display_name ?? "");
   const [avatar, setAvatar] = useState(agent?.avatar ?? "");
@@ -159,6 +167,15 @@ function AgentDialog({
     agent?.backend ?? "claude_code",
   );
   const [model, setModel] = useState(agent?.model ?? "");
+  const [providerId, setProviderId] = useState<string>(
+    agent?.provider_id ?? "",
+  );
+  const [sendImages, setSendImages] = useState(agent?.send_images ?? false);
+  // "" until the list loads: the default provider.
+  const chosenProvider =
+    providerList.find((p) => p.id === providerId) ?? defaultProvider;
+  const local = backend === "ollama";
+  const openai = local && chosenProvider?.kind === "openai";
   const [prompt, setPrompt] = useState(agent?.system_prompt ?? "");
   const [allowed, setAllowed] = useState<string[]>(agent?.tools ?? []);
   const [channelIds, setChannelIds] = useState<string[]>(
@@ -184,6 +201,11 @@ function AgentDialog({
         system_prompt: prompt.trim() || null,
         tools: allowed,
         channel_ids: channelIds,
+        provider_id:
+          local && chosenProvider && !chosenProvider.is_default
+            ? chosenProvider.id
+            : null,
+        send_images: openai && sendImages,
       },
       { onSuccess: onClose },
     );
@@ -250,8 +272,48 @@ function AgentDialog({
               ))}
             </select>
           </label>
-          <ModelField backend={backend} value={model} onChange={setModel} />
+          {local ? (
+            <label className="flex flex-col gap-1">
+              <span className={label}>{tr("모델 연결")}</span>
+              <select
+                className={field}
+                value={chosenProvider?.id ?? ""}
+                onChange={(e) => {
+                  setProviderId(e.target.value);
+                  setModel("");
+                }}
+              >
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <ModelField backend={backend} value={model} onChange={setModel} />
+          )}
         </div>
+        {local && (
+          <div className="grid grid-cols-2 items-end gap-3">
+            <ModelField
+              backend={backend}
+              providerId={chosenProvider?.id}
+              value={model}
+              onChange={setModel}
+            />
+            {openai && (
+              <label className="flex h-10 items-center gap-2 text-[13px] text-text-2">
+                <input
+                  type="checkbox"
+                  checked={sendImages}
+                  onChange={(e) => setSendImages(e.target.checked)}
+                />
+                {tr("이미지 보내기")}
+              </label>
+            )}
+          </div>
+        )}
         <label className="flex flex-col gap-1">
           <span className={label}>
             {tr("시스템 프롬프트 (역할·말투·규칙)")}
@@ -334,14 +396,16 @@ function AgentDialog({
  * installed Ollama models), or free text when it cannot list them. */
 function ModelField({
   backend,
+  providerId,
   value,
   onChange,
 }: {
   backend: string;
+  providerId?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
-  const models = useAgentModels(backend);
+  const models = useAgentModels(backend, providerId);
   const list = models.data?.models ?? [];
   const byDefault = list.find((m) => m.default);
   const known = list.some((m) => m.id === value);

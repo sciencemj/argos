@@ -17,6 +17,7 @@ import {
   useICloud,
   useJobSettings,
   useOllamaModels,
+  useProviders,
   useRefreshUsage,
   useResolveConflict,
   useRotateCalendarFeed,
@@ -235,7 +236,16 @@ const TITLE_MODES: { value: TitleMode; title: string; meta: string }[] = [
 /** Picks which installed Ollama model classifies inbox text (PLAN §9). */
 export function ClassifierSection() {
   const current = useClassifierSettings();
-  const models = useOllamaModels();
+  const providers = useProviders();
+  const [providerChoice, setProviderChoice] = useState<string | null>(null);
+  const activeProvider = current.data?.provider_id ?? "";
+  const selectedProvider = providerChoice ?? activeProvider;
+  // Decision models and /api/tags are Ollama's: OpenAI-compatible servers cannot classify.
+  const ollamaProviders = (providers.data ?? []).filter(
+    (p) => p.kind === "ollama",
+  );
+  const where = ollamaProviders.find((p) => p.id === selectedProvider);
+  const models = useOllamaModels(selectedProvider || undefined);
   const save = useSaveClassifier();
   const [choice, setChoice] = useState<string | null>(null);
   const [titleChoice, setTitleChoice] = useState<string | null>(null);
@@ -253,6 +263,7 @@ export function ClassifierSection() {
   const activeMode: TitleMode = current.data?.title_mode ?? "parallel";
   const selectedMode = modeChoice ?? activeMode;
   const changed =
+    selectedProvider !== activeProvider ||
     selected !== active ||
     selectedTitle !== activeTitle ||
     selectedMode !== activeMode;
@@ -338,6 +349,26 @@ export function ClassifierSection() {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
+          {ollamaProviders.length > 1 && (
+            <label className="flex flex-col gap-1">
+              <span className={label}>{tr("모델 연결")}</span>
+              <select
+                className={field}
+                value={selectedProvider}
+                onChange={(e) => {
+                  setProviderChoice(e.target.value);
+                  setChoice(null);
+                  setTitleChoice(null);
+                }}
+              >
+                {ollamaProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {models.isLoading && (
             <p className="m-0 text-[13px] text-meta">
               {tr("Ollama 모델을 불러오는 중…")}
@@ -364,7 +395,7 @@ export function ClassifierSection() {
                 m.parameter_size,
                 m.remote
                   ? tr("입력한 내용이 ollama.com으로 전송돼요")
-                  : tr("이 컴퓨터에서만 실행돼요"),
+                  : RUNS_AT[where?.locality ?? "device"],
               ]
                 .filter(Boolean)
                 .join(" · "),
@@ -475,9 +506,11 @@ export function ClassifierSection() {
                   ? selectedTitle
                   : undefined,
                 title_mode: selectedModel?.decision ? selectedMode : undefined,
+                provider_id: selectedProvider || undefined,
               },
               {
                 onSuccess: () => {
+                  setProviderChoice(null);
                   setChoice(null);
                   setTitleChoice(null);
                   setModeChoice(null);
@@ -498,16 +531,29 @@ export function ClassifierSection() {
   );
 }
 
+const RUNS_AT = {
+  device: tr("이 컴퓨터에서만 실행돼요"),
+  network: tr("내 네트워크의 서버에서 실행돼요"),
+  cloud: tr("입력한 내용이 외부 서버로 전송돼요"),
+} as const;
+
 const BACKEND_TEXT: Record<string, string> = {
   hermes: tr("Hermes 게이트웨이 · 자체 도구와 메모리를 가진 에이전트"),
   claude_code: tr("Claude Code CLI · Argos 도구만 사용 · Claude 사용량을 씀"),
   codex: tr("Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀"),
-  ollama: tr("Ollama 로컬 모델 · 이 컴퓨터에서만 실행 (인박스 분류 모델 사용)"),
+  ollama: tr("모델 연결 · 인박스 분류와 같은 연결과 모델 사용"),
 };
 
 /** App-wide default agent: answers /ask where the channel sets none (user decision). */
 function ModelRow({ agent }: { agent: Agent }) {
-  const models = useAgentModels(agent.backend);
+  // The built-in local agent runs where the inbox classifier runs (Phase 20).
+  const classifierSettings = useClassifierSettings();
+  const models = useAgentModels(
+    agent.backend,
+    agent.backend === "ollama"
+      ? classifierSettings.data?.provider_id || undefined
+      : undefined,
+  );
   const save = useSetAgentModel();
   const current = agent.model ?? "";
   const known = models.data?.models ?? [];

@@ -268,7 +268,6 @@ export const en: Record<string, string> = {
     "Notes and files from this folder appear in the channel; checkbox tasks from notes sync to Kanban.",
   "Claude Code 로그인으로 동작": "Operates via Claude Code login",
   "Codex 로그인으로 동작": "Operates via Codex login",
-  "Ollama 모델, 이 컴퓨터에서만": "Ollama model, local only",
   읽기: "Read",
   쓰기: "Write",
   "삭제 (허용해도 항상 사용자 승인)":
@@ -491,8 +490,6 @@ export const en: Record<string, string> = {
     "Claude Code CLI · Uses only Argos tools · Charges for Claude usage",
   "Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀":
     "Codex CLI · Uses only Argos tools · Charges for Codex usage",
-  "Ollama 로컬 모델 · 이 컴퓨터에서만 실행 (인박스 분류 모델 사용)":
-    "Ollama local model · Runs only on this computer (uses Inbox categorization model)",
   "인박스 분류 모델과 같게": "Same as Inbox categorization model",
   "도구 기본값": "Tool default",
   "에이전트 모델": "Agent model",
@@ -771,4 +768,12 @@ export const en: Record<string, string> = {
   클라우드로: "As cloud",
   "시험하는 중…": "Testing…",
   "연결 시험": "Test connection",
+  "Ollama나 OpenAI 호환 서버의 모델":
+    "A model on Ollama or an OpenAI-compatible server",
+  "이미지 보내기": "Send images",
+  "내 네트워크의 서버에서 실행돼요": "Runs on a server in your network",
+  "입력한 내용이 외부 서버로 전송돼요":
+    "What you type is sent to an outside server",
+  "모델 연결 · 인박스 분류와 같은 연결과 모델 사용":
+    "Model provider · uses the inbox classifier's provider and model",
 };
