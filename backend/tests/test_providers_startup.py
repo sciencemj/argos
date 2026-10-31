@@ -20,30 +20,35 @@ def start(settings: Settings, keychain: FakeKeychain) -> Iterator[TestClient]:
         yield client
 
 
-async def rows(client: TestClient) -> list[ModelProvider]:
+def sync_rows(client: TestClient) -> list[ModelProvider]:
+    """Read model_provider rows on the app's own event loop (the TestClient portal)."""
     state: Any = cast(Any, client.app).state
-    session: AsyncSession
-    async with state.sessionmaker() as session:
-        return list((await session.scalars(select(ModelProvider))).all())
+
+    async def read() -> list[ModelProvider]:
+        session: AsyncSession
+        async with state.sessionmaker() as session:
+            return list((await session.scalars(select(ModelProvider))).all())
+
+    return cast(Any, client).portal.call(read)
 
 
 def with_env(settings: Settings, **changes: Any) -> Settings:
     return settings.model_copy(update=changes)
 
 
-async def test_startup_creates_default_from_env(settings: Settings) -> None:
+def test_startup_creates_default_from_env(settings: Settings) -> None:
     keychain = FakeKeychain()
     config = with_env(
         settings, classifier_base_url="http://gpu.test:11434/v1", classifier_api_key=SecretStr("k1")
     )
     for client in start(config, keychain):
-        [p] = await rows(client)
+        [p] = sync_rows(client)
         assert (p.name, p.kind, p.base_url) == ("이 Mac", "ollama", "http://gpu.test:11434/v1")
         assert p.is_default and p.has_api_key
         assert keychain.saved == {p.id: "k1"}
 
 
-async def test_startup_hermes_does_not_copy_key(settings: Settings) -> None:
+def test_startup_hermes_does_not_copy_key(settings: Settings) -> None:
     keychain = FakeKeychain()
     config = with_env(
         settings,
@@ -52,17 +57,17 @@ async def test_startup_hermes_does_not_copy_key(settings: Settings) -> None:
         classifier_api_key=SecretStr("hk"),
     )
     for client in start(config, keychain):
-        [p] = await rows(client)
+        [p] = sync_rows(client)
         assert p.base_url == "http://127.0.0.1:11434/v1"
         assert p.has_api_key is False
         assert keychain.saved == {}
 
 
-async def test_second_start_creates_nothing(settings: Settings) -> None:
+def test_second_start_creates_nothing(settings: Settings) -> None:
     for _ in start(settings, FakeKeychain()):
         pass
     for client in start(settings, FakeKeychain()):
-        assert len(await rows(client)) == 1
+        assert len(sync_rows(client)) == 1
 
 
 def test_startup_loads_snapshot(settings: Settings) -> None:
@@ -115,3 +120,31 @@ def test_resolve_falls_back_to_default() -> None:
         providers.classifier_provider(config.model_copy(update={"classifier_provider_id": "b"}))
         == b
     )
+
+
+def test_startup_survives_unreadable_keychain(settings: Settings) -> None:
+    keychain = FakeKeychain()
+    config = with_env(settings, classifier_api_key=SecretStr("k1"))
+    for _ in start(config, keychain):
+        pass
+    keychain.fail_get = True
+    for client in start(config, keychain):
+        state: Any = cast(Any, client.app).state
+        [p] = state.settings.model_providers
+        assert p.api_key is None
+        assert client.get("/api/v1/agents").status_code == 200
+
+
+def test_startup_survives_keychain_write_failure(settings: Settings) -> None:
+    keychain = FakeKeychain(fail=True)
+    config = with_env(settings, classifier_api_key=SecretStr("k1"))
+    for client in start(config, keychain):
+        [p] = sync_rows(client)
+        assert p.has_api_key is False
+
+
+def test_startup_survives_bad_env_address(settings: Settings) -> None:
+    config = with_env(settings, classifier_base_url="localhost:11434")
+    for client in start(config, FakeKeychain()):
+        [p] = sync_rows(client)
+        assert p.base_url == "http://127.0.0.1:11434/v1"

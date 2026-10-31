@@ -7,12 +7,14 @@ Rows live in `model_provider`; API keys live in the macOS Keychain. Runtime code
 
 import asyncio
 import ipaddress
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from urllib.parse import urlsplit
 
 import httpx2
 import keyring
+import keyring.errors
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +37,7 @@ NETWORKS = tuple(
 NETWORK_SUFFIXES = (".ts.net", ".local")
 LIST_TIMEOUT = 5
 KEYCHAIN_SERVICE = "Argos model provider API key"
+log = logging.getLogger(__name__)
 DEFAULT_NAME = "이 Mac"
 DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 
@@ -235,6 +238,14 @@ async def ensure_default_provider(
         return
     ollama = base.classifier_provider == "ollama"
     url = (base.classifier_base_url if ollama else None) or DEFAULT_BASE_URL
+    try:
+        url = normalize_base_url("ollama", url)
+    except ValueError:
+        # Before providers a bad address only broke classification: keep starting.
+        log.warning(
+            "ARGOS_CLASSIFIER_BASE_URL is not an http(s) address; using %s", DEFAULT_BASE_URL
+        )
+        url = DEFAULT_BASE_URL
     key = base.classifier_api_key.get_secret_value() if ollama and base.classifier_api_key else None
     provider = await services.create_provider(
         session,
@@ -242,16 +253,29 @@ async def ensure_default_provider(
         "system",
     )
     provider.is_default = True
-    await session.commit()
     if key is not None:
-        await asyncio.to_thread(keychain.set, provider.id, key)
+        try:
+            await asyncio.to_thread(keychain.set, provider.id, key)
+        except keyring.errors.KeyringError:
+            log.warning("could not store the classifier API key in the Keychain")
+            provider.has_api_key = False
+    await session.commit()
+
+
+async def _read_key(keychain: KeyStore, row: ModelProvider) -> str | None:
+    """A locked or denied Keychain must not stop the app: that provider runs keyless."""
+    try:
+        return await asyncio.to_thread(keychain.get, row.id)
+    except keyring.errors.KeyringError:
+        log.warning("could not read the API key of model provider %r", row.name)
+        return None
 
 
 async def load_providers(session: AsyncSession, keychain: KeyStore) -> tuple[ProviderConfig, ...]:
     rows = (await session.scalars(select(ModelProvider).order_by(ModelProvider.name))).all()
     loaded: list[ProviderConfig] = []
     for row in rows:
-        key = await asyncio.to_thread(keychain.get, row.id) if row.has_api_key else None
+        key = await _read_key(keychain, row) if row.has_api_key else None
         locality = effective_locality(
             locality_of(row.base_url), cast(Locality | None, row.strict_locality)
         )

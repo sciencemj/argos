@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import secrets
 import shutil
@@ -9,6 +10,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import urlsplit
 
 import httpx2
 import keyring.errors
@@ -99,6 +101,7 @@ def get_settings(request: Request) -> Settings:
 Session = Annotated[AsyncSession, Depends(get_session)]
 Config = Annotated[Settings, Depends(get_settings)]
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1")
 
 
@@ -2801,9 +2804,10 @@ async def update_provider(
     request: Request, session: Session, provider_id: str, body: ProviderIn
 ) -> ProviderOut:
     changes = body.model_dump(exclude={"api_key"}, exclude_unset=True)
+    # Refuse a bad edit before the Keychain changes: a rejected edit keeps its key.
+    await services.check_provider_update(session, provider_id, changes)
     if body.api_key is not None:
         key = body.api_key.strip()
-        await services.get_provider(session, provider_id)  # 404 before touching the Keychain
         await _keychain(request, "set" if key else "delete", provider_id, key)
         changes["has_api_key"] = bool(key)
     row = await services.update_provider(session, provider_id, changes, USER)
@@ -2813,8 +2817,14 @@ async def update_provider(
 
 @router.delete("/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_provider(request: Request, session: Session, provider_id: str) -> None:
+    row = await services.get_provider(session, provider_id)
+    had_key = row.has_api_key
     await services.delete_provider(session, provider_id, USER)
-    await _keychain(request, "delete", provider_id)
+    if had_key:
+        try:
+            await _keychain(request, "delete", provider_id)
+        except services.InvalidError:  # the provider is gone; a stale item only costs space
+            logger.warning("could not remove the Keychain item of a deleted model provider")
     await _reload_providers(request, session)
 
 
@@ -2826,9 +2836,15 @@ async def try_provider(request: Request, body: ProviderTestIn) -> ProviderModels
     except ValueError as exc:
         raise services.InvalidError(str(exc)) from exc
     key = (body.api_key or "").strip() or None
-    if key is None and body.provider_id:
-        keychain: providers.KeyStore = request.app.state.provider_keychain
-        key = await asyncio.to_thread(keychain.get, body.provider_id)
+    current: Settings = request.app.state.settings
+    saved = next((p for p in current.model_providers if p.id == body.provider_id), None)
+    # The saved key goes only to the host it was saved for, never to a mistyped one.
+    if (
+        key is None
+        and saved is not None
+        and urlsplit(saved.base_url).netloc == urlsplit(url).netloc
+    ):
+        key = saved.api_key
     locality = providers.locality_of(url)
     trial = providers.ProviderConfig("", "", body.kind, url, key, locality, False)
     return await _models_out(trial)

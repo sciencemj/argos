@@ -95,9 +95,14 @@ class FakeKeychain:
 
     def __init__(self, fail: bool = False) -> None:
         self.saved: dict[str, str] = {}
-        self.fail = fail
+        self.fail = fail  # set() and delete() raise
+        self.fail_get = False
 
     def get(self, key: str) -> str | None:
+        if self.fail_get:
+            from keyring.errors import KeyringError
+
+            raise KeyringError("locked")
         return self.saved.get(key)
 
     def set(self, key: str, value: str) -> None:
@@ -108,4 +113,8 @@ class FakeKeychain:
         self.saved[key] = value
 
     def delete(self, key: str) -> None:
+        if self.fail:
+            from keyring.errors import PasswordDeleteError
+
+            raise PasswordDeleteError("locked")
         self.saved.pop(key, None)

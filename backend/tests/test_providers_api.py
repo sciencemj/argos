@@ -202,3 +202,44 @@ def test_runner_sees_new_provider(api: TestClient) -> None:
     assert pid in [p.id for p in s.settings.model_providers]
     [gpu] = [p for p in s.runner.settings.model_providers if p.id == pid]
     assert gpu.api_key == "k"
+
+
+# --- final review fixes ----------------------------------------------------------------
+
+
+def test_rejected_edit_keeps_key(api: TestClient, keychain: FakeKeychain) -> None:
+    pid = api.post("/api/v1/providers", json=GPU).json()["id"]
+    bad = api.patch(f"/api/v1/providers/{pid}", json={"api_key": "new", "base_url": "ftp://x"})
+    assert bad.status_code == 422
+    assert keychain.saved == {pid: "k"}
+    api.post(
+        "/api/v1/providers", json={"name": "Other", "kind": "ollama", "base_url": "http://o.test"}
+    )
+    taken = api.patch(f"/api/v1/providers/{pid}", json={"api_key": "", "name": "Other"})
+    assert taken.status_code == 409
+    assert keychain.saved == {pid: "k"}
+
+
+def test_delete_survives_keychain_failure(api: TestClient, keychain: FakeKeychain) -> None:
+    pid = api.post("/api/v1/providers", json=GPU).json()["id"]
+    keychain.fail = True
+    assert api.delete(f"/api/v1/providers/{pid}").status_code == 204
+    assert pid not in [p.id for p in state(api).settings.model_providers]
+
+
+def test_test_reuses_saved_key_only_for_same_host(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid = api.post("/api/v1/providers", json=GPU).json()["id"]
+    keys: list[str | None] = []
+
+    async def fake(p: ProviderConfig, *, decision: bool = False) -> list[ProviderModel]:
+        keys.append(p.api_key)
+        return []
+
+    monkeypatch.setattr(providers, "list_models", fake)
+    api.post(
+        "/api/v1/providers/test",
+        json={"kind": "ollama", "base_url": "http://typo.test:11434", "provider_id": pid},
+    )
+    assert keys == [None]

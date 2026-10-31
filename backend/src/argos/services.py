@@ -2418,6 +2418,15 @@ async def update_provider(
     )
 
 
+async def check_provider_update(
+    session: AsyncSession, provider_id: str, changes: dict[str, Any]
+) -> None:
+    """Raises what update_provider would, without saving: lets the caller refuse a bad
+    edit before touching the Keychain."""
+    provider = await _get(session, ModelProvider, provider_id)
+    await _check_provider_fields(session, dict(changes), provider)
+
+
 async def provider_usage(session: AsyncSession, provider_id: str) -> list[str]:
     """Where a provider is chosen, for the "in use" refusal."""
     agents = await session.scalars(
