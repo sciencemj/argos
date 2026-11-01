@@ -398,24 +398,32 @@ body {
 
 /* Private chat: the layer grows as a circle from the ghost button (--x, --y set by the
    component) and shrinks back into it; a faint ring spreads from the same point. */
+/* Only the radius animates: the centre jumps to the pressed button at once. Animating
+   clip-path itself would also slide the centre from the previous origin. */
+@property --private-r {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
 .private-layer {
-  clip-path: circle(0px at var(--x) var(--y));
+  --private-r: 0px;
+  clip-path: circle(var(--private-r) at var(--x) var(--y));
   visibility: hidden;
   pointer-events: none;
 }
 .private-layer[data-open="true"] {
-  clip-path: circle(150% at var(--x) var(--y));
+  --private-r: 150%;
   visibility: visible;
   pointer-events: auto;
 }
 .private-animate {
   transition:
-    clip-path 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
+    --private-r 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
     visibility 0s linear 0.65s;
 }
 .private-animate[data-open="true"] {
   transition:
-    clip-path 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
+    --private-r 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
     visibility 0s;
 }
 @keyframes private-ring {

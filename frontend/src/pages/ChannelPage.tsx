@@ -27,7 +27,7 @@ import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
 import { PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
-import { PrivateGhost, PrivateOverlay } from "./PrivateLayer";
+import { PrivateCovered, PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
 const tab =
   "flex h-8 items-center rounded-full border border-transparent px-3.5 text-text-3 aria-[current=page]:border-line-soft aria-[current=page]:bg-card aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:shadow-sm";
@@ -268,61 +268,65 @@ function DMPage({ channel }: { channel: Channel }) {
   const shown = chosen ?? current;
   return (
     <>
-      <header
-        data-tauri-drag-region="deep"
-        className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 max-md:px-4 pt-[18px] pb-4`}
-      >
-        <AgentAvatar id={agent?.name} size={36} />
-        <div className="flex min-w-0 grow flex-col">
-          <h1 className="m-0 truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink max-md:text-[22px]">
-            {agent?.display_name ?? tr("에이전트")}
-          </h1>
-          {agent && !agent.available && (
-            <span className="text-[12.5px] text-danger">{agent.problem}</span>
+      <PrivateCovered agent={agent}>
+        <header
+          data-tauri-drag-region="deep"
+          className={`${FEED_COLUMN} flex items-center gap-3.5 px-8 max-md:px-4 pt-[18px] pb-4`}
+        >
+          <AgentAvatar id={agent?.name} size={36} />
+          <div className="flex min-w-0 grow flex-col">
+            <h1 className="m-0 truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink max-md:text-[22px]">
+              {agent?.display_name ?? tr("에이전트")}
+            </h1>
+            {agent && !agent.available && (
+              <span className="text-[12.5px] text-danger">{agent.problem}</span>
+            )}
+          </div>
+          {list.length > 0 && (
+            <select
+              aria-label={tr("대화 고르기")}
+              className={`${field} w-auto max-w-[280px] truncate max-md:max-w-[120px]`}
+              value={shown?.id ?? ""}
+              onChange={(e) =>
+                setPicked(
+                  e.target.value === current?.id ? null : e.target.value,
+                )
+              }
+            >
+              {list.map((s, i) => (
+                <option key={s.id} value={s.id}>
+                  {(s.title ?? tr("새 대화")) +
+                    ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
+                    (i === 0 ? ` ${tr("(현재)")}` : "")}
+                </option>
+              ))}
+            </select>
           )}
-        </div>
-        {list.length > 0 && (
-          <select
-            aria-label={tr("대화 고르기")}
-            className={`${field} w-auto max-w-[280px] truncate max-md:max-w-[120px]`}
-            value={shown?.id ?? ""}
-            onChange={(e) =>
-              setPicked(e.target.value === current?.id ? null : e.target.value)
+          <PrivateGhost agent={agent} />
+          <button
+            type="button"
+            aria-label={tr("새 대화")}
+            className={`${btn.outline} shrink-0 whitespace-nowrap max-md:px-2.5`}
+            disabled={startSession.isPending}
+            onClick={() =>
+              startSession.mutate(channel.id, {
+                onSuccess: () => setPicked(null),
+              })
             }
           >
-            {list.map((s, i) => (
-              <option key={s.id} value={s.id}>
-                {(s.title ?? tr("새 대화")) +
-                  ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
-                  (i === 0 ? ` ${tr("(현재)")}` : "")}
-              </option>
-            ))}
-          </select>
+            <PlusIcon size={14} />
+            <span className="max-md:hidden">{tr("새 대화")}</span>
+          </button>
+        </header>
+        {sessions.isSuccess && (
+          <Feed
+            key={`${channel.id}-${shown?.id ?? ""}`}
+            channel={channel}
+            sessionId={shown?.id}
+            pickedSession={chosen?.id}
+          />
         )}
-        <PrivateGhost agent={agent} />
-        <button
-          type="button"
-          aria-label={tr("새 대화")}
-          className={`${btn.outline} shrink-0 whitespace-nowrap max-md:px-2.5`}
-          disabled={startSession.isPending}
-          onClick={() =>
-            startSession.mutate(channel.id, {
-              onSuccess: () => setPicked(null),
-            })
-          }
-        >
-          <PlusIcon size={14} />
-          <span className="max-md:hidden">{tr("새 대화")}</span>
-        </button>
-      </header>
-      {sessions.isSuccess && (
-        <Feed
-          key={`${channel.id}-${shown?.id ?? ""}`}
-          channel={channel}
-          sessionId={shown?.id}
-          pickedSession={chosen?.id}
-        />
-      )}
+      </PrivateCovered>
       {/* Covers the DM (main is relative); kept while the app runs. */}
       <PrivateOverlay agent={agent} />
     </>

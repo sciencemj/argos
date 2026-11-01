@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   useEffect,
   useRef,
   useState,
@@ -79,6 +80,24 @@ function GhostButton({
 }
 
 /** The DM header's switch to private chat (only for agents whose model stays local). */
+/** The normal DM under the private layer: out of reach (focus, clicks, screen
+ * readers) while private, so typing never lands in the saved conversation. */
+export function PrivateCovered({
+  agent,
+  children,
+}: {
+  agent: Agent | undefined;
+  children: ReactNode;
+}) {
+  const mode = usePrivateMode(agent?.name ?? "");
+  const covered = Boolean(agent?.private_ok && mode.open);
+  return (
+    <div className="contents" inert={covered}>
+      {children}
+    </div>
+  );
+}
+
 export function PrivateGhost({ agent }: { agent: Agent | undefined }) {
   const mode = usePrivateMode(agent?.name ?? "");
   if (!agent?.private_ok) return null;

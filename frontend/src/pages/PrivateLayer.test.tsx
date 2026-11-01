@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Agent } from "../api";
-import { PrivateGhost, PrivateOverlay } from "./PrivateLayer";
+import { PrivateCovered, PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
 const encoder = new TextEncoder();
 const line = (value: unknown) => encoder.encode(`${JSON.stringify(value)}\n`);
@@ -60,13 +60,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** The DM as DMPage puts it together: the ghost in the header, the layer over <main>. */
+/** The DM as DMPage puts it together: the normal DM under PrivateCovered (header with
+ * the ghost, the normal composer), the layer over <main>. */
 function DM({ who = agent }: { who?: Agent }) {
   return (
     <main data-testid="main">
-      <header>
-        <PrivateGhost agent={who} />
-      </header>
+      <PrivateCovered agent={who}>
+        <header>
+          <PrivateGhost agent={who} />
+        </header>
+        <textarea aria-label="일반 메시지" />
+      </PrivateCovered>
       <PrivateOverlay agent={who} />
     </main>
   );
@@ -226,4 +230,13 @@ test("reduced motion skips animation class", () => {
   openPrivate();
   expect(layer()).not.toHaveClass("private-animate");
   expect(document.querySelector(".private-ring")).toBeNull();
+});
+
+test("the normal DM under the layer cannot be reached", () => {
+  render(<DM />);
+  const normal = screen.getByRole("textbox", { name: "일반 메시지" });
+  expect(normal.closest("[inert]")).toBeNull();
+  openPrivate();
+  // Typing there would go to the saved conversation: keep it out of reach.
+  expect(normal.closest("[inert]")).not.toBeNull();
 });
