@@ -59,6 +59,9 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 - **Model providers**: register several model servers (Ollama or any OpenAI-compatible server) — keep a
   small classifier on this Mac and run bigger models on a GPU box in your network or a cloud service. Custom
   agents and the inbox classifier each pick one; settings label each as this device, your network or cloud.
+- **Private chat**: a ghost button in a local model's DM switches to a conversation Argos never stores —
+  no database rows, no files, no logs — for work you must not leak. Text and files go only to models on this
+  device or your network, and the chat lasts while the app is open.
 - **Morning digest**: at the hour you pick, the agent you choose gathers today's events, deadlines and new
   LMS posts into a briefing in a #today thread and sends the same text to your messenger. Reply to keep talking.
 

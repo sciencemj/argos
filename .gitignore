@@ -241,3 +241,5 @@ data/
 .DS_Store
 /backend/seed.toml
 !desktop/argos-server.spec
+# brainstorming mockups and plan ledgers (superpowers skills)
+.superpowers/
