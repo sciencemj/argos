@@ -2155,6 +2155,11 @@ export interface components {
              * @default false
              */
             send_images: boolean;
+            /**
+             * Private Ok
+             * @default false
+             */
+            private_ok: boolean;
             /** Notice */
             notice?: string | null;
         };
@@ -2226,6 +2231,11 @@ export interface components {
              * @default false
              */
             send_images: boolean;
+            /**
+             * Private Ok
+             * @default false
+             */
+            private_ok: boolean;
         };
         /** AgentSettingsIn */
         AgentSettingsIn: {

@@ -1067,6 +1067,40 @@ class _NoSessions:
         return None
 
 
+def local_target(agent: Agent, settings: Settings) -> tuple[providers.ProviderConfig, str]:
+    """Where a local-model agent runs and with which model. Raises AgentUnavailable
+    when no model is set."""
+    # The title model is a chat model; the classifier may be a decision model.
+    model = agent.model or settings.classifier_title_model or settings.classifier_model
+    if not model:
+        raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
+    # The built-in local agent runs where the classifier does; a Hermes classifier
+    # has no provider, so it gets the default one.
+    if not agent.is_builtin:
+        return providers.resolve(settings, agent.provider_id), model
+    if settings.classifier_provider == "hermes":
+        return providers.resolve(settings, None), model
+    return providers.classifier_provider(settings), model
+
+
+def cloud_model_name(model: str) -> bool:
+    """Ollama's cloud models by name: `name:cloud` or a tag ending in `-cloud`."""
+    _, _, tag = model.rpartition(":")
+    return ":" in model and (tag == "cloud" or tag.endswith("-cloud"))
+
+
+def private_allowed(agent: Agent, settings: Settings) -> bool:
+    """Private chat (PLAN Phase 21) only on a local model that stays on this device or
+    the user's network. The private endpoint also asks Ollama itself (remote_host)."""
+    if agent.backend != AgentBackend.OLLAMA:
+        return False
+    try:
+        p, model = local_target(agent, settings)
+    except AgentUnavailable:
+        return False
+    return p.locality != "cloud" and not cloud_model_name(model)
+
+
 def build_adapter(
     agent: Agent,
     settings: Settings,
@@ -1102,18 +1136,7 @@ def build_adapter(
             )
             return HermesResponsesAdapter(client, agent.model or settings.hermes_model, agent.name)
         case AgentBackend.OLLAMA:
-            # The title model is a chat model; the classifier may be a decision model.
-            model = agent.model or settings.classifier_title_model or settings.classifier_model
-            if not model:
-                raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
-            # The built-in local agent runs where the classifier does; a Hermes classifier
-            # has no provider, so it gets the default one.
-            if not agent.is_builtin:
-                p = providers.resolve(settings, agent.provider_id)
-            elif settings.classifier_provider == "hermes":
-                p = providers.resolve(settings, None)
-            else:
-                p = providers.classifier_provider(settings)
+            p, model = local_target(agent, settings)
             extra: dict[str, Any] | None = None
             sees: Callable[[], Awaitable[bool]] | None = None  # None: the server decides
             if p.kind == "ollama":

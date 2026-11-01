@@ -174,6 +174,20 @@ async def vision(p: ProviderConfig, model: str) -> bool:
     return _VISION[key]
 
 
+async def remote_host(p: ProviderConfig, model: str) -> str | None:
+    """Where an Ollama model really runs: its remote_host (ollama.com for cloud models,
+    whatever the local name), or None. Not cached; any failure raises ProviderError so
+    callers refuse rather than guess."""
+    try:
+        async with httpx2.AsyncClient(timeout=LIST_TIMEOUT, follow_redirects=False) as http:
+            response = await http.post(f"{_root(p)}/api/show", json={"model": model})
+            response.raise_for_status()
+            host = response.json().get("remote_host")
+    except Exception as exc:
+        raise ProviderError(f"cannot ask {_root(p)} about the model: {type(exc).__name__}") from exc
+    return str(host) if host else None
+
+
 class KeyStore(Protocol):
     def get(self, provider_id: str, /) -> str | None: ...
     def set(self, provider_id: str, key: str, /) -> None: ...

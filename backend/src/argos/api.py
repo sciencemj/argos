@@ -494,6 +494,7 @@ class AgentOut(Out):
     problem: str | None = None  # why it cannot answer right now
     provider_id: str | None = None  # local-model agents: None = the default provider
     send_images: bool = False  # OpenAI-compatible providers: send attached images
+    private_ok: bool = False  # its DM offers private chat (PLAN Phase 21)
 
 
 class AgentImportOut(AgentOut):
@@ -1112,6 +1113,7 @@ async def reject(session: Session, approval_id: str) -> ApprovalOut:
 
 async def _agent_status(agent: Agent, config: Settings) -> AgentOut:
     out = AgentOut.model_validate(agent)
+    out.private_ok = agents.private_allowed(agent, config)
     try:
         agents.build_adapter(agent, config)
         if agent.backend == AgentBackend.HERMES:
