@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
@@ -35,6 +36,12 @@ struct Server(Mutex<Option<CommandChild>>);
 
 fn base_url() -> String {
     format!("http://127.0.0.1:{PORT}")
+}
+
+/// Whether a window's page is one the Argos server serves (not the loading page).
+fn on_app(url: &str, base: &str) -> bool {
+    url.strip_prefix(base)
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn data_dir() -> PathBuf {
@@ -246,7 +253,13 @@ fn show_main(app: &AppHandle, path: Option<&str>) {
         return;
     };
     if let Some(path) = path {
-        if let Ok(url) = Url::parse(&format!("{}{path}", base_url())) {
+        let base = base_url();
+        let showing_app = window.url().is_ok_and(|url| on_app(url.as_str(), &base));
+        if showing_app {
+            // Route inside the page (main.tsx): a reload would drop what lives only in
+            // memory, such as a private chat.
+            let _ = window.emit("argos:navigate", path);
+        } else if let Ok(url) = Url::parse(&format!("{base}{path}")) {
             let _ = window.navigate(url);
         }
     }
@@ -570,6 +583,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn on_app_only_for_pages_of_the_argos_server() {
+        let base = "http://127.0.0.1:8000";
+        assert!(on_app("http://127.0.0.1:8000/c/x", base));
+        assert!(on_app("http://127.0.0.1:8000/", base));
+        assert!(!on_app("tauri://localhost/index.html", base));
+        assert!(!on_app("http://127.0.0.1:80001/", base));
+    }
 
     #[test]
     fn startup_error_line_is_picked_out_of_stderr() {

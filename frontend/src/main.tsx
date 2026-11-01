@@ -3,7 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { BASE } from "./base";
-import { inDesktopApp } from "./desktop";
+import { inDesktopApp, onMainNavigate } from "./desktop";
 import { syncCurrentLanguage } from "./i18n";
 import "./index.css";
 import { Shell } from "./layout/Shell";
@@ -58,6 +58,9 @@ const router = createBrowserRouter(
 
 // In the desktop app the window has no title bar: the traffic lights sit over the rail.
 if (inDesktopApp()) document.documentElement.dataset.desktop = "";
+// The app's event reaches every window's listeners; quick capture stays where it is.
+if (router.state.location.pathname !== "/quick")
+  onMainNavigate((path) => void router.navigate(path));
 syncCurrentLanguage();
 
 const root = document.getElementById("root");

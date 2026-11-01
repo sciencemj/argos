@@ -4,6 +4,12 @@ type Tauri = {
   core: {
     invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   };
+  event?: {
+    listen: (
+      event: string,
+      handler: (event: { payload: unknown }) => void,
+    ) => Promise<unknown>;
+  };
 };
 
 const tauri = (): Tauri | undefined =>
@@ -26,6 +32,16 @@ export const hideQuickWindow = () => invoke("hide_quick");
 
 /** Brings the main window forward at a path (e.g. the inbox after capturing). */
 export const openMainWindow = (path: string) => invoke("open_main", { path });
+
+/** The app asks an already open main window to go to a path (lib.rs show_main): routing
+ * in the page instead of reloading keeps what lives only in memory. */
+export function onMainNavigate(cb: (path: string) => void) {
+  void tauri()
+    ?.event?.listen("argos:navigate", (event) => {
+      if (typeof event.payload === "string") cb(event.payload);
+    })
+    .catch(() => undefined);
+}
 
 /** Opens a chat attachment in its default app (Preview, …); the app copies it out first. */
 export const openAttachment = (id: string, name: string) =>
