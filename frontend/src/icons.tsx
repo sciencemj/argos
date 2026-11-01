@@ -211,3 +211,12 @@ export const FileIcon = ({ size = 16 }: P) => (
     <path d="M14 3v5h5" />
   </Stroke>
 );
+
+/** Private chat: the DM's ghost button. */
+export const GhostIcon = ({ size = 18 }: P) => (
+  <Stroke size={size} width={1.6}>
+    <path d="M5 20V11a7 7 0 0 1 14 0v9l-2.3-1.6L14.4 20 12 18.4 9.6 20l-2.3-1.6z" />
+    <circle cx="9.5" cy="11" r="1" fill="currentColor" />
+    <circle cx="14.5" cy="11" r="1" fill="currentColor" />
+  </Stroke>
+);

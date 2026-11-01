@@ -776,4 +776,19 @@ export const en: Record<string, string> = {
     "What you type is sent to an outside server",
   "모델 연결 · 인박스 분류와 같은 연결과 모델 사용":
     "Model provider · uses the inbox classifier's provider and model",
+  "비공개 대화로 전환": "Switch to private chat",
+  "일반 대화로 돌아가기": "Back to regular chat",
+  "비공개 대화": "Private chat",
+  "비공개 · 저장 안 됨": "Private · not saved",
+  "대화 지우기": "Clear chat",
+  "비공개 대화 · 이 기기와 내 네트워크의 모델만 쓰고, 앱을 끄면 사라져요":
+    "Private chat · uses only models on this device and your network, and is gone when you quit the app",
+  "여기서 나눈 대화는 어디에도 저장되지 않아요":
+    "Nothing said here is saved anywhere",
+  "비공개 메시지": "Private messages",
+  "비공개 메시지 입력": "Private message",
+  "비공개 메시지…": "Private message…",
+  "대화가 너무 길어요 · 지우고 새로 시작해 주세요":
+    "This chat is too long · clear it and start over",
+  "답을 받지 못했어요": "Couldn't get an answer",
 };

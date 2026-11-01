@@ -40,6 +40,21 @@
     0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 2px 4px 0 rgba(0, 0, 0, 0.02),
     0 4px 8px 0 rgba(0, 0, 0, 0.02);
   --shadow-lift: 0 12px 28px -8px rgba(24, 24, 37, 0.16);
+  /* Private chat is always darker than the app: the dark palette over a light app. */
+  --private-page: #1c1c27;
+  --private-card: #242433;
+  --private-inset: #1f1f2c;
+  --private-line: #3c3c4f;
+  --private-line-soft: #2f2f40;
+  --private-ink: #ffffff;
+  --private-text: #ececf1;
+  --private-text-2: #c6c6d0;
+  --private-text-3: #a6a6b2;
+  --private-meta: #9494a2;
+  --private-danger: #e2a0a8;
+  --private-danger-bg: #2e2330;
+  --private-danger-line: #4a3440;
+  --private-shadow-sm: 0 2px 3px -2px rgba(0, 0, 0, 0.35);
   color-scheme: light;
 }
 
@@ -79,6 +94,41 @@
     0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.15),
     0 4px 8px 0 rgba(0, 0, 0, 0.15);
   --shadow-lift: 0 12px 28px -8px rgba(0, 0, 0, 0.5);
+  /* …and a deeper black over a dark app. */
+  --private-page: #07070b;
+  --private-card: #0e0e14;
+  --private-inset: #0b0b10;
+  --private-line: #26262f;
+  --private-line-soft: #191920;
+  --private-ink: #ffffff;
+  --private-text: #e6e6ee;
+  --private-text-2: #b4b4c2;
+  --private-text-3: #9d9daf;
+  --private-meta: #85859a;
+  --private-danger: #e2a0a8;
+  --private-danger-bg: #1f161c;
+  --private-danger-line: #3a2830;
+  --private-shadow-sm: 0 2px 3px -2px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+/* Inside the private layer the usual utilities (bg-card, text-text…) take the private
+   palette. */
+.private-scope {
+  --page: var(--private-page);
+  --card: var(--private-card);
+  --inset: var(--private-inset);
+  --line: var(--private-line);
+  --line-soft: var(--private-line-soft);
+  --ink: var(--private-ink);
+  --text: var(--private-text);
+  --text-2: var(--private-text-2);
+  --text-3: var(--private-text-3);
+  --meta: var(--private-meta);
+  --danger: var(--private-danger);
+  --danger-bg: var(--private-danger-bg);
+  --danger-line: var(--private-danger-line);
+  --shadow-sm: var(--private-shadow-sm);
   color-scheme: dark;
 }
 
@@ -346,7 +396,54 @@ body {
   animation: quick-out 0.12s ease-in both;
 }
 
+/* Private chat: the layer grows as a circle from the ghost button (--x, --y set by the
+   component) and shrinks back into it; a faint ring spreads from the same point. */
+.private-layer {
+  clip-path: circle(0px at var(--x) var(--y));
+  visibility: hidden;
+  pointer-events: none;
+}
+.private-layer[data-open="true"] {
+  clip-path: circle(150% at var(--x) var(--y));
+  visibility: visible;
+  pointer-events: auto;
+}
+.private-animate {
+  transition:
+    clip-path 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
+    visibility 0s linear 0.65s;
+}
+.private-animate[data-open="true"] {
+  transition:
+    clip-path 0.65s cubic-bezier(0.3, 0.7, 0.2, 1),
+    visibility 0s;
+}
+@keyframes private-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(70);
+  }
+}
+.private-ring {
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  opacity: 0;
+  animation: private-ring 0.7s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .private-animate,
+  .private-animate[data-open="true"] {
+    transition: none;
+  }
+  .private-ring {
+    animation: none;
+  }
   .paw-step {
     animation: none;
     opacity: 0.8;

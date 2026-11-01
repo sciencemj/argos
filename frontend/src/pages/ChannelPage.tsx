@@ -27,6 +27,7 @@ import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
 import { PlusIcon, SettingsIcon } from "../icons";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
+import { PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
 const tab =
   "flex h-8 items-center rounded-full border border-transparent px-3.5 text-text-3 aria-[current=page]:border-line-soft aria-[current=page]:bg-card aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:shadow-sm";
@@ -298,6 +299,7 @@ function DMPage({ channel }: { channel: Channel }) {
             ))}
           </select>
         )}
+        <PrivateGhost agent={agent} />
         <button
           type="button"
           aria-label={tr("새 대화")}
@@ -321,6 +323,8 @@ function DMPage({ channel }: { channel: Channel }) {
           pickedSession={chosen?.id}
         />
       )}
+      {/* Covers the DM (main is relative); kept while the app runs. */}
+      <PrivateOverlay agent={agent} />
     </>
   );
 }
