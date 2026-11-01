@@ -29,6 +29,7 @@ from argos.db import make_engine, make_sessionmaker
 from argos.hub import hub
 from argos.lms import router as lms_router
 from argos.mcp_server import build_mcp
+from argos.private import router as private_router
 from argos.runner import Runner
 from argos.summarizer import LmsSummaries, build_summarizer
 
@@ -133,6 +134,7 @@ def create_app(
     app = FastAPI(title="Argos", lifespan=lifespan)
     app.include_router(router)
     app.include_router(lms_router)
+    app.include_router(private_router)
     app.include_router(ws_router)
     # MCP over Streamable HTTP at /mcp (a single route; DNS-rebinding protection on).
     mcp = build_mcp(app)

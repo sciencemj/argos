@@ -69,6 +69,19 @@ async def mentioned_agents(session: AsyncSession, text: str) -> list[Agent]:
     return found
 
 
+def time_line(settings: Settings, now: datetime) -> str:
+    tz: ZoneInfo = settings.zoneinfo
+    if settings.language == "en":
+        return f"Current time: {now:%Y-%m-%d %H:%M} {tz.key}"
+    return f"현재 시각: {now:%Y-%m-%d} ({WEEKDAY_KO[now.weekday()]}) {now:%H:%M} {tz.key}"
+
+
+def language_line(settings: Settings) -> str:
+    if settings.language == "en":
+        return "Reply briefly and clearly in English."
+    return "한국어로 짧고 분명하게 답한다."
+
+
 async def build_context(
     session: AsyncSession,
     agent: Agent,
@@ -91,11 +104,11 @@ async def build_context(
         }.get(channel.kind, "shared")
         lines = [
             f'You are "{agent.display_name}", an agent in Argos, a personal productivity app.',
-            f"Current time: {now:%Y-%m-%d %H:%M} {tz.key}",
+            time_line(settings, now),
             f"Conversation: #{channel.name} ({kind})",
             "Use Argos tools to create or change tasks and events when possible. "
             "Deletion requires user approval.",
-            "Reply briefly and clearly in English.",
+            language_line(settings),
         ]
     else:
         kind = {"course": "과목", "project": "프로젝트", "personal": "일상", "dm": "1:1 대화"}.get(
@@ -104,11 +117,11 @@ async def build_context(
         lines = [
             f"너는 개인 일정·학업 관리 앱 Argos 안에서 사용자와 대화하는 에이전트 "
             f'"{agent.display_name}"다.',
-            f"현재 시각: {now:%Y-%m-%d} ({WEEKDAY_KO[now.weekday()]}) {now:%H:%M} {tz.key}",
+            time_line(settings, now),
             f"대화 위치: #{channel.name} ({kind})",
             "일정·할 일을 기록하거나 바꿀 때는 가능하면 Argos 도구를 써라. "
             "삭제는 사용자 승인이 필요하다.",
-            "한국어로 짧고 분명하게 답한다.",
+            language_line(settings),
         ]
     if channel.kind not in (ChannelKind.DM, ChannelKind.SYSTEM):
         tasks = (
