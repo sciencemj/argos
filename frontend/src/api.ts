@@ -1521,3 +1521,125 @@ export function useDisconnectLms() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["lms"] }),
   });
 }
+
+// ---- Private chat (Phase 21) ----------------------------------------------
+// Plain fetch, not openapi-fetch or React Query: nothing here may be cached or kept
+// beyond the in-memory store in privateChat.ts.
+
+/** A file the server read in memory: extracted text, a shrunk image or a PDF. */
+export type PrivatePart = {
+  kind: "text" | "image" | "pdf";
+  name: string;
+  text: string | null;
+  data: string | null; // base64
+  mime: string | null;
+};
+
+export type PrivateTurn = {
+  role: "user" | "assistant";
+  text: string;
+  parts: PrivatePart[];
+  error?: string;
+};
+
+const privateUrl = (agent: string, rest = "") =>
+  `${BASE}/api/v1/agents/${encodeURIComponent(agent)}/private${rest}`;
+
+/** Base64 of a file's bytes (FileReader works in every browser and in jsdom). */
+function fileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result);
+      resolve(url.slice(url.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function privateFailure(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: { code?: string; message?: string };
+  };
+  return new ApiError(
+    response.status,
+    body.error?.code ?? "http_error",
+    body.error?.message ?? "답을 받지 못했어요",
+  );
+}
+
+/** Sends files to be read in memory on the server; nothing is stored there. */
+export async function privateFiles(
+  agent: string,
+  files: File[],
+): Promise<PrivatePart[]> {
+  const encoded = await Promise.all(
+    files.map(async (file) => ({
+      name: file.name,
+      data: await fileBase64(file),
+    })),
+  );
+  const response = await fetch(privateUrl(agent, "/files"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ files: encoded }),
+  });
+  if (!response.ok) throw await privateFailure(response);
+  return (await response.json()) as PrivatePart[];
+}
+
+/** Streams the model's answer to the whole private conversation (NDJSON lines).
+ * An `{"error"}` line throws ApiError(422); aborting `signal` ends it quietly. */
+export async function streamPrivate(
+  agent: string,
+  turns: PrivateTurn[],
+  onToken: (text: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(privateUrl(agent), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      turns: turns.map(({ role, text, parts }) => ({ role, text, parts })),
+    }),
+    signal,
+  });
+  if (!response.ok) throw await privateFailure(response);
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const stop = () => void reader.cancel().catch(() => {});
+  signal.addEventListener("abort", stop);
+  const decoder = new TextDecoder();
+  let buffer = "";
+  /** True on the final `{"done": true}` line. */
+  const handle = (raw: string): boolean => {
+    if (!raw.trim()) return false;
+    const event = JSON.parse(raw) as {
+      token?: string;
+      done?: boolean;
+      error?: string;
+    };
+    if (event.error !== undefined)
+      throw new ApiError(422, "private_error", event.error);
+    if (event.token) onToken(event.token);
+    return event.done === true;
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        const raw = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        if (handle(raw)) return;
+        newline = buffer.indexOf("\n");
+      }
+    }
+    if (!signal.aborted) handle(buffer + decoder.decode());
+  } finally {
+    signal.removeEventListener("abort", stop);
+  }
+}
