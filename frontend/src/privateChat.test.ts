@@ -254,3 +254,40 @@ test("never writes storage", async () => {
   act(() => result.current.clear());
   expect(local).not.toHaveBeenCalled();
 });
+
+test("a file over the limit is refused before reading", async () => {
+  stubModel([{ done: true }]);
+  const { result } = renderHook(() => usePrivateChat(name, 1));
+  const big = new File([new Uint8Array(1024 * 1024 + 1)], "big.bin");
+  act(() => result.current.addFiles([big]));
+  await waitFor(() => expect(result.current.drafts[0].status).toBe("error"));
+  expect(result.current.drafts[0].error).toBe("1MB까지 올릴 수 있어요");
+  expect(calls).toEqual([]);
+});
+
+test("a dropped answer merges the user turns around it", async () => {
+  stubModel([{ error: "모델이 멈췄어요" }]);
+  const { result } = renderHook(() => usePrivateChat(name));
+  act(() => result.current.addFiles([new File(["하나"], "a.txt")]));
+  await waitFor(() => expect(result.current.drafts[0]?.status).toBe("done"));
+  act(() => {
+    result.current.send("A");
+  });
+  await waitFor(() => expect(result.current.running).toBe(false));
+  expect(result.current.turns[1].error).toBeTruthy();
+
+  stubModel([{ token: "응" }, { done: true }]);
+  act(() => result.current.addFiles([new File(["둘"], "b.txt")]));
+  await waitFor(() => expect(result.current.drafts[0]?.status).toBe("done"));
+  act(() => {
+    result.current.send("B");
+  });
+  await waitFor(() => expect(result.current.running).toBe(false));
+  const sent = calls.at(-1)?.body as {
+    turns: { role: string; text: string; parts: { name: string }[] }[];
+  };
+  expect(sent.turns).toHaveLength(1);
+  expect(sent.turns[0].role).toBe("user");
+  expect(sent.turns[0].text).toBe("A\n\nB");
+  expect(sent.turns[0].parts.map((p) => p.name)).toEqual(["a.txt", "b.txt"]);
+});

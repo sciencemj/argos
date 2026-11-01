@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import {
+  errorText,
   type PrivatePart,
   type PrivateTurn,
   privateFiles,
@@ -66,7 +67,7 @@ function sizeOf(turns: PrivateTurn[]): number {
   return total;
 }
 
-function addFiles(agent: string, files: File[]) {
+function addFiles(agent: string, files: File[], maxMb: number) {
   const room = MAX_FILES - read(agent).drafts.length;
   const fresh: PrivateDraft[] = files.map((file, index) => ({
     key: crypto.randomUUID(),
@@ -78,7 +79,7 @@ function addFiles(agent: string, files: File[]) {
       : undefined,
   }));
   write(agent, (s) => ({ drafts: [...s.drafts, ...fresh] }));
-  for (const d of fresh) if (d.status === "uploading") upload(agent, d);
+  for (const d of fresh) if (d.status === "uploading") upload(agent, d, maxMb);
 }
 
 function patchDraft(agent: string, key: string, change: Partial<PrivateDraft>) {
@@ -89,7 +90,15 @@ function patchDraft(agent: string, key: string, change: Partial<PrivateDraft>) {
   }));
 }
 
-function upload(agent: string, draft: PrivateDraft) {
+function upload(agent: string, draft: PrivateDraft, maxMb: number) {
+  // Refused before the file is read into memory (the server says the same).
+  if (draft.file.size > maxMb * 1024 * 1024) {
+    patchDraft(agent, draft.key, {
+      status: "error",
+      error: errorText(`${maxMb}MB까지 올릴 수 있어요`),
+    });
+    return;
+  }
   privateFiles(agent, [draft.file]).then(
     (parts) => patchDraft(agent, draft.key, { status: "done", parts }),
     (error: unknown) =>
@@ -100,11 +109,11 @@ function upload(agent: string, draft: PrivateDraft) {
   );
 }
 
-function retryDraft(agent: string, key: string) {
+function retryDraft(agent: string, key: string, maxMb: number) {
   const d = read(agent).drafts.find((x) => x.key === key);
   if (d?.status !== "error" || d.error === tr(TOO_MANY)) return;
   patchDraft(agent, key, { status: "uploading", error: undefined });
-  upload(agent, d);
+  upload(agent, d, maxMb);
 }
 
 function removeDraft(agent: string, key: string) {
@@ -121,6 +130,25 @@ function patchAnswer(agent: string, change: (t: PrivateTurn) => PrivateTurn) {
     if (last?.role !== "assistant") return {};
     return { turns: [...s.turns.slice(0, -1), change(last)] };
   });
+}
+
+/** The conversation the model sees. Failed or empty answers are left out, and the
+ * user turn before one is joined to the next so roles still alternate (some local
+ * servers' chat templates refuse two user turns in a row). */
+function modelHistory(turns: PrivateTurn[]): PrivateTurn[] {
+  const out: PrivateTurn[] = [];
+  for (const t of turns) {
+    if (t.role === "assistant" && (t.error || t.text === "")) continue;
+    const prev = out.at(-1);
+    if (t.role === "user" && prev?.role === "user") {
+      out[out.length - 1] = {
+        role: "user",
+        text: [prev.text, t.text].filter((x) => x !== "").join("\n\n"),
+        parts: [...prev.parts, ...t.parts],
+      };
+    } else out.push(t);
+  }
+  return out;
 }
 
 /** Returns whether the message went out (false: busy, empty or too long). */
@@ -145,10 +173,7 @@ function send(agent: string, text: string, maxMb: number): boolean {
     running: true,
     error: null,
   }));
-  // Failed or empty answers are not part of the conversation the model sees.
-  const history = turns.filter(
-    (t) => !(t.role === "assistant" && (t.error || t.text === "")),
-  );
+  const history = modelHistory(turns);
   streamPrivate(
     agent,
     history,
@@ -195,9 +220,9 @@ export function usePrivateChat(agentName: string, maxMb = 25) {
     error: state.error,
     size: sizeOf(state.turns),
     send: (text: string) => send(agentName, text, maxMb),
-    addFiles: (files: File[]) => addFiles(agentName, files),
+    addFiles: (files: File[]) => addFiles(agentName, files, maxMb),
     removeDraft: (key: string) => removeDraft(agentName, key),
-    retryDraft: (key: string) => retryDraft(agentName, key),
+    retryDraft: (key: string) => retryDraft(agentName, key, maxMb),
     stop: () => stop(agentName),
     clear: () => clear(agentName),
   };

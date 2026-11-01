@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -49,9 +50,39 @@ const components: Components = {
   ),
 };
 
-export function Markdown({ text }: { text: string }) {
+/** A link or picture shown as plain text, so nothing is fetched or opened. */
+function plain(label: ReactNode, url: string | undefined) {
+  const same = typeof label === "string" && label === url;
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <span className="break-all">
+      {label}
+      {url && !same && <span className="text-meta">{` (${url})`}</span>}
+    </span>
+  );
+}
+
+// Private answers stay on this device: an image would load from (and a link could
+// send to) whatever host the model wrote, carrying the private text in its address.
+const offline: Components = {
+  ...components,
+  a: ({ children, href }) => plain(children, href),
+  img: ({ alt, src }) =>
+    plain(alt || null, typeof src === "string" ? src : undefined),
+};
+
+export function Markdown({
+  text,
+  offline: noFetch = false,
+}: {
+  text: string;
+  /** Images and links as plain text (the private chat). */
+  offline?: boolean;
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={noFetch ? offline : components}
+    >
       {text}
     </ReactMarkdown>
   );

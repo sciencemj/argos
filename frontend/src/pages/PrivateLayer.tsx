@@ -10,7 +10,13 @@ import {
 } from "react";
 import { AgentAvatar, agentInfo } from "../agents";
 import type { Agent } from "../api";
-import { canSend, DraftChips, pastedFiles, useFileDrop } from "../attachments";
+import {
+  canSend,
+  DraftChips,
+  hasFiles,
+  pastedFiles,
+  useFileDrop,
+} from "../attachments";
 import { FEED_COLUMN } from "../feed";
 import { tr } from "../i18n";
 import { FileIcon, GhostIcon, PaperclipIcon, SendIcon } from "../icons";
@@ -113,16 +119,20 @@ export function PrivateGhost({ agent }: { agent: Agent | undefined }) {
 export function PrivateOverlay({ agent }: { agent: Agent | undefined }) {
   const mode = usePrivateMode(agent?.name ?? "");
   if (!agent?.private_ok) return null;
-  const motion = !reduceMotion();
-  // Only a switch just made rings; coming back to an open DM later does not.
-  const ringing = motion && mode.at > 0 && Date.now() - mode.at < RING_MS;
+  // Only a switch just made animates and rings; coming back to an open (or closed)
+  // DM later shows it as it is.
+  const switching = mode.at > 0 && Date.now() - mode.at < RING_MS;
+  const ringing = switching && !reduceMotion();
   return (
     <>
       <PrivateLayer
+        // Each agent its own layer: unsent text and the open state never carry over
+        // when one DM page goes straight to another.
+        key={agent.name}
         agent={agent}
         origin={mode}
         open={mode.open}
-        animate={motion}
+        animate={ringing}
         onClose={(e) => toggle(agent.name, originOf(e))}
       />
       {ringing && (
@@ -172,6 +182,16 @@ export function PrivateLayer({
       inert={!open}
       data-open={open}
       style={style}
+      // A file let go anywhere on the layer is attached; otherwise the browser would
+      // open it and the in-memory conversation would be gone.
+      onDragOver={(e) => {
+        if (hasFiles(e.dataTransfer)) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e.dataTransfer) || e.isDefaultPrevented()) return; // composer took it
+        e.preventDefault();
+        chat.addFiles(Array.from(e.dataTransfer.files));
+      }}
       className={`private-scope private-layer ${animate ? "private-animate" : ""} absolute inset-0 z-20 flex flex-col bg-page text-text`}
     >
       <header
@@ -275,7 +295,11 @@ function Turn({
           )
         ) : (
           <div className="text-[13.5px] leading-[1.65] text-text-2 select-text">
-            {turn.text ? <Markdown text={turn.text} /> : live && <PawTrail />}
+            {turn.text ? (
+              <Markdown text={turn.text} offline />
+            ) : (
+              live && <PawTrail />
+            )}
             {live && turn.text && (
               <span className="ml-[3px] inline-block h-[15px] w-[2px] animate-pulse bg-ink align-[-2px]" />
             )}
