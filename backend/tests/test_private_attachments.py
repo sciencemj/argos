@@ -12,8 +12,7 @@ from argos.attachments import ImagePart, PdfPart, TextPart, part_from_bytes
 
 
 def heic() -> bytes:
-    import pillow_heif  # noqa: F401  (registered by argos.attachments; Pillow can write HEIF)
-
+    # argos.attachments registers pillow_heif, so Pillow can write HEIF too.
     out = io.BytesIO()
     Image.new("RGB", (40, 30), "blue").save(out, "HEIF", quality=50)
     return out.getvalue()
