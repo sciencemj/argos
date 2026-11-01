@@ -11,6 +11,7 @@ import base64
 import binascii
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
@@ -88,6 +89,8 @@ async def _target(
         try:
             if await providers.remote_host(p, model) is not None:
                 return _error(422, "invalid", REFUSED)
+        except providers.ProviderUnreachable:
+            return _error(422, "unreachable", providers.unreachable_text(p))
         except providers.ProviderError:
             return _error(422, "invalid", REFUSED)
     return agent, p, model
@@ -112,8 +115,24 @@ async def private_files(request: Request, session: Session, name: str) -> Any:
         if len(data) > limit:
             return _error(413, "too_large", f"{settings.attachment_max_mb}MB까지 올릴 수 있어요")
         raw.append((attachments.safe_name(item.name), data))
-    parts = await asyncio.to_thread(lambda: [attachments.part_from_bytes(n, d) for n, d in raw])
+    parts = await asyncio.to_thread(_read_files, raw)
     return [_out(name, part) for (name, _), part in zip(raw, parts, strict=True)]
+
+
+_quiet = threading.Lock()
+
+
+def _read_files(raw: list[tuple[str, bytes]]) -> list[attachments.AgentPart]:
+    """pypdf logs warnings about malformed PDFs that quote the PDF's own text; silence
+    it while a private file is read (the lock keeps the level change to one reader)."""
+    pdf_log = logging.getLogger("pypdf")
+    with _quiet:
+        level = pdf_log.level
+        pdf_log.setLevel(logging.CRITICAL + 1)
+        try:
+            return [attachments.part_from_bytes(n, d) for n, d in raw]
+        finally:
+            pdf_log.setLevel(level)
 
 
 def _out(name: str, part: attachments.AgentPart) -> PrivatePart:
@@ -182,7 +201,7 @@ async def private_chat(request: Request, session: Session, name: str) -> Any:
     else:
         vision = agent.send_images
     messages = _messages(settings, agent, body.turns, vision)
-    client = providers.chat_client(p, timeout=settings.agent_timeout, max_retries=0)
+    client = providers.private_client(p, timeout=settings.agent_timeout)
     extra = {"reasoning_effort": "none"} if p.kind == "ollama" else None
 
     async def answer() -> AsyncIterator[bytes]:
@@ -203,5 +222,6 @@ async def private_chat(request: Request, session: Session, name: str) -> Any:
         finally:
             if stream is not None:
                 await stream.close()
+            await client.close()
 
     return StreamingResponse(answer(), media_type="application/x-ndjson")

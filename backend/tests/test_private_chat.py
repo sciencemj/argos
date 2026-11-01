@@ -30,6 +30,14 @@ def temp_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """The process's temporary folder, so a spooled upload would show up here."""
     folder = tmp_path / "system-tmp"
     folder.mkdir()
+    import starlette.formparsers
+
+    def refuse(*_: Any, **__: Any) -> Any:
+        raise AssertionError("private chat must not create temporary files")
+
+    for name in ("SpooledTemporaryFile", "TemporaryFile", "NamedTemporaryFile", "mkstemp"):
+        monkeypatch.setattr(tempfile, name, refuse)
+    monkeypatch.setattr(starlette.formparsers, "SpooledTemporaryFile", refuse)
     monkeypatch.setattr(tempfile, "tempdir", str(folder))
     return folder
 
@@ -52,7 +60,7 @@ def model(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         body += "data: [DONE]\n\n"
         return httpx2.Response(200, content=body, headers={"content-type": "text/event-stream"})
 
-    def client(p: providers.ProviderConfig, *, timeout: float, max_retries: int) -> Any:
+    def client(p: providers.ProviderConfig, *, timeout: float) -> Any:
         http = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
         return openai.AsyncOpenAI(base_url=p.base_url, api_key="k", http_client=http)
 
@@ -62,7 +70,7 @@ def model(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def sees(p: providers.ProviderConfig, model: str) -> bool:
         return True
 
-    monkeypatch.setattr(providers, "chat_client", client)
+    monkeypatch.setattr(providers, "private_client", client)
     monkeypatch.setattr(providers, "remote_host", no_remote)
     monkeypatch.setattr(providers, "vision", sees)
     return seen
@@ -259,3 +267,40 @@ def test_unknown_agent_404(api: TestClient, model: dict[str, Any]) -> None:
     assert (
         chat(api, [{"role": "user", "text": "x", "parts": []}], agent="nobody").status_code == 404
     )
+
+
+def test_private_unreachable_ollama_says_so(
+    api: TestClient, model: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def down(p: providers.ProviderConfig, model_name: str) -> str | None:
+        raise providers.ProviderUnreachable("refused")
+
+    monkeypatch.setattr(providers, "remote_host", down)
+    r = chat(api, [{"role": "user", "text": "x", "parts": []}])
+    assert r.status_code == 422
+    assert r.json()["error"]["message"] == "이 Mac에 연결할 수 없어요 (http://127.0.0.1:11434/v1)"
+    assert model["requests"] == []
+
+
+def test_private_malformed_pdf_logs_nothing(
+    api: TestClient, model: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    broken = text_pdf("x").replace(b"/Type /Page /Parent", b"(Confidential merger) /Parent", 1)
+    r = api.post(
+        "/api/v1/agents/gemma/private/files",
+        json={"files": [{"name": "deal.pdf", "data": b64(broken)}]},
+    )
+    assert r.status_code == 200
+    assert "Confidential merger" not in caplog.text
+    assert "deal.pdf" not in caplog.text
+
+
+def test_private_client_ignores_proxies_and_redirects() -> None:
+    p = providers.ProviderConfig(
+        "p", "이 Mac", "ollama", "http://127.0.0.1:11434/v1", None, "device", True
+    )
+    client: Any = providers.private_client(p, timeout=5)
+    http: Any = client._client  # the SDK's httpx2 client
+    assert http.follow_redirects is False
+    assert http._trust_env is False

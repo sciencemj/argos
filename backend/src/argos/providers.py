@@ -46,6 +46,10 @@ class ProviderError(Exception):
     """The server could not be reached or answered something unexpected."""
 
 
+class ProviderUnreachable(ProviderError):
+    """No answer at all: the server is down or the address is wrong."""
+
+
 @dataclass(frozen=True)
 class ProviderConfig:
     id: str
@@ -104,6 +108,15 @@ def chat_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> Async
     # The SDK refuses an empty key; Ollama and most local servers ignore it.
     return AsyncOpenAI(
         base_url=p.base_url, api_key=p.api_key or "none", timeout=timeout, max_retries=max_retries
+    )
+
+
+def private_client(p: ProviderConfig, *, timeout: float) -> AsyncOpenAI:
+    """For private chat (PLAN Phase 21): no proxy from the environment or macOS settings
+    (it would see the whole conversation) and no redirects (they would resend it)."""
+    http = httpx2.AsyncClient(timeout=timeout, trust_env=False, follow_redirects=False)
+    return AsyncOpenAI(
+        base_url=p.base_url, api_key=p.api_key or "none", max_retries=0, http_client=http
     )
 
 
@@ -183,6 +196,8 @@ async def remote_host(p: ProviderConfig, model: str) -> str | None:
             response = await http.post(f"{_root(p)}/api/show", json={"model": model})
             response.raise_for_status()
             host = response.json().get("remote_host")
+    except httpx2.TransportError as exc:
+        raise ProviderUnreachable(f"cannot reach {_root(p)}: {type(exc).__name__}") from exc
     except Exception as exc:
         raise ProviderError(f"cannot ask {_root(p)} about the model: {type(exc).__name__}") from exc
     return str(host) if host else None
