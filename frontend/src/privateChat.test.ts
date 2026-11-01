@@ -25,7 +25,7 @@ function stubModel(
       calls.push({ url, body });
       if (url.endsWith("/private/files")) {
         const files = body.files as { name: string; data: string }[];
-        const out = files.flatMap((f) =>
+        const out = files.flatMap((f): PrivatePart[] =>
           parts
             ? parts(f.name)
             : [
