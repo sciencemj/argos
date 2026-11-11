@@ -653,6 +653,68 @@ const MENTION_AT_END = /(^|\s)@([\w가-힣-]*)$/;
 const SLASH_AT_START = /^((?:@[\w가-힣-]+\s+)*)\/([\w:.-]*)$/;
 const LEADING_MENTION = /^\s*@([\w가-힣-]+)\s/;
 
+/** Syntax colouring for the composer; the textarea itself remains the editable control. */
+export function ComposerHighlight({
+  text,
+  agents,
+  skills,
+}: {
+  text: string;
+  agents: { name: string }[];
+  skills: { name: string }[];
+}) {
+  const handles = new Map(
+    agents.map((agent) => [agent.name.toLowerCase(), agent.name]),
+  );
+  const commands = new Set(
+    [...SLASH, ...skills.map((skill) => `/${skill.name}`)].map((name) =>
+      name.toLowerCase(),
+    ),
+  );
+  const tokens: {
+    start: number;
+    end: number;
+    kind: "agent" | "command";
+    name?: string;
+  }[] = [];
+  const mentionPattern = /(?<![\w@])@[A-Za-z0-9_가-힣-]+/g;
+  for (const match of text.matchAll(mentionPattern)) {
+    const name = handles.get(match[0].slice(1).toLowerCase());
+    if (name)
+      tokens.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        kind: "agent",
+        name,
+      });
+  }
+  const slash = /^(\s*)(\/[\w:.-]+)/.exec(text);
+  if (slash && commands.has(slash[2].toLowerCase())) {
+    const start = slash[1].length;
+    tokens.push({ start, end: start + slash[2].length, kind: "command" });
+  }
+  tokens.sort((a, b) => a.start - b.start);
+
+  const parts = [];
+  let cursor = 0;
+  for (const [index, token] of tokens.entries()) {
+    if (cursor < token.start) parts.push(text.slice(cursor, token.start));
+    const value = text.slice(token.start, token.end);
+    parts.push(
+      <span
+        key={`${token.start}:${index}`}
+        className={token.kind === "command" ? "text-warn" : undefined}
+        style={token.name ? { color: agentInfo(token.name).text } : undefined}
+      >
+        {value}
+      </span>,
+    );
+    cursor = token.end;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
+
 /** Message box of a channel feed, or of a thread (`root`): the same slash commands,
  * agent skills and @mentions work in both. */
 export function Composer({
@@ -674,6 +736,7 @@ export function Composer({
   const settings = useAgentSettings();
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  const highlight = useRef<HTMLDivElement>(null);
   const files = useAttachmentDrafts();
   const drop = useFileDrop(files.add);
   const picker = useRef<HTMLInputElement>(null);
@@ -899,30 +962,47 @@ export function Composer({
         <label htmlFor={inputId} className="sr-only">
           {threadRootId ? tr("스레드에 답장") : tr("메시지 입력")}
         </label>
-        <textarea
-          id={inputId}
-          ref={input}
-          rows={Math.min(6, Math.max(1, text.split("\n").length))}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={(e) => {
-            const pasted = pastedFiles(e.clipboardData);
-            if (pasted.length === 0) return;
-            e.preventDefault();
-            files.add(pasted);
-          }}
-          placeholder={
-            coding && codeable
-              ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
-              : threadRootId
-                ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
-                : dm
-                  ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
-                  : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
-          }
-          className="resize-none border-0 bg-transparent text-[15px] text-text outline-none placeholder:text-meta focus-visible:outline-none"
-        />
+        <div className="relative">
+          <div
+            ref={highlight}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words font-sans text-[15px] leading-[1.6] text-text"
+          >
+            <ComposerHighlight
+              text={text}
+              agents={agents.data ?? []}
+              skills={skills.data ?? []}
+            />
+          </div>
+          <textarea
+            id={inputId}
+            ref={input}
+            rows={Math.min(6, Math.max(1, text.split("\n").length))}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            onScroll={(e) => {
+              if (highlight.current)
+                highlight.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            onPaste={(e) => {
+              const pasted = pastedFiles(e.clipboardData);
+              if (pasted.length === 0) return;
+              e.preventDefault();
+              files.add(pasted);
+            }}
+            placeholder={
+              coding && codeable
+                ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
+                : threadRootId
+                  ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
+                  : dm
+                    ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
+                    : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+            }
+            className="relative z-10 resize-none border-0 bg-transparent font-sans text-[15px] leading-[1.6] text-transparent caret-text selection:bg-step-3/30 outline-none placeholder:text-meta focus-visible:outline-none"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap">
           {/* Phones: the chips scroll sideways in one row, the send button stays put. */}
           <div className="flex min-w-0 grow flex-nowrap items-center gap-1.5 overflow-x-auto *:shrink-0 md:contents">
