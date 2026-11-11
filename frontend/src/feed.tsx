@@ -966,13 +966,14 @@ export function Composer({
           <div
             ref={highlight}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words font-sans text-[15px] leading-[1.6] text-text"
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words p-0 font-sans text-[15px] leading-[1.6] text-text"
           >
             <ComposerHighlight
               text={text}
               agents={agents.data ?? []}
               skills={skills.data ?? []}
             />
+            {text.endsWith("\n") && " "}
           </div>
           <textarea
             id={inputId}
@@ -1000,7 +1001,7 @@ export function Composer({
                     ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
                     : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
             }
-            className="relative z-10 resize-none border-0 bg-transparent font-sans text-[15px] leading-[1.6] text-transparent caret-text selection:bg-step-3/30 outline-none placeholder:text-meta focus-visible:outline-none"
+            className="relative z-10 block w-full resize-none border-0 bg-transparent p-0 font-sans text-[15px] leading-[1.6] break-words text-transparent caret-text selection:bg-step-3/30 outline-none placeholder:text-meta focus-visible:outline-none"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap">
