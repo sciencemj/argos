@@ -425,6 +425,39 @@ export function useMoveTask(channelId?: string) {
   return { move, error: mutation.error };
 }
 
+export type ReorderVars = Omit<Schemas["TaskReorder"], "channel_id"> & {
+  optimistic: Task[];
+};
+
+/** Board-wide persistent reorder with optimistic cache update. */
+export function useReorderTasks(channelId?: string) {
+  const qc = useQueryClient();
+  const key = ["tasks", channelId ?? "all"];
+  const mutation = useMutation({
+    mutationFn: ({ optimistic: _, ...body }: ReorderVars) =>
+      call(
+        client.POST("/api/v1/tasks/reorder", {
+          body: { ...body, channel_id: channelId ?? null },
+        }),
+      ),
+    onSuccess: (data) => qc.setQueryData(key, data),
+    onSettled: () => invalidateFor(qc, "task"),
+  });
+
+  const reorder = (vars: ReorderVars) => {
+    const previous = qc.getQueryData<Task[]>(key);
+    void qc.cancelQueries({ queryKey: key }, { revert: false, silent: true });
+    qc.setQueryData(key, vars.optimistic);
+    mutation.mutate(vars, {
+      onError: () => {
+        if (previous) qc.setQueryData(key, previous);
+      },
+    });
+  };
+
+  return { reorder, error: mutation.error };
+}
+
 export const useCreateEvent = () =>
   useWrite("event", (body: Schemas["EventCreate"]) =>
     call(client.POST("/api/v1/events", { body })),

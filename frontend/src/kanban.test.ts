@@ -1,8 +1,19 @@
 import { describe, expect, test } from "vitest";
 import type { Task } from "./api";
-import { anchorFor, applyColumns, columnOf, toColumns } from "./kanban";
+import {
+  anchorFor,
+  applyColumns,
+  columnOf,
+  sortTasks,
+  toColumns,
+} from "./kanban";
 
-const task = (id: string, status: Task["status"], position: number): Task => ({
+const task = (
+  id: string,
+  status: Task["status"],
+  position: number,
+  extra: Partial<Task> = {},
+): Task => ({
   id,
   status,
   position,
@@ -13,6 +24,7 @@ const task = (id: string, status: Task["status"], position: number): Task => ({
   priority: null,
   created_at: "",
   updated_at: "",
+  ...extra,
 });
 
 describe("kanban helpers", () => {
@@ -44,6 +56,52 @@ describe("kanban helpers", () => {
     expect(next.filter((t) => t.status === "done").map((t) => t.id)).toEqual([
       "a",
       "x",
+    ]);
+  });
+
+  test("sortTasks orders by manual, due_at, and priority with nulls last", () => {
+    const items = [
+      task("none", "todo", 1024, {
+        created_at: "2026-11-16T01:00:00Z",
+        due_at: null,
+        priority: null,
+      }),
+      task("late", "todo", 2048, {
+        created_at: "2026-11-16T02:00:00Z",
+        due_at: "2026-11-20T00:00:00Z",
+        priority: 1,
+      }),
+      task("early", "todo", 3072, {
+        created_at: "2026-11-16T03:00:00Z",
+        due_at: "2026-11-17T00:00:00Z",
+        priority: 3,
+      }),
+    ];
+
+    expect(toColumns(sortTasks(items, "due_at", "asc")).todo).toEqual([
+      "early",
+      "late",
+      "none",
+    ]);
+    expect(toColumns(sortTasks(items, "due_at", "desc")).todo).toEqual([
+      "late",
+      "early",
+      "none",
+    ]);
+    expect(toColumns(sortTasks(items, "priority", "desc")).todo).toEqual([
+      "early",
+      "late",
+      "none",
+    ]);
+    expect(toColumns(sortTasks(items, "priority", "asc")).todo).toEqual([
+      "late",
+      "early",
+      "none",
+    ]);
+    expect(toColumns(sortTasks(items, "manual", "asc")).todo).toEqual([
+      "none",
+      "late",
+      "early",
     ]);
   });
 });

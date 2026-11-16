@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, BinaryIO, cast
+from typing import Any, BinaryIO, Literal, cast
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
@@ -1381,6 +1381,84 @@ async def move_task(
     return await _update(
         session, task, {"status": status, "position": position}, actor, action="moved"
     )
+
+
+TaskSortBy = Literal["manual", "due_at", "priority"]
+SortDirection = Literal["asc", "desc"]
+
+
+def _sort_column(tasks: list[Task], by: TaskSortBy, direction: SortDirection) -> list[Task]:
+    """Order one column's tasks: manual uses oldest-created first; due_at and priority
+    always place unset cards last regardless of direction."""
+    if by == "manual":
+        return sorted(tasks, key=lambda t: (t.created_at, t.id))
+    if by == "due_at":
+        with_due = [t for t in tasks if t.due_at is not None]
+        without_due = [t for t in tasks if t.due_at is None]
+        with_due.sort(
+            key=lambda t: (
+                t.due_at.timestamp() if direction == "asc" else -t.due_at.timestamp(),  # type: ignore[union-attr]
+                t.created_at,
+                t.id,
+            )
+        )
+        without_due.sort(key=lambda t: (t.created_at, t.id))
+        return with_due + without_due
+    with_prio = [t for t in tasks if t.priority is not None]
+    without_prio = [t for t in tasks if t.priority is None]
+    with_prio.sort(
+        key=lambda t: (
+            t.priority if direction == "asc" else -t.priority,  # type: ignore[operator]
+            t.created_at,
+            t.id,
+        )
+    )
+    without_prio.sort(key=lambda t: (t.created_at, t.id))
+    return with_prio + without_prio
+
+
+async def reorder_tasks(
+    session: AsyncSession,
+    *,
+    by: TaskSortBy,
+    direction: SortDirection = "asc",
+    actor: str,
+    channel_id: str | None = None,
+) -> Sequence[Task]:
+    """Persist a board-wide sort by rewriting task positions per status column."""
+    changed: list[Task] = []
+
+    def assign(task: Task, pos: float) -> None:
+        if task.position == pos:
+            return
+        old = task.position
+        task.position = pos
+        _log(session, task, "moved", actor, before={"position": old}, after={"position": pos})
+        changed.append(task)
+
+    for status in TaskStatus:
+        column = await _column(session, status)
+        if not column:
+            continue
+        if channel_id is not None:
+            targets = [t for t in column if t.channel_id == channel_id]
+            if len(targets) <= 1:
+                continue
+            # Ensure strictly increasing slots before swapping positions within the channel.
+            if any(targets[i].position >= targets[i + 1].position for i in range(len(targets) - 1)):
+                for i, t in enumerate(column, start=1):
+                    t.position = i * POSITION_STEP
+            slots = [t.position for t in targets]
+            for t, slot in zip(_sort_column(targets, by, direction), slots, strict=True):
+                assign(t, slot)
+        else:
+            for i, t in enumerate(_sort_column(column, by, direction), start=1):
+                assign(t, i * POSITION_STEP)
+    if changed:
+        await session.commit()
+        for t in changed:
+            await _publish("object.updated", t, snapshot(t))
+    return await list_tasks(session, channel_id=channel_id)
 
 
 async def delete_task(session: AsyncSession, task_id: str, actor: str) -> None:

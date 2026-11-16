@@ -40,12 +40,13 @@ import {
   useConfig,
   useCreateTask,
   useMoveTask,
+  useReorderTasks,
   useTasks,
   useUpdateTask,
 } from "../api";
 import { channelLabel } from "../cards";
 import { dday, localInputToIso } from "../dates";
-import { tr } from "../i18n";
+import { tr, tt } from "../i18n";
 import { CheckIcon, PlusIcon } from "../icons";
 import { JobLine } from "../jobs";
 import {
@@ -53,6 +54,10 @@ import {
   applyColumns,
   type Columns,
   columnOf,
+  type SortDirection,
+  sortTasks,
+  type TaskSort,
+  type TaskSortBy,
   toColumns,
 } from "../kanban";
 import { toast } from "../toast";
@@ -93,6 +98,82 @@ const DOT: Record<TaskStatus, string> = {
   done: "bg-step-5",
 };
 
+const SORT_KEY = "argos.kanban.sort";
+
+const SORTS: { id: TaskSortBy; label: () => string }[] = [
+  { id: "manual", label: () => tr("수동") },
+  { id: "due_at", label: () => tr("마감일") },
+  { id: "priority", label: () => tr("우선순위") },
+];
+
+function savedSort(): TaskSort {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(SORT_KEY) ?? "null",
+    ) as TaskSort | null;
+    if (
+      saved &&
+      ["manual", "due_at", "priority"].includes(saved.by) &&
+      ["asc", "desc"].includes(saved.direction)
+    ) {
+      return saved;
+    }
+  } catch {
+    // private window or blocked storage: use the default
+  }
+  return { by: "manual", direction: "asc" };
+}
+
+function SortBar({
+  sort,
+  onSelect,
+  onFlip,
+}: {
+  sort: TaskSort;
+  onSelect: (by: TaskSortBy) => void;
+  onFlip: () => void;
+}) {
+  const dirLabel =
+    sort.by === "due_at"
+      ? sort.direction === "asc"
+        ? tr("임박순")
+        : tr("늦은순")
+      : sort.direction === "desc"
+        ? tr("높은순")
+        : tr("낮은순");
+
+  return (
+    <div className="flex items-center gap-1">
+      <fieldset className="m-0 flex min-w-0 gap-0.5 rounded-full border-0 bg-inset p-[2px] text-[12px]">
+        <legend className="sr-only">{tr("정렬 기준")}</legend>
+        {SORTS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-pressed={sort.by === s.id}
+            onClick={() => onSelect(s.id)}
+            className="h-6 cursor-pointer rounded-full px-2.5 text-text-3 aria-pressed:bg-card aria-pressed:font-medium aria-pressed:text-ink aria-pressed:shadow-sm"
+          >
+            {s.label()}
+          </button>
+        ))}
+      </fieldset>
+      {sort.by !== "manual" && (
+        <button
+          type="button"
+          onClick={onFlip}
+          aria-label={tt`정렬 방향 바꾸기 (지금: ${dirLabel})`}
+          title={dirLabel}
+          className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[12px] text-text-3 hover:bg-inset hover:text-ink"
+        >
+          <span aria-hidden="true">{sort.direction === "asc" ? "↑" : "↓"}</span>
+          {dirLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function KanbanTab() {
   const channel = useChannel();
   // 내 공간 manages every task in one board; each card names its channel.
@@ -101,6 +182,41 @@ export function KanbanTab() {
   const channels = useChannels();
   const config = useConfig();
   const move = useMoveTask(all ? undefined : channel.id);
+  const reorder = useReorderTasks(all ? undefined : channel.id);
+  const [sort, setSort] = useState<TaskSort>(savedSort);
+  const rememberSort = (next: TaskSort) => {
+    setSort(next);
+    try {
+      localStorage.setItem(SORT_KEY, JSON.stringify(next));
+    } catch {
+      // blocked storage: preference still applies for this session
+    }
+  };
+  const applySort = (next: TaskSort) => {
+    rememberSort(next);
+    if (!tasks.data) return;
+    reorder.reorder({
+      by: next.by,
+      direction: next.direction,
+      optimistic: sortTasks(tasks.data, next.by, next.direction),
+    });
+  };
+  const pickSort = (by: TaskSortBy) => {
+    const direction: SortDirection =
+      by === "manual"
+        ? "asc"
+        : sort.by === by
+          ? sort.direction
+          : by === "priority"
+            ? "desc"
+            : "asc";
+    applySort({ by, direction });
+  };
+  const flipSort = () => {
+    if (sort.by === "manual") return;
+    const direction: SortDirection = sort.direction === "asc" ? "desc" : "asc";
+    applySort({ by: sort.by, direction });
+  };
   const channelOf = (task: Task) => {
     if (!all) return undefined;
     const c = channels.data?.channels.find((c) => c.id === task.channel_id);
@@ -190,6 +306,9 @@ export function KanbanTab() {
       ...anchorFor(ids, id),
       optimistic: applyColumns(tasks.data, final),
     });
+    if (sort.by !== "manual") {
+      rememberSort({ by: "manual", direction: "asc" });
+    }
     if (status === "done" && before && before.status !== "done") {
       toast(tr("완료했어요"), {
         detail: before.title,
@@ -208,9 +327,10 @@ export function KanbanTab() {
 
   return (
     <>
-      <div className="flex items-center gap-1 px-8 max-md:px-4 pb-3.5">
+      <div className="flex flex-wrap items-center gap-2 px-8 max-md:px-4 pb-3.5">
+        <SortBar sort={sort} onSelect={pickSort} onFlip={flipSort} />
         <span className="grow" />
-        <span className="mr-2.5 text-[12px] text-meta">
+        <span className="mr-2.5 text-[12px] text-meta max-sm:hidden">
           {tr("드래그로 이동 · 순서는 새로고침 후에도 유지")}
         </span>
         <button
@@ -222,7 +342,7 @@ export function KanbanTab() {
           {tr("할 일")}
         </button>
       </div>
-      <ErrorText error={move.error} />
+      <ErrorText error={move.error ?? reorder.error} />
       <ChannelOf.Provider value={channelOf}>
         <DndContext
           sensors={sensors}

@@ -302,6 +302,12 @@ class TaskMove(BaseModel):
     before_id: str | None = None
 
 
+class TaskReorder(BaseModel):
+    by: services.TaskSortBy
+    direction: services.SortDirection = "asc"
+    channel_id: str | None = None
+
+
 class EventOut(Out):
     id: str
     channel_id: str
@@ -3033,6 +3039,18 @@ async def list_tasks(
     session: Session, channel_id: str | None = None, status: TaskStatus | None = None
 ) -> list[TaskOut]:
     tasks = await services.list_tasks(session, channel_id=channel_id, status=status)
+    return await _tasks_out(session, tasks)
+
+
+@router.post("/tasks/reorder")
+async def reorder_tasks(session: Session, body: TaskReorder) -> list[TaskOut]:
+    tasks = await services.reorder_tasks(
+        session,
+        by=body.by,
+        direction=body.direction,
+        actor=USER,
+        channel_id=body.channel_id,
+    )
     return await _tasks_out(session, tasks)
 
 

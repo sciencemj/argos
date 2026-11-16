@@ -241,6 +241,70 @@ async def test_move_with_anchor_from_other_column_fails(session: AsyncSession) -
         await services.move_task(session, a.id, status=TaskStatus.DONE, after_id=b.id, actor="user")
 
 
+async def test_reorder_tasks_by_due_priority_and_manual(session: AsyncSession) -> None:
+    channel = await make_channel(session)
+    t_none = await services.create_task(session, channel_id=channel.id, title="none", actor="user")
+    t_late = await services.create_task(
+        session,
+        channel_id=channel.id,
+        title="late",
+        due_at=datetime(2026, 11, 20, tzinfo=UTC),
+        priority=1,
+        actor="user",
+    )
+    t_early = await services.create_task(
+        session,
+        channel_id=channel.id,
+        title="early",
+        due_at=datetime(2026, 11, 17, tzinfo=UTC),
+        priority=3,
+        actor="user",
+    )
+    # Give each task distinct created_at timestamps so manual sort is deterministic.
+    t_none.created_at = datetime(2026, 11, 16, 1, 0, tzinfo=UTC)
+    t_late.created_at = datetime(2026, 11, 16, 2, 0, tzinfo=UTC)
+    t_early.created_at = datetime(2026, 11, 16, 3, 0, tzinfo=UTC)
+    await session.commit()
+
+    await services.reorder_tasks(session, by="due_at", direction="asc", actor="user")
+    assert await column_titles(session, channel.id, TaskStatus.TODO) == ["early", "late", "none"]
+
+    await services.reorder_tasks(session, by="due_at", direction="desc", actor="user")
+    assert await column_titles(session, channel.id, TaskStatus.TODO) == ["late", "early", "none"]
+
+    await services.reorder_tasks(session, by="priority", direction="desc", actor="user")
+    assert await column_titles(session, channel.id, TaskStatus.TODO) == ["early", "late", "none"]
+
+    await services.reorder_tasks(session, by="priority", direction="asc", actor="user")
+    assert await column_titles(session, channel.id, TaskStatus.TODO) == ["late", "early", "none"]
+
+    await services.reorder_tasks(session, by="manual", direction="asc", actor="user")
+    assert await column_titles(session, channel.id, TaskStatus.TODO) == ["none", "late", "early"]
+
+
+async def test_reorder_tasks_scoped_to_channel_keeps_other_channels(session: AsyncSession) -> None:
+    one = await make_channel(session, "one")
+    assert one.area_id is not None
+    two = await services.create_channel(session, name="two", area_id=one.area_id, actor="user")
+    a = await services.create_task(session, channel_id=one.id, title="a", priority=1, actor="user")
+    x = await services.create_task(session, channel_id=two.id, title="x", priority=0, actor="user")
+    b = await services.create_task(session, channel_id=one.id, title="b", priority=3, actor="user")
+    x_pos = x.position
+
+    await services.reorder_tasks(
+        session, by="priority", direction="desc", actor="user", channel_id=one.id
+    )
+    assert await column_titles(session, one.id, TaskStatus.TODO) == ["b", "a"]
+    await session.refresh(x)
+    assert x.position == x_pos
+    assert [t.title for t in await services.list_tasks(session, status=TaskStatus.TODO)] == [
+        "b",
+        "x",
+        "a",
+    ]
+    assert b.position < x.position < a.position
+
+
 async def test_delete_task_keeps_snapshot_in_log(session: AsyncSession) -> None:
     channel = await make_channel(session)
     task = await services.create_task(session, channel_id=channel.id, title="gone", actor="user")
