@@ -226,57 +226,66 @@ export function ChannelPage() {
 
   return (
     <>
-      <header
-        data-tauri-drag-region="deep"
-        className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
-      >
-        <div className="flex items-center gap-3.5 max-md:gap-2">
-          <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-            {!space && <span className="text-hash">#</span>}{" "}
-            {space ? tr("내 공간") : channel.name}
-          </h1>
-          {chatFirst && <PermissionToggle channel={channel} />}
-          {chatFirst && (
-            <button
-              type="button"
-              aria-label={tr("워크스페이스와 자료", "Workspace & knowledge")}
-              aria-pressed={panel}
-              title={tr("워크스페이스 · 자료", "Workspace · Knowledge")}
-              className={`flex size-9 cursor-pointer items-center justify-center rounded-full border ${panel ? "border-ink bg-ink text-on-dark" : "border-line-soft bg-card text-text-3 hover:text-ink"}`}
-              onClick={() => togglePanel(!panel)}
-            >
-              <FolderIcon />
-            </button>
-          )}
-          {editable && (
-            <button
-              type="button"
-              aria-label={tr("채널 설정")}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-soft bg-card text-text-3 hover:text-ink"
-              onClick={() => setEditing(true)}
-            >
-              <SettingsIcon />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3.5">
-          <ChannelTabs channel={channel} space={space} />
-          <span className="grow" />
-          {settingsChannel?.vault_path && (
-            <span className="truncate text-[12.5px] text-meta max-md:hidden">
-              {tr("옵시디언")}{" "}
-              <span className="font-mono">{settingsChannel.vault_path}/</span>
-            </span>
-          )}
-        </div>
-      </header>
+      {/* The workspace panel is a full-height right column beside header + content,
+          like the sidebar on the left. */}
       <div className="relative flex min-h-0 w-full grow">
-        <div
-          className={`flex min-h-0 min-w-0 grow flex-col ${onFeed ? "" : column}`}
-        >
-          <Outlet
-            context={space && !onIndex && personal ? personal : channel}
-          />
+        <div className="flex min-h-0 min-w-0 grow flex-col">
+          <header
+            data-tauri-drag-region="deep"
+            className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
+          >
+            <div className="flex items-center gap-3.5 max-md:gap-2">
+              <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+                {!space && <span className="text-hash">#</span>}{" "}
+                {space ? tr("내 공간") : channel.name}
+              </h1>
+              {chatFirst && <PermissionToggle channel={channel} />}
+              {chatFirst && (
+                <button
+                  type="button"
+                  aria-label={tr(
+                    "워크스페이스와 자료",
+                    "Workspace & knowledge",
+                  )}
+                  aria-pressed={panel}
+                  title={tr("워크스페이스 · 자료", "Workspace · Knowledge")}
+                  className={`flex size-9 cursor-pointer items-center justify-center rounded-full border ${panel ? "border-ink bg-ink text-on-dark" : "border-line-soft bg-card text-text-3 hover:text-ink"}`}
+                  onClick={() => togglePanel(!panel)}
+                >
+                  <FolderIcon />
+                </button>
+              )}
+              {editable && (
+                <button
+                  type="button"
+                  aria-label={tr("채널 설정")}
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-soft bg-card text-text-3 hover:text-ink"
+                  onClick={() => setEditing(true)}
+                >
+                  <SettingsIcon />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3.5">
+              <ChannelTabs channel={channel} space={space} />
+              <span className="grow" />
+              {settingsChannel?.vault_path && (
+                <span className="truncate text-[12.5px] text-meta max-md:hidden">
+                  {tr("옵시디언")}{" "}
+                  <span className="font-mono">
+                    {settingsChannel.vault_path}/
+                  </span>
+                </span>
+              )}
+            </div>
+          </header>
+          <div
+            className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
+          >
+            <Outlet
+              context={space && !onIndex && personal ? personal : channel}
+            />
+          </div>
         </div>
         {chatFirst && panel && (
           <WorkspacePanel

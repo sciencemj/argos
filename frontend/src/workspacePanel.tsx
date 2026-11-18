@@ -97,7 +97,10 @@ export function WorkspacePanel({
       aria-label={tr("워크스페이스와 자료", "Workspace & knowledge")}
       className="flex w-[340px] shrink-0 flex-col border-l border-line-soft bg-sidebar max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:shadow-raised max-md:w-full"
     >
-      <div className="flex h-14 items-center gap-2 px-4">
+      <div
+        data-tauri-drag-region="deep"
+        className="flex items-center gap-2 px-4 pt-[18px] pb-3"
+      >
         <FolderIcon />
         <span className="grow text-[13.5px] font-medium text-ink">
           {tr("워크스페이스 · 자료", "Workspace · Knowledge")}
