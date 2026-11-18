@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     permission_mode: Literal["auto_edit", "ask"] = "auto_edit"
     # Longest a run waits for a tool approval before treating it as rejected (0: forever).
     approval_timeout: float = 86400.0
+    # ask_agent: how deep agents may delegate to each other (1: no nested asks).
+    max_agent_depth: int = 2
     # Coding jobs (PLAN Phase 6, §9: allowed directories are the user's choice). A job
     # may only write inside one of these roots; without --dir it gets a fresh folder in
     # the first one.

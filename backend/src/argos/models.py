@@ -113,6 +113,9 @@ class Channel(Record):
     workspace_path: Mapped[str | None] = mapped_column(String(500))
     # Native harness approvals (PermissionMode); None: the app-wide setting.
     permission_mode: Mapped[str | None] = mapped_column(String(20))
+    # Local folders the user linked to this channel: agents' file tools treat them like
+    # the channel's own workspace (v0.2). Absolute, checked paths.
+    linked_folders: Mapped[list[str] | None] = mapped_column(JSON)
 
 
 class ChannelRead(Base):
@@ -445,6 +448,9 @@ class AgentRun(Record):
     workspace: Mapped[str | None] = mapped_column(String(500))
     log: Mapped[str | None] = mapped_column(Text)  # tool-use trace, one line per step
     permission_mode: Mapped[str | None] = mapped_column(String(20))  # native runs: in effect
+    # ask_agent (v0.2): the run that delegated this one, and how deep the chain is.
+    parent_run_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    depth: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class AgentRunStep(Base):

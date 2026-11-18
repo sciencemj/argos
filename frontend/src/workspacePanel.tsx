@@ -1,9 +1,17 @@
-import { type DragEvent, useEffect, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type Channel,
   useChannelFiles,
   useChannelKnowledge,
   useDeleteChannelFile,
+  useLinkFolder,
+  useUnlinkFolder,
   useUploadChannelFile,
 } from "./api";
 import { fmt } from "./dates";
@@ -279,7 +287,85 @@ export function WorkspacePanel({
             </div>
           ))}
         </section>
+
+        <LinkedFolders channel={channel} />
       </div>
     </aside>
+  );
+}
+
+/** Local folders on this computer the channel's agents may work in (read, write, edit
+ * with the file tools, as freely as in the channel's own workspace). */
+function LinkedFolders({ channel }: { channel: Channel }) {
+  const link = useLinkFolder();
+  const unlink = useUnlinkFolder();
+  const [path, setPath] = useState("");
+  const folders = channel.linked_folders ?? [];
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!path.trim()) return;
+    link.mutate(
+      { channelId: channel.id, path: path.trim() },
+      { onSuccess: () => setPath("") },
+    );
+  };
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="m-0 px-1 text-[11.5px] font-medium text-meta">
+        {tt`연결한 로컬 폴더 ${folders.length}`}
+      </h3>
+      <p className="m-0 px-1 text-[12px] text-text-3">
+        {tr(
+          "이 컴퓨터의 폴더를 연결하면 에이전트가 그 안의 파일을 바로 읽고 고칠 수 있어요. 삭제·명령 실행은 여전히 승인을 받아요.",
+          "Link a folder on this computer and agents can read and edit its files right away. Deleting and commands still ask first.",
+        )}
+      </p>
+      {folders.map((folder) => (
+        <div
+          key={folder}
+          className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-inset"
+        >
+          <FolderIcon size={14} />
+          <span
+            className="min-w-0 grow truncate font-mono text-[12px] text-ink"
+            title={folder}
+          >
+            {folder}
+          </span>
+          <button
+            type="button"
+            aria-label={tt`${folder} 연결 해제`}
+            title={tr("연결 해제", "Unlink")}
+            disabled={unlink.isPending}
+            onClick={() =>
+              unlink.mutate({ channelId: channel.id, path: folder })
+            }
+            className={`${btn.icon} size-7 opacity-0 group-hover:opacity-100 focus:opacity-100 max-md:opacity-100`}
+          >
+            <CloseIcon size={13} />
+          </button>
+        </div>
+      ))}
+      <form onSubmit={submit} className="flex items-center gap-1.5 px-1">
+        <label htmlFor={`link-${channel.id}`} className="sr-only">
+          {tr("연결할 폴더 경로", "Folder path to link")}
+        </label>
+        <input
+          id={`link-${channel.id}`}
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="~/Documents/project"
+          className="h-8 min-w-0 grow rounded-full border border-line-soft bg-card px-3 font-mono text-[12px] text-text outline-none placeholder:text-meta focus:border-ink"
+        />
+        <button
+          type="submit"
+          disabled={!path.trim() || link.isPending}
+          className="h-8 shrink-0 cursor-pointer rounded-full bg-inset px-3 text-[12px] font-medium text-text-2 hover:text-ink disabled:opacity-50"
+        >
+          {tr("연결", "Link")}
+        </button>
+      </form>
+      <ErrorText error={link.error ?? unlink.error} />
+    </section>
   );
 }

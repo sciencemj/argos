@@ -1190,6 +1190,8 @@ def _native_adapter(
         sessionmaker=run.sessionmaker,
         settings=settings,
         classifier=run.classifier,
+        trusted=run.trusted,
+        delegate=run.delegate,
     )
     return NativeHarnessAdapter(llm, agent.name, registry, context, run.gate, vision=vision)
 

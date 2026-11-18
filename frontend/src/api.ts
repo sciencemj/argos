@@ -951,6 +951,30 @@ export const useDeleteChannelFile = () =>
       ),
   );
 
+/** Links a local folder to a channel: its agents' file tools may work there. */
+export const useLinkFolder = () =>
+  useWrite(
+    "channel",
+    ({ channelId, path }: { channelId: string; path: string }) =>
+      call(
+        client.POST("/api/v1/channels/{channel_id}/folders", {
+          params: { path: { channel_id: channelId } },
+          body: { path },
+        }),
+      ),
+  );
+
+export const useUnlinkFolder = () =>
+  useWrite(
+    "channel",
+    ({ channelId, path }: { channelId: string; path: string }) =>
+      call(
+        client.DELETE("/api/v1/channels/{channel_id}/folders", {
+          params: { path: { channel_id: channelId }, query: { path } },
+        }),
+      ),
+  );
+
 /** A native harness run's tool calls, results and approvals (after it streamed). */
 export const useRunSteps = (runId: string | undefined, enabled = true) =>
   useQuery({

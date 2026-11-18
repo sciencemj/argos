@@ -291,6 +291,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Channel Folder
+         * @description Links a local folder to the channel: its agents' file tools may then read and
+         *     edit there like in the channel's own workspace.
+         */
+        post: operations["link_channel_folder_api_v1_channels__channel_id__folders_post"];
+        /** Unlink Channel Folder */
+        delete: operations["unlink_channel_folder_api_v1_channels__channel_id__folders_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channels/{channel_id}/files": {
         parameters: {
             query?: never;
@@ -2637,6 +2659,8 @@ export interface components {
             workspace_path: string | null;
             /** Permission Mode */
             permission_mode?: ("auto_edit" | "ask") | null;
+            /** Linked Folders */
+            linked_folders?: string[] | null;
         };
         /** ChannelSessionOut */
         ChannelSessionOut: {
@@ -3127,6 +3151,11 @@ export interface components {
              * @enum {string}
              */
             language: "ko" | "en";
+        };
+        /** LinkFolderIn */
+        LinkFolderIn: {
+            /** Path */
+            path: string;
         };
         /** LmsChannel */
         LmsChannel: {
@@ -4893,6 +4922,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChannelSessionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_channel_folder_api_v1_channels__channel_id__folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkFolderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_channel_folder_api_v1_channels__channel_id__folders_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
                 };
             };
             /** @description Validation Error */

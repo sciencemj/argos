@@ -166,6 +166,13 @@ async def build_context(
                 for e in events
                 if e.starts_at
             ]
+    if channel.linked_folders and agent.backend == AgentBackend.NATIVE:
+        lines.append(
+            "Local folders linked to this channel (use absolute paths with the file tools):"
+            if settings.language == "en"
+            else "이 채널에 연결된 로컬 폴더 (파일 도구에 절대 경로로 쓰세요):"
+        )
+        lines += [f"- {folder}" for folder in channel.linked_folders]
     if agent.system_prompt:
         lines.append(agent.system_prompt)
     context = "\n".join(lines)[: settings.context_limit]
@@ -714,6 +721,73 @@ class Runner:
                 approval_id=approval_id,
             )
 
+    async def delegate(self, parent_run_id: str, asker: Agent, name: str, prompt: str) -> str:
+        """ask_agent (v0.2): `name` answers `prompt` as a child run in the parent's thread
+        (a visible @mention message, then its reply). Depth is capped
+        (settings.max_agent_depth), an agent already in the chain cannot be asked again
+        (no cycles), and cancelling the parent cancels the child."""
+        async with self._sessionmaker() as session:
+            target = await services.find_agent(session, name)
+            if target is None:
+                raise ValueError(f"없는 에이전트예요: @{name}")
+            parent = await services.get_run(session, parent_run_id)
+            depth = parent.depth + 1
+            if depth > self.settings.max_agent_depth:
+                raise ValueError(
+                    f"에이전트 위임은 {self.settings.max_agent_depth}단계까지만 할 수 있어요"
+                )
+            chain = {parent.agent_id}
+            current = parent
+            while current.parent_run_id:
+                current = await services.get_run(session, current.parent_run_id)
+                chain.add(current.agent_id)
+            if target.id in chain:
+                raise ValueError(f"@{target.name}은(는) 이미 이 대화를 맡고 있어요 (순환 호출)")
+            channel = await services.get_channel(session, parent.channel_id)
+            actor = f"agent:{asker.name}"
+            ask = await services.create_message(
+                session,
+                channel_id=channel.id,
+                body=f"@{target.name} {prompt}",
+                author_type=AuthorType.AGENT,
+                author_id=asker.name,
+                thread_root_id=parent.thread_root_id,
+                actor=actor,
+            )
+            run, reply = await services.start_run(
+                session,
+                agent=target,
+                channel_id=channel.id,
+                trigger=ask,
+                reply_thread_root_id=parent.thread_root_id,
+                actor=actor,
+                kind="delegate",
+                parent=(parent.id, depth),
+            )
+            context = await build_context(session, target, channel, self.settings, prompt)
+        transcript = [Turn(asker.name, prompt)]
+        child = asyncio.create_task(
+            self._run(run.id, target, reply.id, transcript, context, f"delegate-{run.id}")
+        )
+        self.track(run.id, child)
+        try:
+            await child
+        except asyncio.CancelledError:
+            child.cancel()  # the parent stopped: so does the child
+            await asyncio.gather(child, return_exceptions=True)
+            raise
+        # Cancelling the parent while it awaits cancels the child task instead, and the
+        # child's _run ends normally (as "cancelled"), so the parent must re-raise here.
+        me = asyncio.current_task()
+        if me is not None and me.cancelling():
+            raise asyncio.CancelledError
+        async with self._sessionmaker() as session:
+            done = await services.get_run(session, run.id)
+            answer = await session.get(Message, reply.id)
+        if done.status != RunStatus.DONE:
+            raise ValueError(f"@{target.name}이(가) 답하지 못했어요: {done.error or done.status}")
+        return (answer.body if answer else "") or "(빈 답)"
+
     async def _native_adapter(
         self,
         run_id: str,
@@ -744,6 +818,10 @@ class Runner:
             timeout=self.settings.approval_timeout or None,
         )
         project = Path(channel.workspace_path) if channel.workspace_path else None
+
+        async def delegate(name: str, prompt: str) -> str:
+            return await self.delegate(run_id, agent, name, prompt)
+
         harness = HarnessRun(
             run_id=run_id,
             channel_id=channel.id,
@@ -753,6 +831,8 @@ class Runner:
             roots=(project,) if project is not None else (),
             sessionmaker=self._sessionmaker,
             classifier=self.classifier(),
+            trusted=tuple(Path(f) for f in channel.linked_folders or []),
+            delegate=delegate,
         )
         workspace = job.workspace if job is not None else coding
         return self.adapter_factory(

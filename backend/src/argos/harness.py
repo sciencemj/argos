@@ -79,13 +79,17 @@ class ToolContext:
     sessionmaker: "async_sessionmaker[AsyncSession] | None" = None
     settings: "Settings | None" = None
     classifier: Any = None
+    # Local folders linked to the channel: as trusted as the workspace (v0.2).
+    trusted: tuple[Path, ...] = ()
+    # ask_agent: hands a prompt to another agent as a child run; returns its answer.
+    delegate: "Callable[[str, str], Awaitable[str]] | None" = None
 
     @property
     def actor(self) -> str:
         return f"agent:{self.agent}"
 
     def allowed_roots(self) -> tuple[Path, ...]:
-        return (self.workspace, *self.roots)
+        return (self.workspace, *self.trusted, *self.roots)
 
 
 type ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[str]]
@@ -215,15 +219,23 @@ def inside(path: str | Path, workspace: Path) -> bool:
     return target.resolve().is_relative_to(root)
 
 
-def decide(tool: ToolDef, args: dict[str, Any], mode: PermissionMode, workspace: Path) -> Decision:
+def decide(
+    tool: ToolDef,
+    args: dict[str, Any],
+    mode: PermissionMode,
+    workspace: Path,
+    trusted: Sequence[Path] = (),
+) -> Decision:
     """auto_edit: reads and edits inside the workspace run on their own; destructive
     tools and anything outside the workspace wait for the user. ask: only reads inside
-    the workspace run on their own."""
+    the workspace run on their own. `trusted`: folders the user linked to the channel,
+    which count as workspace."""
     try:
         touched = list(tool.paths(args))
     except Exception:  # cannot tell what it touches: ask
         return "ask"
-    if any(not inside(p, workspace) for p in touched):
+    homes = (workspace, *trusted)
+    if any(not any(inside(p, home) for home in homes) for p in touched):
         return "ask"
     if tool.kind == "read":
         return "allow"
@@ -792,7 +804,8 @@ class NativeHarnessAdapter:
                 call.id, call.name, f"오류: 없는 도구예요. 쓸 수 있는 도구: {known}", True
             )
             return
-        if decide(tool, args, self._ctx.permission_mode, self._ctx.workspace) == "ask":
+        ctx = self._ctx
+        if decide(tool, args, ctx.permission_mode, ctx.workspace, ctx.trusted) == "ask":
             if self._gate is None:
                 yield ToolResult(
                     call.id, call.name, "오류: 사용자 승인이 필요한데 승인을 받을 수 없어요", True
@@ -833,6 +846,8 @@ class HarnessRun:
     roots: tuple[Path, ...] = ()  # further folders file tools may reach (with approval)
     sessionmaker: "async_sessionmaker[AsyncSession] | None" = None
     classifier: Any = None
+    trusted: tuple[Path, ...] = ()  # local folders linked to the channel
+    delegate: "Callable[[str, str], Awaitable[str]] | None" = None  # ask_agent
 
 
 def registry_for(tools: list[str] | None, base: ToolRegistry | None = None) -> ToolRegistry:

@@ -123,12 +123,14 @@ def tool_specs(names: Sequence[str] | None = None) -> list[dict[str, Any]]:
     """OpenAI `tools` entries for the native tools (all, or the given names), as the
     harness sends them."""
     from argos.argos_tools import register_argos_tools
+    from argos.extra_tools import register_extra_tools
     from argos.file_tools import register_file_tools
     from argos.harness import ToolRegistry, core_tools
 
     registry = ToolRegistry()
     register_argos_tools(registry)
     register_file_tools(registry)
+    register_extra_tools(registry)
     for tool in core_tools.tools():  # plugins loaded in this process, if any
         if tool.name not in registry:
             registry.register(tool)

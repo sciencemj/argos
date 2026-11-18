@@ -139,6 +139,7 @@ class ChannelOut(Out):
     sort_order: int
     workspace_path: str | None
     permission_mode: Literal["auto_edit", "ask"] | None = None  # None: the app-wide one
+    linked_folders: list[str] | None = None  # local folders agents may work in
 
 
 class AreaCreate(BaseModel):
@@ -1056,6 +1057,42 @@ async def channel_sessions(
     session tree). Not /sessions: that path lists a DM's conversations."""
     rows = await services.channel_sessions(session, channel_id, limit)
     return [ChannelSessionOut(**r) for r in rows]
+
+
+class LinkFolderIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
+
+
+def _this_mac_only(request: Request) -> None:
+    """Giving agents a folder on this computer is decided on this computer, not from a
+    phone through Tailscale serve."""
+    if request.headers.get("tailscale-user-login") or getattr(request.state, "remote_base", None):
+        raise HTTPException(403, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
+
+
+@router.post("/channels/{channel_id}/folders")
+async def link_channel_folder(
+    request: Request, session: Session, config: Config, channel_id: str, body: LinkFolderIn
+) -> ChannelOut:
+    """Links a local folder to the channel: its agents' file tools may then read and
+    edit there like in the channel's own workspace."""
+    _this_mac_only(request)
+    channel = await services.link_folder(
+        session, channel_id, body.path, config.data_dir, config.db_path, USER
+    )
+    return ChannelOut.model_validate(channel)
+
+
+@router.delete("/channels/{channel_id}/folders")
+async def unlink_channel_folder(
+    request: Request,
+    session: Session,
+    channel_id: str,
+    path: Annotated[str, Query(max_length=1000)],
+) -> ChannelOut:
+    _this_mac_only(request)
+    channel = await services.unlink_folder(session, channel_id, path, USER)
+    return ChannelOut.model_validate(channel)
 
 
 # --- channel files (v0.2 Stage 1.2): uploads agents can read and search -------------------

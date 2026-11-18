@@ -7,6 +7,7 @@ import {
   useResolveApproval,
   useRunSteps,
 } from "./api";
+import { type ArtifactKind, ArtifactView } from "./artifact";
 import { tr } from "./i18n";
 import { ShieldIcon, WrenchIcon } from "./icons";
 import { btn, ErrorText } from "./ui";
@@ -55,11 +56,42 @@ export function ToolSteps({ message }: { message: Message }) {
       className="flex flex-col gap-1.5"
       aria-label={tr("도구 사용", "Tool calls")}
     >
-      {steps.map((step) => (
-        <ToolStepCard key={step.id} step={step} />
-      ))}
+      {steps.map((step) => {
+        const artifact = artifactOf(step);
+        return artifact ? (
+          <ArtifactView key={step.id} {...artifact} />
+        ) : (
+          <ToolStepCard key={step.id} step={step} />
+        );
+      })}
     </section>
   );
+}
+
+const ARTIFACT_KINDS = ["html", "svg", "mermaid", "tsx"] as const;
+
+/** A finished render_artifact call: draw its arguments (the code never went back to
+ * the model). Anything else, or a failed call, stays an ordinary tool card. */
+export function artifactOf(
+  step: LiveStep,
+): { title: string; kind: ArtifactKind; code: string } | null {
+  if (
+    step.name !== "render_artifact" ||
+    step.output === undefined ||
+    step.isError
+  )
+    return null;
+  const { title, kind, code } = step.args as Record<string, unknown>;
+  if (
+    typeof code !== "string" ||
+    !ARTIFACT_KINDS.includes(kind as ArtifactKind)
+  )
+    return null;
+  return {
+    title: typeof title === "string" && title ? title : "Artifact",
+    kind: kind as ArtifactKind,
+    code,
+  };
 }
 
 function stateText(step: LiveStep, waiting: boolean): string {

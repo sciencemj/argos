@@ -27,6 +27,7 @@ from argos.argos_tools import register_argos_tools
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
+from argos.extra_tools import register_extra_tools
 from argos.file_tools import register_file_tools
 from argos.harness import core_tools
 from argos.hub import hub
@@ -64,6 +65,7 @@ def create_app(
         # Native harness tools (v0.2): Argos tools, workspace files/shell, then plugins.
         register_argos_tools(core_tools)
         register_file_tools(core_tools)
+        register_extra_tools(core_tools)
         app.state.plugins = await asyncio.to_thread(
             load_plugins, config.data_dir / "plugins", core_tools
         )

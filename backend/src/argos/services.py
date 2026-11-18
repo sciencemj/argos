@@ -2867,6 +2867,7 @@ async def start_run(
     actor: str,
     job: tuple[Task, str, Path] | None = None,
     kind: str = "chat",
+    parent: tuple[str, int] | None = None,
 ) -> tuple[AgentRun, Message]:
     """Creates the run and its (still empty) reply message, filled in when the run ends.
     `job` = (card, instructions, workspace) makes it a queued coding job."""
@@ -2877,6 +2878,8 @@ async def start_run(
         trigger_message_id=trigger.id,
         kind=kind,
     )
+    if parent is not None:  # ask_agent: (parent run id, depth)
+        run.parent_run_id, run.depth = parent
     if job is not None:
         task, instructions, workspace = job
         run.kind, run.status = "job", RunStatus.QUEUED
@@ -2976,6 +2979,65 @@ async def mark_run_started(session: AsyncSession, run_id: str) -> AgentRun:
     return await _update(
         session, run, {"status": RunStatus.RUNNING, "started_at": datetime.now(UTC)}, "system"
     )
+
+
+LINKED_FOLDERS_MAX = 10
+
+
+def check_linked_folder(raw: str, data_dir: Path, db_path: Path) -> str:
+    """A local folder the user links to a channel (v0.2): an existing folder under the
+    home folder (or an external volume), never the home folder itself, a hidden folder
+    (~/.ssh, ~/.aws…), ~/Library, or anything holding Argos's own data. Returns it
+    resolved (symlinks followed, so a link cannot smuggle in a refused place)."""
+    text = raw.strip()
+    if not text:
+        raise InvalidError("폴더 경로를 적어 주세요")
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        raise InvalidError(f"절대 경로나 ~로 시작하는 경로를 적어 주세요: {text}")
+    path = path.resolve()
+    if not path.is_dir():
+        raise InvalidError(f"없는 폴더예요: {text}")
+    home = Path.home().resolve()
+    volumes = Path("/Volumes")
+    if path.is_relative_to(home):
+        inner = path.relative_to(home).parts
+    elif path.is_relative_to(volumes) and len(path.relative_to(volumes).parts) >= 1:
+        inner = path.relative_to(volumes).parts[1:]
+    else:
+        raise InvalidError(f"홈 폴더나 외장 볼륨 안의 폴더만 연결할 수 있어요: {text}")
+    if path in (home, volumes) or (path.parent == volumes):
+        raise InvalidError(f"너무 넓은 범위예요. 하위 폴더를 골라 주세요: {text}")
+    if any(part.startswith(".") for part in inner) or (inner and inner[0] == "Library"):
+        raise InvalidError(f"시스템·숨김 폴더는 연결할 수 없어요: {text}")
+    for own in (data_dir.expanduser().resolve(), db_path.expanduser().resolve().parent):
+        if own.is_relative_to(path) or path.is_relative_to(own):
+            raise InvalidError(f"Argos 데이터가 들어 있는 폴더는 연결할 수 없어요: {text}")
+    return str(path)
+
+
+async def link_folder(
+    session: AsyncSession, channel_id: str, raw: str, data_dir: Path, db_path: Path, actor: str
+) -> Channel:
+    channel = await get_channel(session, channel_id)
+    if channel.kind not in (ChannelKind.COURSE, ChannelKind.PROJECT):
+        raise InvalidError("과목·프로젝트 채널에만 폴더를 연결할 수 있어요")
+    folder = await asyncio.to_thread(check_linked_folder, raw, data_dir, db_path)
+    current = list(channel.linked_folders or [])
+    if folder in current:
+        return channel
+    if len(current) >= LINKED_FOLDERS_MAX:
+        raise InvalidError(f"폴더는 {LINKED_FOLDERS_MAX}개까지 연결할 수 있어요")
+    return await _update(session, channel, {"linked_folders": [*current, folder]}, actor)
+
+
+async def unlink_folder(session: AsyncSession, channel_id: str, folder: str, actor: str) -> Channel:
+    channel = await get_channel(session, channel_id)
+    current = list(channel.linked_folders or [])
+    if folder not in current:
+        raise NotFoundError("linked folder", folder)
+    rest = [f for f in current if f != folder]
+    return await _update(session, channel, {"linked_folders": rest or None}, actor)
 
 
 def check_job_roots(
