@@ -4,14 +4,16 @@ Reads OpenAI `messages + tools` JSONL trajectories produced by `argos.sft_export
 `training/generate_seed_data.py`, formats them with the model's native tool-calling chat
 template, fine-tunes a LoRA adapter with Unsloth `FastLanguageModel` and TRL `SFTTrainer`,
 logs training/eval loss and dataset/model artifacts to Weights & Biases, and optionally
-exports merged 16-bit weights or GGUF quantizations (for Ollama / llama.cpp).
+exports merged 16-bit weights, GGUF quantizations (for Ollama / llama.cpp), or pushes the
+trained LoRA / merged model directly to HuggingFace Hub (`--push-to-hub`).
 
 Usage:
     python training/train_sft.py \
         --train-file training/data/train.jsonl \
         --eval-file training/data/eval.jsonl \
         --output-dir training/outputs/qwen2.5-7b-argos \
-        --wandb-project argos-sft
+        --wandb-project argos-sft \
+        --push-to-hub username/argos-qwen2.5-7b-sft
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -127,11 +130,79 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also save merged 16-bit weights in <output-dir>/merged_16bit",
     )
     parser.add_argument(
+        "--push-to-hub",
+        default=None,
+        metavar="HF_REPO_ID",
+        help="Optional HuggingFace Hub repo ID (e.g. org/argos-qwen2.5-7b-sft) to upload weights",
+    )
+    parser.add_argument(
+        "--hub-private",
+        action="store_true",
+        help="Create/upload the HuggingFace Hub repository as private",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate dataset loading without importing GPU libraries or running training",
     )
     return parser
+
+
+def push_artifacts_to_hub(
+    *,
+    repo_id: str,
+    private: bool,
+    model: Any,
+    tokenizer: Any,
+    lora_dir: Path,
+    merged_dir: Path | None = None,
+    gguf_dir: Path | None = None,
+) -> str:
+    """Uploads merged 16-bit weights (if exported) and/or LoRA adapter to HuggingFace Hub."""
+    from huggingface_hub import HfApi  # type: ignore[import-not-found]
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    api = HfApi(token=token)
+    repo_url = api.create_repo(
+        repo_id=repo_id,
+        repo_type="model",
+        private=private,
+        exist_ok=True,
+    )
+    if merged_dir is not None and merged_dir.is_dir():
+        api.upload_folder(
+            repo_id=repo_id,
+            repo_type="model",
+            folder_path=str(merged_dir),
+            commit_message="Upload merged 16-bit Argos SFT model",
+        )
+        api.upload_folder(
+            repo_id=repo_id,
+            repo_type="model",
+            folder_path=str(lora_dir),
+            path_in_repo="lora_adapter",
+            commit_message="Upload LoRA adapter weights",
+        )
+    elif hasattr(model, "push_to_hub") and hasattr(tokenizer, "push_to_hub"):
+        model.push_to_hub(repo_id, private=private, token=token)
+        tokenizer.push_to_hub(repo_id, private=private, token=token)
+    else:
+        api.upload_folder(
+            repo_id=repo_id,
+            repo_type="model",
+            folder_path=str(lora_dir),
+            commit_message="Upload LoRA adapter weights",
+        )
+
+    if gguf_dir is not None and gguf_dir.is_dir():
+        api.upload_folder(
+            repo_id=repo_id,
+            repo_type="model",
+            folder_path=str(gguf_dir),
+            path_in_repo="gguf",
+            commit_message="Upload GGUF quantized weights",
+        )
+    return str(repo_url)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -151,11 +222,14 @@ def main(argv: list[str] | None = None) -> None:
                     "model": args.model,
                     "train_examples": len(train_records),
                     "eval_examples": len(eval_records),
+                    "push_to_hub": args.push_to_hub,
+                    "hub_private": args.hub_private,
                 }
             )
         )
         return
 
+    # GPU training libraries (imported lazily so --dry-run works without CUDA)
     import wandb  # type: ignore[import-not-found]
     from datasets import Dataset  # type: ignore[import-not-found]
     from trl import SFTConfig, SFTTrainer  # type: ignore[import-not-found]
@@ -180,6 +254,8 @@ def main(argv: list[str] | None = None) -> None:
                 "lr": args.lr,
                 "train_examples": len(train_records),
                 "eval_examples": len(eval_records),
+                "push_to_hub": args.push_to_hub,
+                "hub_private": args.hub_private,
             },
         )
     try:
@@ -256,10 +332,12 @@ def main(argv: list[str] | None = None) -> None:
         model.save_pretrained(str(lora_dir))
         tokenizer.save_pretrained(str(lora_dir))
 
+        merged_dir: Path | None = None
         if args.export_merged:
             merged_dir = args.output_dir / "merged_16bit"
             model.save_pretrained_merged(str(merged_dir), tokenizer, save_method="merged_16bit")
 
+        gguf_dir: Path | None = None
         if args.export_gguf:
             gguf_dir = args.output_dir / "gguf"
             model.save_pretrained_gguf(
@@ -267,6 +345,19 @@ def main(argv: list[str] | None = None) -> None:
                 tokenizer,
                 quantization_method=args.export_gguf,
             )
+
+        if args.push_to_hub:
+            hub_url = push_artifacts_to_hub(
+                repo_id=args.push_to_hub,
+                private=args.hub_private,
+                model=model,
+                tokenizer=tokenizer,
+                lora_dir=lora_dir,
+                merged_dir=merged_dir,
+                gguf_dir=gguf_dir,
+            )
+            metrics["hub_repo_id"] = args.push_to_hub
+            metrics["hub_url"] = hub_url
 
         if run is not None:
             run.log(metrics)

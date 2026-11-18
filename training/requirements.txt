@@ -3,6 +3,7 @@ unsloth>=2024.11.0
 trl>=0.12.0,<0.17.0
 transformers>=4.46.0
 datasets>=3.1.0
+huggingface_hub>=0.26.0
 wandb>=0.18.0
 openai>=2.14.0
 # W&B Serverless Training (train_wandb_serverless.py): no GPU, runs on a Mac too.

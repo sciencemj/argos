@@ -5,9 +5,9 @@ Uses the exact OpenAI tool schemas exported by `argos.sft_export.tool_specs()`
 `delete_event`, `list_channels`, `get_today`, `get_schedule`, `search_notes`,
 `search_course_lms`, `search_knowledge`, `list_tasks`, `list_inbox`, `get_course_progress`,
 `create_channel`, `capture_note`, `read_file`, `list_dir`, `glob_files`, `grep_files`,
-`write_file`, `edit_file`, `delete_file`, `run_command`) to synthesize multi-turn
-trajectories in the OpenAI `messages + tools` JSONL format consumed by `train_sft.py`
-and `eval_harness.py`.
+`write_file`, `edit_file`, `delete_file`, `run_command`, `render_artifact`, `web_fetch`,
+`ask_agent`) to synthesize multi-turn trajectories in the OpenAI `messages + tools` JSONL
+format consumed by `train_sft.py` and `eval_harness.py`.
 
 Usage:
     uv run --project backend python training/generate_seed_data.py --out-dir training/data
@@ -26,10 +26,17 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_SRC = ROOT / "backend" / "src"
-if str(BACKEND_SRC) not in sys.path:
-    sys.path.insert(0, str(BACKEND_SRC))
 
-from argos.sft_export import SYSTEM_PROMPT, split_of, tool_specs  # noqa: E402
+
+def _load_sft_export() -> tuple[str, Any, Any]:
+    if str(BACKEND_SRC) not in sys.path:
+        sys.path.insert(0, str(BACKEND_SRC))
+    from argos.sft_export import SYSTEM_PROMPT, split_of, tool_specs
+
+    return SYSTEM_PROMPT, split_of, tool_specs
+
+
+SYSTEM_PROMPT, split_of, tool_specs = _load_sft_export()
 
 COURSES = [
     ("알고리즘", "algorithm", "CS301"),
@@ -582,7 +589,9 @@ def _scenario_explore_workspace(rng: random.Random, idx: int) -> dict[str, Any]:
         },
         _call_msg(f"call_{idx}_1", "list_dir", {"path": "."}),
         _tool_msg(
-            f"call_{idx}_1", "list_dir", f"notes/\nuploads/\nREADME.md\t{rng.randint(200, 900)}"
+            f"call_{idx}_1",
+            "list_dir",
+            f"notes/\nuploads/\nREADME.md\t{rng.randint(200, 900)}",
         ),
         _call_msg(f"call_{idx}_2", "glob_files", {"pattern": f"*.{ext}", "path": "notes"}),
         _tool_msg(f"call_{idx}_2", "glob_files", "\n".join(files)),
@@ -614,9 +623,16 @@ def _scenario_recover_from_error(rng: random.Random, idx: int) -> dict[str, Any]
     wrong = code  # the user names the course by its code
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"{wrong} 과목에 '{title}' 할 일 {due}까지로 넣어줘."},
+        {
+            "role": "user",
+            "content": f"{wrong} 과목에 '{title}' 할 일 {due}까지로 넣어줘.",
+        },
         _call_msg(f"call_{idx}_1", "add_task", {"title": title, "channel": wrong, "due": due}),
-        _tool_msg(f"call_{idx}_1", "add_task", f"오류: NotFoundError: channel {wrong} not found"),
+        _tool_msg(
+            f"call_{idx}_1",
+            "add_task",
+            f"오류: NotFoundError: channel {wrong} not found",
+        ),
         _call_msg(f"call_{idx}_2", "list_channels", {}),
         _tool_msg(
             f"call_{idx}_2",
@@ -657,7 +673,10 @@ def _scenario_delete_with_approval(rng: random.Random, idx: int) -> dict[str, An
     ev_id = f"ev_{idx:04d}"
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"{course}에서 '{title}' 할 일이랑 취소된 보강 일정 지워줘."},
+        {
+            "role": "user",
+            "content": f"{course}에서 '{title}' 할 일이랑 취소된 보강 일정 지워줘.",
+        },
         _call_msg(f"call_{idx}_1", "list_tasks", {"channel": course}),
         _tool_msg(
             f"call_{idx}_1",
@@ -674,7 +693,11 @@ def _scenario_delete_with_approval(rng: random.Random, idx: int) -> dict[str, An
                 }
             ],
         ),
-        _call_msg(f"call_{idx}_2", "delete_task", {"task_id": task_id, "reason": "사용자 요청"}),
+        _call_msg(
+            f"call_{idx}_2",
+            "delete_task",
+            {"task_id": task_id, "reason": "사용자 요청"},
+        ),
         _tool_msg(
             f"call_{idx}_2",
             "delete_task",
@@ -699,9 +722,15 @@ def _scenario_delete_with_approval(rng: random.Random, idx: int) -> dict[str, An
                 }
             ],
         ),
-        _call_msg(f"call_{idx}_4", "delete_event", {"event_id": ev_id, "reason": "취소된 보강"}),
+        _call_msg(
+            f"call_{idx}_4",
+            "delete_event",
+            {"event_id": ev_id, "reason": "취소된 보강"},
+        ),
         _tool_msg(
-            f"call_{idx}_4", "delete_event", {"deleted": ev_id, "title": f"{course} 보강 (취소)"}
+            f"call_{idx}_4",
+            "delete_event",
+            {"deleted": ev_id, "title": f"{course} 보강 (취소)"},
         ),
         {
             "role": "assistant",
@@ -724,18 +753,24 @@ def _scenario_no_tool_needed(rng: random.Random, idx: int) -> dict[str, Any]:
         [
             (
                 "시간 복잡도 O(n log n)이 뭐야?",
-                "입력이 n개일 때 대략 n × log n에 비례해 시간이 늘어난다는 뜻이에요. "
-                "병합 정렬이 대표적이에요.",
+                (
+                    "입력이 n개일 때 대략 n × log n에 비례해 시간이 늘어난다는 뜻이에요. "
+                    "병합 정렬이 대표적이에요."
+                ),
             ),
             (
                 "페이지 폴트가 뭐야?",
-                "필요한 페이지가 메모리에 없어 디스크에서 가져와야 하는 상황이에요. "
-                "이때 운영체제가 개입해요.",
+                (
+                    "필요한 페이지가 메모리에 없어 디스크에서 가져와야 하는 상황이에요. "
+                    "이때 운영체제가 개입해요."
+                ),
             ),
             (
                 "과적합을 막는 방법 알려줘",
-                "데이터를 늘리거나 정규화(L2, 드롭아웃)를 쓰고, "
-                "검증 세트로 조기 종료하는 방법이 흔해요.",
+                (
+                    "데이터를 늘리거나 정규화(L2, 드롭아웃)를 쓰고, "
+                    "검증 세트로 조기 종료하는 방법이 흔해요."
+                ),
             ),
         ]
     )
@@ -774,7 +809,10 @@ def _scenario_no_tool_needed(rng: random.Random, idx: int) -> dict[str, Any]:
                 "ends_at": f"{DATES[1]}T15:00:00+09:00",
             },
         ),
-        {"role": "assistant", "content": f"{DATES[1]} 14:00~15:00에 #{course} 스터디를 잡았어요."},
+        {
+            "role": "assistant",
+            "content": f"{DATES[1]} 14:00~15:00에 #{course} 스터디를 잡았어요.",
+        },
     ]
     return {"scenario": "no_tool_needed", "messages": messages}
 
@@ -782,14 +820,20 @@ def _scenario_no_tool_needed(rng: random.Random, idx: int) -> dict[str, Any]:
 def _scenario_capture_and_inbox(rng: random.Random, idx: int) -> dict[str, Any]:
     """Vague notes go to the inbox (capture_note), then list_inbox."""
     idea = rng.choice(
-        ["다음 주쯤 교수님께 진로 상담 메일", "졸업 요건 학점 다시 계산", "동아리 회비 정산 확인"]
+        [
+            "다음 주쯤 교수님께 진로 상담 메일",
+            "졸업 요건 학점 다시 계산",
+            "동아리 회비 정산 확인",
+        ]
     )
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"아 맞다, {idea}… 일단 어디 적어만 둬."},
         _call_msg(f"call_{idx}_1", "capture_note", {"text": idea}),
         _tool_msg(
-            f"call_{idx}_1", "capture_note", {"inbox_item_id": f"inbox_{idx:04d}", "status": "new"}
+            f"call_{idx}_1",
+            "capture_note",
+            {"inbox_item_id": f"inbox_{idx:04d}", "status": "new"},
         ),
         {
             "role": "assistant",
@@ -846,7 +890,10 @@ def _scenario_english_notes_and_channel(rng: random.Random, idx: int) -> dict[st
                 }
             ],
         ),
-        {"role": "assistant", "content": f"Yes — '{topic} summary' in your vault covers it."},
+        {
+            "role": "assistant",
+            "content": f"Yes — '{topic} summary' in your vault covers it.",
+        },
         {
             "role": "user",
             "content": (
@@ -859,7 +906,11 @@ def _scenario_english_notes_and_channel(rng: random.Random, idx: int) -> dict[st
             "create_channel",
             {"id": f"ch_{idx}", "name": name, "kind": "project", "area": "프로젝트"},
         ),
-        _call_msg(f"call_{idx}_3", "update_event", {"event_id": ev_id, "title": f"{name} kickoff"}),
+        _call_msg(
+            f"call_{idx}_3",
+            "update_event",
+            {"event_id": ev_id, "title": f"{name} kickoff"},
+        ),
         _tool_msg(
             f"call_{idx}_3",
             "update_event",
@@ -880,6 +931,270 @@ def _scenario_english_notes_and_channel(rng: random.Random, idx: int) -> dict[st
     return {"scenario": "english_notes_and_channel", "messages": messages}
 
 
+def _scenario_render_visual_artifact(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Covers `render_artifact` across all 4 kinds: mermaid, svg, tsx, html."""
+    course, _, code = rng.choice(COURSES)
+    if (idx // 2) % 2 == 0:
+        diagram_kind = "mermaid"
+        diagram_title = f"{course} 학습 흐름도"
+        diagram_prompt = (
+            f"{course}({code}) 과목의 학습 단계(개념 정리 → 예제 풀이 → 과제 제출 → 코드 리뷰)를 "
+            "Mermaid 흐름도로 그려줘."
+        )
+        diagram_code = (
+            "flowchart LR\n"
+            f'    A["{code} 개념 정리"] --> B["예제 풀이"]\n'
+            '    B --> C["과제 제출"]\n'
+            '    C --> D["코드 리뷰 및 복습"]'
+        )
+    else:
+        diagram_kind = "svg"
+        diagram_title = f"{course} 주차별 진도율"
+        diagram_prompt = (
+            f"{course}({code}) 과목의 주차별 진도율(1주차 100%, 2주차 80%, 3주차 50%)을 "
+            "SVG 막대그래프로 그려줘."
+        )
+        diagram_code = (
+            '<svg viewBox="0 0 320 140" xmlns="http://www.w3.org/2000/svg">\n'
+            '  <rect x="20" y="20" width="240" height="24" rx="4" fill="#3b82f6" />\n'
+            '  <rect x="20" y="56" width="192" height="24" rx="4" fill="#60a5fa" />\n'
+            '  <rect x="20" y="92" width="120" height="24" rx="4" fill="#93c5fd" />\n'
+            "</svg>"
+        )
+
+    if (idx // 6) % 2 == 0:
+        widget_kind = "tsx"
+        widget_title = f"{course} 복습 체크리스트"
+        widget_prompt = (
+            f"이번엔 {course} 복습 체크리스트를 클릭해서 완료 표시할 수 있는 "
+            "인터랙티브 React(TSX) 컴포넌트로 만들어줘."
+        )
+        widget_code = (
+            "import { useState } from 'react';\n"
+            "export default function App() {\n"
+            "  const [done, setDone] = useState(false);\n"
+            "  return (\n"
+            "    <button onClick={() => setDone(!done)}>\n"
+            f"      {code} 핵심 개념 복습: {{done ? '완료' : '진행 중'}}\n"
+            "    </button>\n"
+            "  );\n"
+            "}"
+        )
+    else:
+        widget_kind = "html"
+        widget_title = f"{course} 핵심 공식 카드"
+        widget_prompt = (
+            f"이번엔 {course} 시험 대비 핵심 공식 요약 카드를 HTML로 보기 좋게 렌더링해줘."
+        )
+        widget_code = (
+            "<!doctype html>\n"
+            '<html><body style="font-family:sans-serif;padding:16px">\n'
+            f"  <h3>{course} ({code}) 핵심 요약</h3>\n"
+            "  <p>불변 조건(invariant)과 점근적 시간 복잡도를 항상 먼저 점검하세요.</p>\n"
+            "</body></html>"
+        )
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": diagram_prompt},
+        _call_msg(
+            f"call_{idx}_1",
+            "render_artifact",
+            {"title": diagram_title, "kind": diagram_kind, "code": diagram_code},
+        ),
+        _tool_msg(
+            f"call_{idx}_1",
+            "render_artifact",
+            {
+                "rendered": True,
+                "title": diagram_title,
+                "kind": diagram_kind,
+                "chars": len(diagram_code),
+            },
+        ),
+        {
+            "role": "assistant",
+            "content": f"'{diagram_title}'({diagram_kind}) 시각 자료를 화면에 표시했어요.",
+        },
+        {"role": "user", "content": widget_prompt},
+        _call_msg(
+            f"call_{idx}_2",
+            "render_artifact",
+            {"title": widget_title, "kind": widget_kind, "code": widget_code},
+        ),
+        _tool_msg(
+            f"call_{idx}_2",
+            "render_artifact",
+            {
+                "rendered": True,
+                "title": widget_title,
+                "kind": widget_kind,
+                "chars": len(widget_code),
+            },
+        ),
+        {
+            "role": "assistant",
+            "content": (
+                f"'{widget_title}'({widget_kind}) 아티팩트를 렌더링했습니다. "
+                "채팅 화면에서 바로 확인하실 수 있어요."
+            ),
+        },
+    ]
+    return {"scenario": "render_visual_artifact", "messages": messages}
+
+
+def _scenario_web_fetch_and_delegate(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Covers `web_fetch`, `ask_agent`, and `delete_file` in a multi-turn research flow."""
+    proj, slug = rng.choice(PROJECTS)
+    url, page_title, summary_line = rng.choice(
+        [
+            (
+                "https://datatracker.ietf.org/doc/html/rfc9110",
+                "RFC 9110: HTTP Semantics",
+                "Idempotent methods (GET, HEAD, PUT, DELETE) retry semantics and status codes.",
+            ),
+            (
+                "https://docs.python.org/3/library/asyncio-task.html",
+                "Coroutines and Tasks — Python 3 documentation",
+                "Use asyncio.TaskGroup for structured concurrency and automatic cancellation.",
+            ),
+            (
+                "https://sqlite.org/wal.html",
+                "Write-Ahead Logging — SQLite",
+                "WAL mode allows concurrent readers with a single writer using wal-index shm.",
+            ),
+        ]
+    )
+    helper = rng.choice(["claude", "codex"])
+    draft_path = f"notes/{slug}_draft_memo.md"
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"{url} 문서를 읽어서 핵심 내용을 확인하고, "
+                f"@{helper}에게 우리 {proj} 프로젝트에 적용할 때 주의할 점을 물어봐줘."
+            ),
+        },
+        _call_msg(f"call_{idx}_1", "web_fetch", {"url": url}),
+        _tool_msg(
+            f"call_{idx}_1",
+            "web_fetch",
+            f"# {page_title}\n출처: {url}\n\n{summary_line}",
+        ),
+        _call_msg(
+            f"call_{idx}_2",
+            "ask_agent",
+            {
+                "agent": helper,
+                "prompt": (
+                    f"{page_title} ({summary_line}) 내용을 {proj}에 적용할 때 "
+                    "주의할 핵심 사항 1가지를 알려줘."
+                ),
+            },
+        ),
+        _tool_msg(
+            f"call_{idx}_2",
+            "ask_agent",
+            (
+                f"{proj}에 적용할 때는 타임아웃 및 취소(cancellation) 전파 시 "
+                "리소스 누수가 없는지 단위 테스트로 검증해야 합니다."
+            ),
+        ),
+        {
+            "role": "assistant",
+            "content": (
+                f"`{url}` 문서({page_title})를 확인하고 @{helper}에게 자문을 구했어요. "
+                f"핵심 내용은 '{summary_line}'이며, @{helper}는 타임아웃 및 취소 전파 시 "
+                "리소스 누수 여부를 단위 테스트로 검증하라고 조언했습니다."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"고마워! 이전에 만들어 둔 임시 메모 `{draft_path}` 파일은 이제 지워줘.",
+        },
+        _call_msg(f"call_{idx}_3", "delete_file", {"path": draft_path}),
+        _tool_msg(f"call_{idx}_3", "delete_file", f"{draft_path}을(를) 지웠어요"),
+        {
+            "role": "assistant",
+            "content": f"임시 메모 파일 `{draft_path}`을(를) 삭제했습니다.",
+        },
+    ]
+    return {"scenario": "web_fetch_and_delegate", "messages": messages}
+
+
+def _scenario_cleanup_files_and_ask_agent(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Covers `delete_file` (with approval/rejection), `web_fetch`, and `ask_agent`."""
+    proj, slug = rng.choice(PROJECTS)
+    stale_file = f"scratch/{slug}_old_build_{idx % 5}.tmp"
+    approve = idx % 2 == 0
+    helper = rng.choice(["codex", "claude"])
+    ref_url = rng.choice(
+        [
+            "https://peps.python.org/pep-0008/",
+            "https://semver.org/lang/ko/",
+            "https://www.conventionalcommits.org/ko/v1.0.0/",
+        ]
+    )
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"작업 폴더의 임시 파일 `{stale_file}`을 지우고, `{ref_url}` 문서를 참고해서 "
+                f"@{helper}에게 {proj} 릴리스 체크리스트 한 줄 요약을 부탁해줘."
+            ),
+        },
+        _call_msg(f"call_{idx}_1", "delete_file", {"path": stale_file}),
+        _tool_msg(
+            f"call_{idx}_1",
+            "delete_file",
+            f"{stale_file}을(를) 지웠어요" if approve else REJECTED,
+        ),
+        _call_msg(f"call_{idx}_2", "web_fetch", {"url": ref_url}),
+        _tool_msg(
+            f"call_{idx}_2",
+            "web_fetch",
+            (
+                f"# 공식 가이드 문서\n출처: {ref_url}\n\n"
+                "버전 규칙과 커밋/코드 스타일 일관성을 유지하고 브레이킹 체인지를 명시합니다."
+            ),
+        ),
+        _call_msg(
+            f"call_{idx}_3",
+            "ask_agent",
+            {
+                "agent": helper,
+                "prompt": f"{ref_url} 기준으로 {proj} 릴리스 전 최종 점검할 한 줄 요약만 작성해줘.",
+            },
+        ),
+        _tool_msg(
+            f"call_{idx}_3",
+            "ask_agent",
+            (
+                f"{proj} 릴리스 체크: 버전 태그 규칙 준수, 브레이킹 체인지 명시, "
+                "포매터/린트 통과 여부를 확인하세요."
+            ),
+        ),
+        {
+            "role": "assistant",
+            "content": (
+                f"임시 파일 `{stale_file}`을 삭제했고, "
+                if approve
+                else f"`{stale_file}` 삭제는 거절하셔서 그대로 두었고, "
+            )
+            + (
+                f"`{ref_url}` 문서를 읽은 뒤 @{helper}에게 확인해 "
+                f"'{proj} 릴리스 체크: 버전 태그 규칙 준수, 브레이킹 체인지 명시, "
+                "포매터/린트 통과 확인' 요약을 받았습니다."
+            ),
+        },
+    ]
+    return {"scenario": "cleanup_files_and_ask_agent", "messages": messages}
+
+
 SCENARIOS: tuple[Callable[[random.Random, int], dict[str, Any]], ...] = (
     _scenario_add_and_update_task,
     _scenario_create_event_and_schedule,
@@ -893,11 +1208,14 @@ SCENARIOS: tuple[Callable[[random.Random, int], dict[str, Any]], ...] = (
     _scenario_no_tool_needed,
     _scenario_capture_and_inbox,
     _scenario_english_notes_and_channel,
+    _scenario_render_visual_artifact,
+    _scenario_web_fetch_and_delegate,
+    _scenario_cleanup_files_and_ask_agent,
 )
 
 
 def generate_examples(
-    count: int = 60,
+    count: int = 450,
     eval_ratio: float = 0.15,
     seed: int = 42,
     holdout: frozenset[str] = frozenset(),
@@ -940,8 +1258,8 @@ def main(argv: list[str] | None = None) -> None:
         default=ROOT / "training" / "data",
         help="Directory to write train.jsonl and eval.jsonl (default: training/data)",
     )
-    parser.add_argument("--count", type=int, default=60, help="Total trajectories to synthesize")
-    parser.add_argument("--eval-ratio", type=float, default=0.2, help="Fraction assigned to eval")
+    parser.add_argument("--count", type=int, default=450, help="Total trajectories to synthesize")
+    parser.add_argument("--eval-ratio", type=float, default=0.15, help="Fraction assigned to eval")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--holdout-scenario",
