@@ -80,6 +80,7 @@ async def post_message(
     coding: bool | None = None,
     attachment_ids: Sequence[str] = (),
     agent_session: bool = False,
+    agent: str | None = None,
 ) -> Posted:
     """Stores the message and decides what happens next (see runner.py for routing):
     agents to answer, or an inbox item to classify, or neither. Attachments are checked
@@ -98,6 +99,7 @@ async def post_message(
         session_id=session_id,
         coding=coding,
         agent_session=agent_session,
+        agent_name=agent,
     )
     if files:
         await services.link_attachments(session, posted.message, files, "user")
@@ -115,6 +117,7 @@ async def _route(
     session_id: str | None,
     coding: bool | None,
     agent_session: bool = False,
+    agent_name: str | None = None,
 ) -> Posted:
     channel = await services.get_channel(session, channel_id)
     personal = (
@@ -124,6 +127,12 @@ async def _route(
     )
     agent_channel = personal or channel
     mentioned = await mentioned_agents(session, body)
+    # The chat view's agent picker (v0.2): who answers when no @mention says otherwise.
+    chosen = None
+    if agent_name:
+        chosen = await services.find_agent(session, agent_name)
+        if chosen is None:
+            raise services.InvalidError(f"없는 에이전트예요: {agent_name}")
     dm_agent = (
         await services.get_agent(session, channel.default_agent_id)
         if channel.kind == ChannelKind.DM and channel.default_agent_id
@@ -145,6 +154,8 @@ async def _route(
             return Posted(message)  # the debate reads it at the next turn
         if mentioned:
             targets = mentioned
+        elif chosen is not None:
+            targets = [chosen]
         elif root.sticky_agent_id:
             targets = [await services.get_agent(session, root.sticky_agent_id)]
         else:
@@ -157,6 +168,8 @@ async def _route(
         changes: dict[str, object] = {}
         if len(mentioned) == 1:  # an @mention re-sticks the thread to that agent
             changes["sticky_agent_id"] = mentioned[0].id
+        elif not mentioned and chosen is not None and chosen.id != root.sticky_agent_id:
+            changes["sticky_agent_id"] = chosen.id  # so does picking another agent
         if coding is not None and coding != root.coding:
             changes["coding"] = coding
         if changes:
@@ -176,7 +189,7 @@ async def _route(
     names_agents = body.lstrip().startswith(("/job", "/debate"))
     # Coding mode is a conversation too: with the channel's agent when none is named.
     coding_agent = (
-        await services.default_agent(session, agent_channel, settings.default_agent)
+        (chosen or await services.default_agent(session, agent_channel, settings.default_agent))
         if (coding or agent_session)
         and not (mentioned or dm_agent)
         and not commands.is_command(body)

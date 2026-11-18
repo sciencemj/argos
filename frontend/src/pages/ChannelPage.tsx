@@ -239,7 +239,6 @@ export function ChannelPage() {
                 {!space && <span className="text-hash">#</span>}{" "}
                 {space ? tr("내 공간") : channel.name}
               </h1>
-              {chatFirst && <PermissionToggle channel={channel} />}
               {chatFirst && (
                 <button
                   type="button"
@@ -319,50 +318,6 @@ export function ChannelPage() {
         />
       )}
     </>
-  );
-}
-
-/** Header switch for the native harness's approvals in this channel (v0.2): Auto-Edit
- * lets reads and workspace edits run, Ask waits for the user on every write. */
-function PermissionToggle({ channel }: { channel: Channel }) {
-  const update = useUpdateChannel();
-  const mode = channel.permission_mode ?? "auto_edit";
-  const option =
-    "h-7 cursor-pointer rounded-full px-3 text-[12px] font-medium whitespace-nowrap aria-pressed:bg-card aria-pressed:text-ink aria-pressed:shadow-sm text-text-3 max-md:px-2.5 max-md:text-[11.5px]";
-  return (
-    <fieldset
-      className="m-0 flex shrink-0 items-center gap-0.5 rounded-full border-0 bg-inset p-[3px]"
-      title={tr(
-        "Auto-Edit: 읽기와 작업 폴더 안 수정은 바로, 삭제·명령 실행은 승인 후 · Ask: 모든 쓰기·명령에 승인",
-        "Auto-Edit: reads and workspace edits run at once; deletes and commands ask · Ask: every write and command asks",
-      )}
-    >
-      <legend className="sr-only">
-        {tr("에이전트 실행 권한", "Agent permissions")}
-      </legend>
-      {(["auto_edit", "ask"] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={mode === value}
-          disabled={update.isPending}
-          className={option}
-          onClick={() =>
-            mode !== value &&
-            update.mutate({ id: channel.id, permission_mode: value })
-          }
-        >
-          {value === "auto_edit" ? (
-            <>
-              <span className="max-md:hidden">Auto-Edit</span>
-              <span className="md:hidden">Auto</span>
-            </>
-          ) : (
-            "Ask"
-          )}
-        </button>
-      ))}
-    </fieldset>
   );
 }
 

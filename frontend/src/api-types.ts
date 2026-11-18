@@ -3444,6 +3444,8 @@ export interface components {
             attachment_ids?: string[];
             /** Agent Session */
             agent_session?: boolean | null;
+            /** Agent */
+            agent?: string | null;
         };
         /** MessageOut */
         MessageOut: {

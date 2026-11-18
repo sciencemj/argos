@@ -592,6 +592,8 @@ class MessageCreate(BaseModel):
     # A new top-level message that starts a conversation with the channel's agent (the
     # chat-first channel view, v0.2) instead of going to the inbox.
     agent_session: bool | None = None
+    # The agent that answers (its @name), from the chat view's picker; null: as before.
+    agent: str | None = Field(default=None, max_length=40)
 
 
 class SkillOut(BaseModel):
@@ -951,6 +953,7 @@ async def post_message(
         settings=config,
         attachment_ids=body.attachment_ids,
         agent_session=bool(body.agent_session),
+        agent=body.agent,
     )
     _classify_later(request, background, config, posted.classify_item_id)
     runner: Runner = request.app.state.runner

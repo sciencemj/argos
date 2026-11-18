@@ -110,8 +110,8 @@ function NewChat({ channel }: { channel: Channel }) {
         channel={channel}
         agentSession
         draft={draft}
-        placeholder={tt`${agent?.display_name ?? tr("에이전트")}에게 메시지 — 새 대화가 시작돼요`}
         onPosted={(message) => setParams({ session: message.id })}
+        chatBar
       />
     </>
   );
@@ -161,6 +161,7 @@ function SessionView({
         channelId={channel.id}
         wide
         scrollerRef={scroller}
+        chatBar
       />
     </div>
   );

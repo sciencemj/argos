@@ -38,9 +38,11 @@ import {
   TaskRefCard,
 } from "./cards";
 import { useCompleteTask } from "./complete";
+import { AgentSelect, ContextRing, PermissionSelect } from "./composerBar";
 import { fmt, localInputToIso } from "./dates";
 import { t, tr, tt } from "./i18n";
 import {
+  ArrowUpIcon,
   CalendarIcon,
   CheckIcon,
   DogIcon,
@@ -48,6 +50,7 @@ import {
   KanbanIcon,
   PaperclipIcon,
   PinIcon,
+  PlusIcon,
   SendIcon,
 } from "./icons";
 import { LmsNoticeCard } from "./lmsNotice";
@@ -729,6 +732,8 @@ export function Composer({
   onPosted,
   placeholder,
   draft,
+  chatBar = false,
+  historyChars = 0,
 }: {
   channel: Channel;
   /** The thread replied to: its agent gets the skills, its coding mode the toggle. */
@@ -742,6 +747,10 @@ export function Composer({
   placeholder?: string;
   /** Text put into the box from outside (quick-start prompts); changes replace it. */
   draft?: { text: string; key: number };
+  /** The chat view's bar: permission mode, agent picker, context ring (v0.2). */
+  chatBar?: boolean;
+  /** Characters of the conversation so far, for the context ring. */
+  historyChars?: number;
 }) {
   const threadRootId = root?.id;
   const post = usePostMessage();
@@ -767,6 +776,15 @@ export function Composer({
     (a) => a.name === settings.data?.default_agent,
   );
   const askTarget = channelDefault ?? fallback;
+  // Chat view: the agent picked in the bar (a thread starts on its own agent).
+  const stickyName = agents.data?.find(
+    (a) => a.id === root?.sticky_agent_id,
+  )?.name;
+  const [picked, setPicked] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new thread starts unpicked
+  useEffect(() => setPicked(null), [root?.id]);
+  const chosenName = picked ?? stickyName ?? askTarget?.name ?? "";
+  const chosenAgent = agents.data?.find((a) => a.name === chosenName);
   // Coding mode (channels with a project folder): a thread keeps it until switched.
   const codeable = !dm && Boolean(channel.workspace_path);
   const [coding, setCoding] = useState(root?.coding ?? false);
@@ -778,6 +796,7 @@ export function Composer({
   const skillAgent = dm
     ? dmAgent?.name
     : (LEADING_MENTION.exec(text)?.[1] ??
+      (chatBar ? chosenName || undefined : undefined) ??
       stickyAgent?.name ??
       (coding && codeable ? askTarget?.name : undefined));
   const skills = useAgentSkills(skillAgent);
@@ -860,11 +879,14 @@ export function Composer({
         // turns coding on.
         coding: codeable ? (threadRootId ? coding : coding || null) : null,
         agent_session: agentSession && !threadRootId,
+        // The picker only speaks when it differs from who would answer anyway.
+        agent: chatBar && picked ? picked : null,
       },
       {
         onSuccess: (message) => {
           setText("");
           files.clear();
+          setPicked(null);
           onPosted?.(message);
         },
       },
@@ -1014,6 +1036,11 @@ export function Composer({
             }}
             placeholder={
               placeholder ??
+              (chatBar && chosenAgent
+                ? threadRootId
+                  ? tt`${chosenAgent.display_name}에게 답장…`
+                  : tt`${chosenAgent.display_name}에게 메시지 — 새 대화가 시작돼요`
+                : null) ??
               (coding && codeable
                 ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
                 : threadRootId
@@ -1025,17 +1052,16 @@ export function Composer({
             className="relative z-10 block w-full resize-none border-0 bg-transparent p-0 font-sans text-[15px] leading-[1.6] break-words text-transparent caret-text selection:bg-step-3/30 outline-none placeholder:text-meta focus-visible:outline-none"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap">
-          {/* Phones: the chips scroll sideways in one row, the send button stays put. */}
-          <div className="flex min-w-0 grow flex-nowrap items-center gap-1.5 overflow-x-auto *:shrink-0 md:contents">
+        {chatBar ? (
+          <div className="flex items-center gap-1.5 max-md:gap-1">
             <button
               type="button"
               aria-label={tr("파일 붙이기")}
               title={tr("파일 붙이기")}
               onClick={() => picker.current?.click()}
-              className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
+              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
             >
-              <PaperclipIcon size={14} />
+              <PlusIcon size={15} />
             </button>
             <input
               ref={picker}
@@ -1044,63 +1070,129 @@ export function Composer({
               hidden
               onChange={(e) => {
                 files.add(Array.from(e.target.files ?? []));
-                e.target.value = ""; // the same file can be picked again
+                e.target.value = "";
               }}
             />
-            {!dm &&
-              SLASH.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => insert(c)}
-                  className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
-                >
-                  {c}
-                </button>
-              ))}
+            <PermissionSelect channel={channel} />
             {codeable && (
               <button
                 type="button"
                 aria-pressed={coding}
                 title={channel.workspace_path ?? undefined}
                 onClick={() => setCoding((c) => !c)}
-                className="h-7 cursor-pointer rounded-full bg-inset px-[11px] text-[11.5px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
+                className="h-8 shrink-0 cursor-pointer rounded-full bg-inset px-3 text-[12px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
               >
                 {tr("코딩")}
               </button>
             )}
-          </div>
-          <span className="grow max-md:hidden" />
-          {post.error ? (
-            <span role="alert" className="text-[12px] text-danger">
-              {post.error.message}
-            </span>
-          ) : narrow ? null : (
-            <span className="text-[12px] text-meta max-md:hidden">
-              {dm ? (
-                <>
-                  {tr("받는 이 ·") + " "}
-                  <AgentName id={dmAgent?.name} />
-                </>
-              ) : (
-                <>
-                  {tr("@로 에이전트 호출 · /ask는") + " "}
-                  <AgentName id={askTarget?.name} />
-                  {channelDefault ? tr(" (채널 기본)") : tr(" (기본)")}
-                </>
+            <span className="min-w-0 grow" />
+            {post.error && (
+              <span
+                role="alert"
+                className="truncate text-[12px] text-danger max-md:hidden"
+              >
+                {post.error.message}
+              </span>
+            )}
+            <AgentSelect
+              agents={(agents.data ?? []).filter(
+                (a) => a.available || a.name === chosenName,
               )}
-            </span>
-          )}
-          <button
-            type="button"
-            aria-label={tr("보내기")}
-            onClick={send}
-            disabled={!canSend(text, files.drafts) || post.isPending}
-            className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-cta text-on-cta shadow-raised disabled:opacity-40"
-          >
-            <SendIcon />
-          </button>
-        </div>
+              value={chosenName}
+              onChange={setPicked}
+            />
+            <ContextRing
+              chars={historyChars + text.length}
+              backend={chosenAgent?.backend}
+            />
+            <button
+              type="button"
+              aria-label={tr("보내기")}
+              onClick={send}
+              disabled={!canSend(text, files.drafts) || post.isPending}
+              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-cta text-on-cta shadow-raised disabled:opacity-40"
+            >
+              <ArrowUpIcon size={15} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5 max-md:flex-nowrap">
+            {/* Phones: the chips scroll sideways in one row, the send button stays put. */}
+            <div className="flex min-w-0 grow flex-nowrap items-center gap-1.5 overflow-x-auto *:shrink-0 md:contents">
+              <button
+                type="button"
+                aria-label={tr("파일 붙이기")}
+                title={tr("파일 붙이기")}
+                onClick={() => picker.current?.click()}
+                className="flex size-7 cursor-pointer items-center justify-center rounded-full bg-inset text-text-2 hover:text-ink"
+              >
+                <PaperclipIcon size={14} />
+              </button>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  files.add(Array.from(e.target.files ?? []));
+                  e.target.value = ""; // the same file can be picked again
+                }}
+              />
+              {!dm &&
+                SLASH.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => insert(c)}
+                    className="h-7 cursor-pointer rounded-full bg-inset px-[11px] font-mono text-[11.5px] text-text-2 hover:text-ink"
+                  >
+                    {c}
+                  </button>
+                ))}
+              {codeable && (
+                <button
+                  type="button"
+                  aria-pressed={coding}
+                  title={channel.workspace_path ?? undefined}
+                  onClick={() => setCoding((c) => !c)}
+                  className="h-7 cursor-pointer rounded-full bg-inset px-[11px] text-[11.5px] font-medium text-text-2 hover:text-ink aria-pressed:bg-step-5 aria-pressed:text-on-dark"
+                >
+                  {tr("코딩")}
+                </button>
+              )}
+            </div>
+            <span className="grow max-md:hidden" />
+            {post.error ? (
+              <span role="alert" className="text-[12px] text-danger">
+                {post.error.message}
+              </span>
+            ) : narrow ? null : (
+              <span className="text-[12px] text-meta max-md:hidden">
+                {dm ? (
+                  <>
+                    {tr("받는 이 ·") + " "}
+                    <AgentName id={dmAgent?.name} />
+                  </>
+                ) : (
+                  <>
+                    {tr("@로 에이전트 호출 · /ask는") + " "}
+                    <AgentName id={askTarget?.name} />
+                    {channelDefault ? tr(" (채널 기본)") : tr(" (기본)")}
+                  </>
+                )}
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label={tr("보내기")}
+              onClick={send}
+              disabled={!canSend(text, files.drafts) || post.isPending}
+              className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-cta text-on-cta shadow-raised disabled:opacity-40"
+            >
+              <SendIcon />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1123,6 +1215,7 @@ export function ThreadReplies({
   channelId,
   wide = false,
   scrollerRef,
+  chatBar = false,
 }: {
   root: Message;
   replies: Message[];
@@ -1130,6 +1223,8 @@ export function ThreadReplies({
   wide?: boolean;
   /** The scrolling list, for a caller that follows new replies (chat view). */
   scrollerRef?: Ref<HTMLDivElement>;
+  /** The chat view: its composer bar (agent picker, permissions, context ring). */
+  chatBar?: boolean;
 }) {
   const channels = useChannels();
   const channel = channels.data?.channels.find((c) => c.id === channelId);
@@ -1158,7 +1253,16 @@ export function ThreadReplies({
         </div>
       </div>
       <div className={column}>
-        <Composer channel={channel} root={root} narrow={!wide} />
+        <Composer
+          channel={channel}
+          root={root}
+          narrow={!wide}
+          chatBar={chatBar}
+          historyChars={[root, ...replies].reduce(
+            (n, m) => n + m.body.length,
+            0,
+          )}
+        />
       </div>
     </>
   );
