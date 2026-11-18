@@ -436,3 +436,59 @@ def test_training_seed_and_eval_harness_smoke(tmp_path: Path) -> None:
     )
     assert extra_key_eval.schema_valid is True
     assert extra_key_eval.exact_args_match is False
+
+
+def test_train_sft_helpers() -> None:
+    import importlib
+    import sys
+
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    train_sft: Any = importlib.import_module("training.train_sft")
+
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"type": "function", "function": {"name": "a", "arguments": '{"x": 1}'}},
+                {"type": "function", "function": {"name": "b", "arguments": ""}},
+                {"type": "function", "function": {"name": "c", "arguments": "not json"}},
+                {"type": "function", "function": {"name": "d", "arguments": {"y": 2}}},
+            ],
+        },
+    ]
+    out = train_sft.normalize_tool_call_arguments(messages)
+    args = [c["function"]["arguments"] for c in out[1]["tool_calls"]]
+    assert args == [{"x": 1}, {}, "not json", {"y": 2}]
+    # Input untouched
+    assert messages[1]["tool_calls"][0]["function"]["arguments"] == '{"x": 1}'
+
+    class FakeTokenizer:
+        def apply_chat_template(self, msgs: Any, **_: Any) -> str:
+            return json.dumps(msgs)
+
+    rows = train_sft.format_for_chat_template(
+        [{"messages": messages, "tools": []}], FakeTokenizer()
+    )
+    assert '"arguments": {"x": 1}' in rows[0]["text"]
+
+    assert train_sft.detect_response_markers("{{'<|im_start|>' + role}}") == (
+        "<|im_start|>user\n",
+        "<|im_start|>assistant\n",
+    )
+    assert train_sft.detect_response_markers("<|start_header_id|>")[1].startswith(
+        "<|start_header_id|>assistant"
+    )
+    assert train_sft.detect_response_markers("unknown") is None
+
+    # 100 examples, effective batch 8 -> 13 steps/epoch * 3 = 39 steps, 5% -> 2
+    assert (
+        train_sft.compute_warmup_steps(
+            num_examples=100, batch_size=2, grad_accum=4, epochs=3, ratio=0.05
+        )
+        == 2
+    )
+    assert train_sft.build_parser().parse_args([]).max_seq_length == 8192

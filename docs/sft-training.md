@@ -97,12 +97,15 @@ python training/train_sft.py \
 - `--model`: 베이스 모델 (기본 `unsloth/Qwen2.5-7B-Instruct`)
 - `--train-file` / `--eval-file`: 학습·평가 JSONL 경로 (기본 `training/data/train.jsonl`, `training/data/eval.jsonl`)
 - `--output-dir`: LoRA 어댑터 및 체크포인트 저장 경로 (기본 `training/outputs/argos-sft`)
-- `--max-seq-length` (`4096`), `--load-in-4bit` / `--no-load-in-4bit` (기본 `True`)
+- `--max-seq-length` (`8192`): 시스템 프롬프트 + Argos 툴 스키마 약 29개만으로 ~4k 토큰이라 4096이면 거의 모든 예제가 잘림. 넘는 예제 수는 학습 전에 경고
+- `--load-in-4bit` / `--no-load-in-4bit` (기본 `True`)
 - `--lora-r` (`16`), `--lora-alpha` (`32`), `--lora-dropout` (`0.0`)
-- `--epochs` (`3`), `--batch-size` (`2`), `--grad-accum` (`4`), `--lr` (`2e-4`), `--warmup-ratio` (`0.05`), `--eval-steps` (`20`), `--logging-steps` (`5`), `--seed` (`42`)
+- `--epochs` (`3`), `--batch-size` (`2`), `--grad-accum` (`4`), `--lr` (`2e-4`), `--warmup-ratio` (`0.05`, 전체 스텝 수로 `warmup_steps`를 계산. transformers v5에서 `warmup_ratio`가 빠짐), `--warmup-steps`(직접 지정), `--eval-steps` (`20`), `--logging-steps` (`5`), `--seed` (`42`)
 - `--wandb-project` (`argos-sft`), `--wandb-run-name`, `--no-wandb`
 - `--export-merged`: `<output-dir>/merged_16bit`에 병합 16-bit 가중치 저장
 - `--export-gguf <방식>`: `<output-dir>/gguf`에 GGUF 양자화 내보내기 (예: `q4_k_m`, `q8_0`)
+- `--train-on-responses-only` / `--no-train-on-responses-only` (기본 켜짐): Unsloth `train_on_responses_only`로 assistant 턴만 loss 계산. 마커는 채팅 템플릿에서 자동 감지(ChatML·Llama 3), 그 밖은 `--instruction-part`/`--response-part`로 지정
+- 툴 호출 `function.arguments`(JSON 문자열)는 템플릿 적용 전에 dict로 바꿈(Qwen 계열 템플릿은 dict일 때만 인자를 렌더링)
 - `--dry-run`: GPU 라이브러리 임포트 없이 데이터셋 로딩만 검증
 
 ---

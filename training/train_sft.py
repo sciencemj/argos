@@ -19,8 +19,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import inspect
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -54,6 +56,70 @@ def load_jsonl_records(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def normalize_tool_call_arguments(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Returns a copy of `messages` whose `tool_calls[].function.arguments` are dicts.
+
+    The OpenAI format (what `sft_export` writes) stores arguments as a JSON string, but chat
+    templates such as Qwen2.5/3/3.5 only render the parameters when `arguments` is a
+    mapping; a string is dropped or dumped verbatim, so the model would learn tool calls
+    without (or with doubly-encoded) arguments. Strings that are not a JSON object are
+    left as they are.
+    """
+    out = copy.deepcopy(messages)
+    for msg in out:
+        for call in msg.get("tool_calls") or []:
+            fn = call.get("function") if isinstance(call, dict) else None
+            if not isinstance(fn, dict):
+                continue
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                try:
+                    parsed = json.loads(args) if args.strip() else {}
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed, dict):
+                    fn["arguments"] = parsed
+    return out
+
+
+# (instruction_part, response_part) markers for Unsloth's `train_on_responses_only`, by
+# chat-template family. Everything from a response marker up to the next instruction
+# marker is trained on; the rest (system, tool schemas, user turns) is masked out.
+RESPONSE_MARKERS: dict[str, tuple[str, str]] = {
+    # Qwen2.5 / Qwen3 / Qwen3.5 (ChatML). Tool results are rendered as user turns
+    # (`<|im_start|>user\n<tool_response>`), so they are masked too.
+    "chatml": ("<|im_start|>user\n", "<|im_start|>assistant\n"),
+    # Llama 3.x
+    "llama3": (
+        "<|start_header_id|>user<|end_header_id|>\n\n",
+        "<|start_header_id|>assistant<|end_header_id|>\n\n",
+    ),
+}
+
+
+def detect_response_markers(chat_template: str | None) -> tuple[str, str] | None:
+    """Picks the `train_on_responses_only` markers matching a tokenizer's chat template."""
+    template = chat_template or ""
+    if "<|im_start|>" in template:
+        return RESPONSE_MARKERS["chatml"]
+    if "<|start_header_id|>" in template:
+        return RESPONSE_MARKERS["llama3"]
+    return None
+
+
+def compute_warmup_steps(
+    *, num_examples: int, batch_size: int, grad_accum: int, epochs: int, ratio: float
+) -> int:
+    """Warmup steps from a ratio of the total optimizer steps (single device).
+
+    transformers v5 removed `TrainingArguments.warmup_ratio`; `warmup_steps` works on
+    both v4 and v5.
+    """
+    steps_per_epoch = math.ceil(num_examples / max(1, batch_size * grad_accum))
+    total = steps_per_epoch * max(1, epochs)
+    return max(0, math.ceil(total * ratio))
+
+
 def format_for_chat_template(
     examples: list[dict[str, Any]],
     tokenizer: Any,
@@ -62,7 +128,7 @@ def format_for_chat_template(
     formatted: list[dict[str, str]] = []
     for ex in examples:
         text = tokenizer.apply_chat_template(
-            ex["messages"],
+            normalize_tool_call_arguments(ex["messages"]),
             tools=ex.get("tools") or None,
             tokenize=False,
             add_generation_prompt=False,
@@ -97,7 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("training/outputs/argos-sft"),
         help="Directory to save LoRA adapter and checkpoints",
     )
-    parser.add_argument("--max-seq-length", type=int, default=4096)
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=8192,
+        help="Max tokens per example (default 8192). The system prompt plus the ~29 Argos "
+        "tool schemas alone take ~4k tokens, so 4096 truncates almost every example",
+    )
     parser.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
@@ -106,7 +178,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--grad-accum", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-4)
-    parser.add_argument("--warmup-ratio", type=float, default=0.05)
+    parser.add_argument(
+        "--warmup-ratio",
+        type=float,
+        default=0.05,
+        help="Warmup as a fraction of total steps; converted to warmup_steps",
+    )
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=None,
+        help="Explicit warmup steps (overrides --warmup-ratio)",
+    )
+    parser.add_argument(
+        "--train-on-responses-only",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Compute loss only on assistant turns (Unsloth train_on_responses_only)",
+    )
+    parser.add_argument(
+        "--instruction-part",
+        default=None,
+        help="Override the user-turn marker for --train-on-responses-only",
+    )
+    parser.add_argument(
+        "--response-part",
+        default=None,
+        help="Override the assistant-turn marker for --train-on-responses-only",
+    )
     parser.add_argument("--eval-steps", type=int, default=20)
     parser.add_argument("--logging-steps", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
@@ -222,6 +321,8 @@ def main(argv: list[str] | None = None) -> None:
                     "model": args.model,
                     "train_examples": len(train_records),
                     "eval_examples": len(eval_records),
+                    "max_seq_length": args.max_seq_length,
+                    "train_on_responses_only": args.train_on_responses_only,
                     "push_to_hub": args.push_to_hub,
                     "hub_private": args.hub_private,
                 }
@@ -252,6 +353,7 @@ def main(argv: list[str] | None = None) -> None:
                 "batch_size": args.batch_size,
                 "grad_accum": args.grad_accum,
                 "lr": args.lr,
+                "train_on_responses_only": args.train_on_responses_only,
                 "train_examples": len(train_records),
                 "eval_examples": len(eval_records),
                 "push_to_hub": args.push_to_hub,
@@ -289,6 +391,30 @@ def main(argv: list[str] | None = None) -> None:
             if eval_records
             else None
         )
+        too_long = sum(
+            1
+            for row in train_ds
+            if len(tokenizer(row["text"], add_special_tokens=False)["input_ids"])
+            > args.max_seq_length
+        )
+        if too_long:
+            print(
+                f"WARNING: {too_long}/{len(train_ds)} train examples exceed "
+                f"--max-seq-length {args.max_seq_length} and will be truncated "
+                "(their final assistant turns may be cut off). Raise --max-seq-length."
+            )
+
+        warmup_steps = (
+            args.warmup_steps
+            if args.warmup_steps is not None
+            else compute_warmup_steps(
+                num_examples=len(train_ds),
+                batch_size=args.batch_size,
+                grad_accum=args.grad_accum,
+                epochs=args.epochs,
+                ratio=args.warmup_ratio,
+            )
+        )
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
         sft_params = inspect.signature(SFTConfig.__init__).parameters
@@ -305,7 +431,7 @@ def main(argv: list[str] | None = None) -> None:
             "gradient_accumulation_steps": args.grad_accum,
             "num_train_epochs": args.epochs,
             "learning_rate": args.lr,
-            "warmup_ratio": args.warmup_ratio,
+            "warmup_steps": warmup_steps,
             "logging_steps": args.logging_steps,
             "eval_strategy": "steps" if eval_ds is not None else "no",
             "eval_steps": args.eval_steps if eval_ds is not None else None,
@@ -322,6 +448,24 @@ def main(argv: list[str] | None = None) -> None:
             eval_dataset=eval_ds,
             args=sft_config,
         )
+        if args.train_on_responses_only:
+            from unsloth.chat_templates import (  # type: ignore[import-not-found]
+                train_on_responses_only,
+            )
+
+            markers = detect_response_markers(getattr(tokenizer, "chat_template", None))
+            instruction_part = args.instruction_part or (markers[0] if markers else None)
+            response_part = args.response_part or (markers[1] if markers else None)
+            if not instruction_part or not response_part:
+                raise SystemExit(
+                    "Unknown chat template for --train-on-responses-only: pass "
+                    "--instruction-part and --response-part, or --no-train-on-responses-only"
+                )
+            trainer = train_on_responses_only(
+                trainer,
+                instruction_part=instruction_part,
+                response_part=response_part,
+            )
         train_result = trainer.train()
         metrics: dict[str, Any] = dict(train_result.metrics)
         if eval_ds is not None:
