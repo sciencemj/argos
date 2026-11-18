@@ -50,6 +50,9 @@ class StepEval:
     schema_valid: bool
     exact_args_match: bool
     error: str | None = None
+    # False: a turn where the right move is answering without a tool (a concept
+    # question, a clarifying question, the final answer after tool results).
+    expects_tool: bool = True
 
 
 def check_schema_compliance(args: Any, schema: dict[str, Any]) -> tuple[bool, str | None]:
@@ -104,8 +107,11 @@ def _matches_types(value: Any, json_types: set[str]) -> bool:
 
 def extract_tool_steps(
     record: dict[str, Any],
+    include_no_tool: bool = False,
 ) -> list[tuple[list[dict[str, Any]], str, dict[str, Any]]]:
-    """Splits a trajectory into (prefix_messages, expected_tool, expected_args) per tool call."""
+    """Splits a trajectory into (prefix_messages, expected_tool, expected_args) per tool call.
+    With `include_no_tool`, assistant turns without a tool call are steps too, with
+    expected_tool "" (the model should answer, not call a tool)."""
     messages: list[dict[str, Any]] = record.get("messages") or []
     steps: list[tuple[list[dict[str, Any]], str, dict[str, Any]]] = []
     for idx, msg in enumerate(messages):
@@ -113,6 +119,8 @@ def extract_tool_steps(
             continue
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
+            if include_no_tool and (msg.get("content") or "").strip():
+                steps.append((messages[:idx], "", {}))
             continue
         first = tool_calls[0].get("function") or {}
         name = str(first.get("name") or "")
@@ -140,6 +148,24 @@ def score_prediction(
         (m.get("content", "") for m in reversed(prefix) if m.get("role") == "user"),
         "",
     )
+    if not expected_tool:  # an answer turn: right when the model calls nothing
+        return StepEval(
+            run_id=run_id,
+            step_index=step_index,
+            prompt_preview=str(last_user)[:120],
+            expected_tool="",
+            expected_args={},
+            predicted_tool=predicted_tool,
+            raw_arguments=raw_arguments,
+            json_valid=False,
+            tool_match=predicted_tool is None,
+            schema_valid=False,
+            exact_args_match=False,
+            error=None
+            if predicted_tool is None
+            else f"called {predicted_tool} instead of answering",
+            expects_tool=False,
+        )
     if not predicted_tool:
         return StepEval(
             run_id=run_id,
@@ -200,6 +226,15 @@ def score_prediction(
 
 
 def summarize_results(results: list[StepEval]) -> dict[str, Any]:
+    answers = [r for r in results if not r.expects_tool]
+    extra: dict[str, Any] = {}
+    if answers:
+        # Knowing when not to call a tool: chat turns, clarifications, stopping.
+        extra = {
+            "no_tool_steps": len(answers),
+            "no_tool_accuracy": round(sum(r.tool_match for r in answers) / len(answers), 4),
+        }
+    results = [r for r in results if r.expects_tool]
     total = len(results)
     if total == 0:
         return {
@@ -208,8 +243,10 @@ def summarize_results(results: list[StepEval]) -> dict[str, Any]:
             "tool_selection_accuracy": 0.0,
             "schema_compliance_rate": 0.0,
             "exact_argument_match_rate": 0.0,
+            **extra,
         }
     return {
+        **extra,
         "total_steps": total,
         "json_validity_rate": round(sum(r.json_valid for r in results) / total, 4),
         "tool_selection_accuracy": round(sum(r.tool_match for r in results) / total, 4),
@@ -230,6 +267,7 @@ async def evaluate_dataset(
     temperature: float = 0.0,
     request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
     offline_replay: bool = False,
+    include_no_tool: bool = False,
 ) -> list[StepEval]:
     from openai import AsyncOpenAI
 
@@ -249,10 +287,10 @@ async def evaluate_dataset(
                 if "function" in t and "name" in t["function"]
             }
             for step_idx, (prefix, expected_tool, expected_args) in enumerate(
-                extract_tool_steps(record)
+                extract_tool_steps(record, include_no_tool)
             ):
                 if offline_replay:
-                    pred_tool: str | None = expected_tool
+                    pred_tool: str | None = expected_tool or None
                     raw_args = json.dumps(expected_args, ensure_ascii=False)
                 else:
                     assert client is not None
@@ -350,6 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wandb-run-name", default=None, help="W&B run name")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     parser.add_argument(
+        "--score-answers",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="also score answer turns (no_tool_accuracy: answering without a tool call)",
+    )
+    parser.add_argument(
         "--offline-replay",
         action="store_true",
         help="Score ground-truth tool calls without calling a live server (smoke test)",
@@ -379,6 +423,7 @@ def main(argv: list[str] | None = None) -> None:
             temperature=args.temperature,
             request_timeout=args.timeout,
             offline_replay=args.offline_replay,
+            include_no_tool=args.score_answers,
         )
     )
     summary = summarize_results(results)
@@ -419,6 +464,7 @@ def main(argv: list[str] | None = None) -> None:
                 "tool_match",
                 "schema_valid",
                 "exact_args_match",
+                "expects_tool",
                 "raw_arguments",
                 "error",
             ]

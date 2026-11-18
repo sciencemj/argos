@@ -561,6 +561,325 @@ def _scenario_grep_and_write_summary(rng: random.Random, idx: int) -> dict[str, 
     return {"scenario": "grep_and_write_summary", "messages": messages}
 
 
+# --- coverage scenarios (v0.2 review): unused tools, recovery, refusal, no-tool turns ---
+# Tool outputs mirror what the harness really returns: errors are "오류: <Type>: …",
+# a rejected approval is the harness's exact sentence.
+
+REJECTED = "사용자가 이 실행을 거절했어요. 다른 방법을 찾으세요."
+
+
+def _scenario_explore_workspace(rng: random.Random, idx: int) -> dict[str, Any]:
+    """list_dir → glob_files → read_file: finding a file before reading it."""
+    proj, slug = rng.choice(PROJECTS)
+    ext = rng.choice(["md", "py", "txt"])
+    files = [f"notes/week{n}.{ext}" for n in range(1, 4)]
+    target = files[-1]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"{proj} 작업 폴더에 뭐가 있는지 보고 제일 최근 주차 노트 열어줘.",
+        },
+        _call_msg(f"call_{idx}_1", "list_dir", {"path": "."}),
+        _tool_msg(
+            f"call_{idx}_1", "list_dir", f"notes/\nuploads/\nREADME.md\t{rng.randint(200, 900)}"
+        ),
+        _call_msg(f"call_{idx}_2", "glob_files", {"pattern": f"*.{ext}", "path": "notes"}),
+        _tool_msg(f"call_{idx}_2", "glob_files", "\n".join(files)),
+        _call_msg(f"call_{idx}_3", "read_file", {"path": target}),
+        _tool_msg(
+            f"call_{idx}_3",
+            "read_file",
+            f"     1\t# {slug} week3\n"
+            "     2\t- 남은 일: 데모 영상 편집\n"
+            "     3\t- 회의: 금요일 15시",
+        ),
+        {
+            "role": "assistant",
+            "content": (
+                "작업 폴더에는 notes/, uploads/, README.md가 있고, "
+                f"가장 최근 노트는 `{target}`예요. "
+                "남은 일은 데모 영상 편집이고 금요일 15시에 회의가 있어요."
+            ),
+        },
+    ]
+    return {"scenario": "explore_workspace", "messages": messages}
+
+
+def _scenario_recover_from_error(rng: random.Random, idx: int) -> dict[str, Any]:
+    """A wrong channel name fails; the agent looks up the channels and retries."""
+    course, _, code = rng.choice(COURSES)
+    title = rng.choice(TASK_TITLES)
+    due = rng.choice(DATES)
+    wrong = code  # the user names the course by its code
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"{wrong} 과목에 '{title}' 할 일 {due}까지로 넣어줘."},
+        _call_msg(f"call_{idx}_1", "add_task", {"title": title, "channel": wrong, "due": due}),
+        _tool_msg(f"call_{idx}_1", "add_task", f"오류: NotFoundError: channel {wrong} not found"),
+        _call_msg(f"call_{idx}_2", "list_channels", {}),
+        _tool_msg(
+            f"call_{idx}_2",
+            "list_channels",
+            [
+                {"id": f"ch_{n}", "name": c[0], "kind": "course", "area": "학업"}
+                for n, c in enumerate(COURSES)
+            ],
+        ),
+        _call_msg(f"call_{idx}_3", "add_task", {"title": title, "channel": course, "due": due}),
+        _tool_msg(
+            f"call_{idx}_3",
+            "add_task",
+            {
+                "id": f"task_{idx:04d}",
+                "title": title,
+                "channel": course,
+                "status": "todo",
+                "due_at": f"{due}T23:59:00+09:00",
+                "priority": None,
+                "description": None,
+            },
+        ),
+        {
+            "role": "assistant",
+            "content": f"{wrong}는 #{course} 채널이라 그쪽에 '{title}'(마감 {due})을 추가했어요.",
+        },
+    ]
+    return {"scenario": "recover_from_error", "messages": messages}
+
+
+def _scenario_delete_with_approval(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Destructive calls wait for the user: one rejected (and respected), one approved."""
+    course, _, _ = rng.choice(COURSES)
+    title = rng.choice(TASK_TITLES)
+    approve = idx % 2 == 0
+    task_id = f"task_{idx:04d}"
+    ev_id = f"ev_{idx:04d}"
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"{course}에서 '{title}' 할 일이랑 취소된 보강 일정 지워줘."},
+        _call_msg(f"call_{idx}_1", "list_tasks", {"channel": course}),
+        _tool_msg(
+            f"call_{idx}_1",
+            "list_tasks",
+            [
+                {
+                    "id": task_id,
+                    "title": title,
+                    "channel": course,
+                    "status": "todo",
+                    "due_at": None,
+                    "priority": None,
+                    "description": None,
+                }
+            ],
+        ),
+        _call_msg(f"call_{idx}_2", "delete_task", {"task_id": task_id, "reason": "사용자 요청"}),
+        _tool_msg(
+            f"call_{idx}_2",
+            "delete_task",
+            {"deleted": task_id, "title": title} if approve else REJECTED,
+        ),
+        _call_msg(
+            f"call_{idx}_3",
+            "get_schedule",
+            {"start": DATES[0], "end": DATES[-1], "channel": course},
+        ),
+        _tool_msg(
+            f"call_{idx}_3",
+            "get_schedule",
+            [
+                {
+                    "id": ev_id,
+                    "title": f"{course} 보강 (취소)",
+                    "channel": course,
+                    "all_day": False,
+                    "starts_at": f"{DATES[2]}T15:00:00+09:00",
+                    "ends_at": f"{DATES[2]}T17:00:00+09:00",
+                }
+            ],
+        ),
+        _call_msg(f"call_{idx}_4", "delete_event", {"event_id": ev_id, "reason": "취소된 보강"}),
+        _tool_msg(
+            f"call_{idx}_4", "delete_event", {"deleted": ev_id, "title": f"{course} 보강 (취소)"}
+        ),
+        {
+            "role": "assistant",
+            "content": (
+                f"'{title}' 할 일을 지웠고, "
+                if approve
+                else f"'{title}' 할 일 삭제는 거절하셔서 그대로 뒀어요. "
+            )
+            + f"'{course} 보강 (취소)' 일정은 삭제했어요.",
+        },
+    ]
+    return {"scenario": "delete_with_approval", "messages": messages}
+
+
+def _scenario_no_tool_needed(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Some turns need no tool: a concept question, then a clarifying question when the
+    request lacks what a tool would need."""
+    course, _, _ = rng.choice(COURSES)
+    concept, answer = rng.choice(
+        [
+            (
+                "시간 복잡도 O(n log n)이 뭐야?",
+                "입력이 n개일 때 대략 n × log n에 비례해 시간이 늘어난다는 뜻이에요. "
+                "병합 정렬이 대표적이에요.",
+            ),
+            (
+                "페이지 폴트가 뭐야?",
+                "필요한 페이지가 메모리에 없어 디스크에서 가져와야 하는 상황이에요. "
+                "이때 운영체제가 개입해요.",
+            ),
+            (
+                "과적합을 막는 방법 알려줘",
+                "데이터를 늘리거나 정규화(L2, 드롭아웃)를 쓰고, "
+                "검증 세트로 조기 종료하는 방법이 흔해요.",
+            ),
+        ]
+    )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": concept},
+        {"role": "assistant", "content": answer},
+        {"role": "user", "content": "그거 관련해서 일정 하나 잡아줘."},
+        {
+            "role": "assistant",
+            "content": (
+                "어떤 일정인지, 날짜와 시간을 알려 주시겠어요? "
+                f"(예: {DATES[1]} 14시 #{course} 스터디)"
+            ),
+        },
+        {"role": "user", "content": f"{DATES[1]} 14시에 {course} 스터디 1시간."},
+        _call_msg(
+            f"call_{idx}_1",
+            "create_event",
+            {
+                "title": f"{course} 스터디",
+                "channel": course,
+                "start": f"{DATES[1]}T14:00:00+09:00",
+                "end": f"{DATES[1]}T15:00:00+09:00",
+            },
+        ),
+        _tool_msg(
+            f"call_{idx}_1",
+            "create_event",
+            {
+                "id": f"ev_{idx:04d}",
+                "title": f"{course} 스터디",
+                "channel": course,
+                "all_day": False,
+                "starts_at": f"{DATES[1]}T14:00:00+09:00",
+                "ends_at": f"{DATES[1]}T15:00:00+09:00",
+            },
+        ),
+        {"role": "assistant", "content": f"{DATES[1]} 14:00~15:00에 #{course} 스터디를 잡았어요."},
+    ]
+    return {"scenario": "no_tool_needed", "messages": messages}
+
+
+def _scenario_capture_and_inbox(rng: random.Random, idx: int) -> dict[str, Any]:
+    """Vague notes go to the inbox (capture_note), then list_inbox."""
+    idea = rng.choice(
+        ["다음 주쯤 교수님께 진로 상담 메일", "졸업 요건 학점 다시 계산", "동아리 회비 정산 확인"]
+    )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"아 맞다, {idea}… 일단 어디 적어만 둬."},
+        _call_msg(f"call_{idx}_1", "capture_note", {"text": idea}),
+        _tool_msg(
+            f"call_{idx}_1", "capture_note", {"inbox_item_id": f"inbox_{idx:04d}", "status": "new"}
+        ),
+        {
+            "role": "assistant",
+            "content": "인박스에 적어 뒀어요. Argos가 분류 제안을 붙이면 확인해 주세요.",
+        },
+        {"role": "user", "content": "지금 인박스에 정리 안 된 거 몇 개야?"},
+        _call_msg(f"call_{idx}_2", "list_inbox", {}),
+        _tool_msg(
+            f"call_{idx}_2",
+            "list_inbox",
+            [
+                {
+                    "id": f"inbox_{idx:04d}",
+                    "text": idea,
+                    "status": "new",
+                    "suggestion": None,
+                    "captured_at": f"{DATES[0]}T09:00:00+09:00",
+                },
+                {
+                    "id": "inbox_0001",
+                    "text": "도서관 책 반납",
+                    "status": "suggested",
+                    "suggestion": {"type": "task"},
+                    "captured_at": f"{DATES[0]}T08:10:00+09:00",
+                },
+            ],
+        ),
+        {
+            "role": "assistant",
+            "content": f"정리 안 된 항목이 2개 있어요: '{idea}', '도서관 책 반납'.",
+        },
+    ]
+    return {"scenario": "capture_and_inbox", "messages": messages}
+
+
+def _scenario_english_notes_and_channel(rng: random.Random, idx: int) -> dict[str, Any]:
+    """English user: search_notes, create_channel, update_event; answers in English."""
+    topic = rng.choice(["transformer attention", "B-tree split", "TCP slow start"])
+    name = rng.choice(["Reading Group", "Capstone Ops", "Paper Club"])
+    ev_id = f"ev_{idx:04d}"
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Do I have notes about {topic}?"},
+        _call_msg(f"call_{idx}_1", "search_notes", {"query": topic, "limit": 3}),
+        _tool_msg(
+            f"call_{idx}_1",
+            "search_notes",
+            [
+                {
+                    "title": f"{topic} summary",
+                    "path": f"lectures/{topic.replace(' ', '-')}.md",
+                    "channel": None,
+                    "snippet": f"…key idea of [{topic}] is…",
+                }
+            ],
+        ),
+        {"role": "assistant", "content": f"Yes — '{topic} summary' in your vault covers it."},
+        {
+            "role": "user",
+            "content": (
+                f"Make a project channel '{name}', and rename event {ev_id} to '{name} kickoff'."
+            ),
+        },
+        _call_msg(f"call_{idx}_2", "create_channel", {"name": name, "kind": "project"}),
+        _tool_msg(
+            f"call_{idx}_2",
+            "create_channel",
+            {"id": f"ch_{idx}", "name": name, "kind": "project", "area": "프로젝트"},
+        ),
+        _call_msg(f"call_{idx}_3", "update_event", {"event_id": ev_id, "title": f"{name} kickoff"}),
+        _tool_msg(
+            f"call_{idx}_3",
+            "update_event",
+            {
+                "id": ev_id,
+                "title": f"{name} kickoff",
+                "channel": "졸업프로젝트",
+                "all_day": False,
+                "starts_at": f"{DATES[3]}T10:00:00+09:00",
+                "ends_at": f"{DATES[3]}T11:00:00+09:00",
+            },
+        ),
+        {
+            "role": "assistant",
+            "content": f"Created #{name} and renamed the event to '{name} kickoff'.",
+        },
+    ]
+    return {"scenario": "english_notes_and_channel", "messages": messages}
+
+
 SCENARIOS: tuple[Callable[[random.Random, int], dict[str, Any]], ...] = (
     _scenario_add_and_update_task,
     _scenario_create_event_and_schedule,
@@ -568,6 +887,12 @@ SCENARIOS: tuple[Callable[[random.Random, int], dict[str, Any]], ...] = (
     _scenario_workspace_edit_and_run_command,
     _scenario_lms_and_today_review,
     _scenario_grep_and_write_summary,
+    _scenario_explore_workspace,
+    _scenario_recover_from_error,
+    _scenario_delete_with_approval,
+    _scenario_no_tool_needed,
+    _scenario_capture_and_inbox,
+    _scenario_english_notes_and_channel,
 )
 
 
@@ -575,7 +900,10 @@ def generate_examples(
     count: int = 60,
     eval_ratio: float = 0.15,
     seed: int = 42,
+    holdout: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
+    """`holdout`: scenario names that go to eval only, so eval measures generalisation
+    to an unseen task shape instead of recall of a template."""
     rng = random.Random(seed)
     tools = tool_specs()
     examples: list[dict[str, Any]] = []
@@ -583,7 +911,7 @@ def generate_examples(
         builder = SCENARIOS[i % len(SCENARIOS)]
         built = builder(rng, i + 1)
         run_id = f"seed-run-{hashlib.sha1(f'{seed}:{i}'.encode()).hexdigest()[:12]}"
-        split = split_of(run_id, eval_ratio)
+        split = "eval" if built["scenario"] in holdout else split_of(run_id, eval_ratio)
         tool_steps = sum(1 for m in built["messages"] if m["role"] == "tool")
         examples.append(
             {
@@ -615,9 +943,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--count", type=int, default=60, help="Total trajectories to synthesize")
     parser.add_argument("--eval-ratio", type=float, default=0.2, help="Fraction assigned to eval")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument(
+        "--holdout-scenario",
+        action="append",
+        default=[],
+        choices=[f.__name__.removeprefix("_scenario_") for f in SCENARIOS],
+        help="put this scenario only in eval (repeatable): tests unseen task shapes",
+    )
     args = parser.parse_args(argv)
 
-    examples = generate_examples(count=args.count, eval_ratio=args.eval_ratio, seed=args.seed)
+    examples = generate_examples(
+        count=args.count,
+        eval_ratio=args.eval_ratio,
+        seed=args.seed,
+        holdout=frozenset(args.holdout_scenario),
+    )
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     counts: dict[str, int] = {}

@@ -129,6 +129,7 @@ python training/eval_harness.py --eval-file training/data/eval.jsonl --offline-r
 - `tool_selection_accuracy`: 기대한 툴 이름을 정확히 선택한 턴 비율
 - `schema_compliance_rate`: 인자가 해당 툴의 JSON Schema(타입·필수 필드)를 만족하는 비율
 - `exact_argument_match_rate`: 정답 인자 키/값과 정확히 일치하는 턴 비율
+- `no_tool_accuracy` / `no_tool_steps`: 툴 없이 답해야 하는 턴(개념 질문, 되묻기, 툴 결과 뒤 최종 답)에서 툴을 부르지 않은 비율. 툴을 남발하는 모델을 잡아내요 (`--no-score-answers`로 끔)
 
 주요 옵션:
 - `--eval-file` (기본 `training/data/eval.jsonl`), `--base-url` (기본 `http://127.0.0.1:11434/v1`), `--api-key` (기본 `ollama`), `--model` (기본 `qwen2.5:7b`)
@@ -141,12 +142,18 @@ python training/eval_harness.py --eval-file training/data/eval.jsonl --offline-r
 
 로컬 GPU가 없을 때(예: Mac) W&B Training(CoreWeave Serverless Training)에 학습을 맡기는 경로예요. OpenPipe ART의 `ServerlessBackend`가 `train.jsonl`을 올려 LoRA 어댑터를 학습하고, 끝난 체크포인트는 바로 OpenAI 호환 엔드포인트로 서빙돼요. 학생 플랜의 W&B Training 크레딧이 쓰여요.
 
-### 설치
+### 설치 (uv)
 
 ```bash
-python3 -m venv .venv-train && source .venv-train/bin/activate
-pip install -r training/requirements-serverless.txt   # openpipe-art, wandb, openai (GPU 패키지 없음)
-export WANDB_API_KEY=...                               # https://wandb.ai/authorize
+uv venv .venv-train --python 3.12            # .gitignore에 .venv-train/ 포함
+uv pip install --python .venv-train/bin/python -r training/requirements-serverless.txt
+source .venv-train/bin/activate              # 또는 .venv-train/bin/python 으로 직접 실행
+```
+
+API 키는 `WANDB_API_KEY` 환경 변수를 먼저 보고, 없으면 `wandb login`이 `~/.netrc`에 저장한 키를 써요(키 자체는 출력하지 않음). `--dry-run` 결과의 `wandb_api_key_source`로 어느 쪽을 쓰는지 확인할 수 있어요. 키가 유효한지는 크레딧 없이 이렇게 확인해요:
+
+```bash
+.venv-train/bin/python -c "import wandb; print(wandb.Api().viewer.entity)"
 ```
 
 ### 먼저 dry-run (크레딧 0)
@@ -171,7 +178,7 @@ python training/train_wandb_serverless.py \
 - 베이스 모델: `Qwen/Qwen3.8-27B`(기본), `Qwen/Qwen3.6-35B-A3B`, `meta-llama/Llama-3.1-8B-Instruct`, `google/gemma-4-26B-A4B-it`, `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B`. 목록에 없는 모델은 `--allow-unlisted-model`.
 - LoRA rank·alpha는 서비스가 베이스 모델마다 고정해요(옵션으로 바꿀 수 없음).
 - `--assistant-turns all|last`: 손실을 모든 어시스턴트 턴(툴콜 포함)에 줄지, 마지막 답에만 줄지.
-- `--training-base-url`: 기본은 문서의 `https://forge.coreweave.com/api/training/v1`. `""`를 주면 설치된 ART의 기본 주소를 써요.
+- `--training-base-url`: 기본은 문서의 `https://forge.coreweave.com/api/training/v1`. `""`를 주면 설치된 ART의 기본 주소(`https://api.training.wandb.ai/v1`, openpipe-art 0.5.24)를 써요. 두 주소는 같은 API를 서빙해요(둘 다 `/preview/*` 학습 API와 `POST /chat/completions`가 있음, 2026-11-18 확인).
 - serverless SFT에는 eval loss가 없어요. `eval.jsonl`은 검사만 하고, 학습 뒤 `eval_harness.py`로 채점해요.
 
 끝나면 다음을 출력해요(`--out-json`에도 저장):
@@ -191,8 +198,48 @@ python training/eval_harness.py --eval-file training/data/eval.jsonl \
 
 같은 명령에서 `--model`만 베이스 모델로 바꾸면 SFT 전후를 비교할 수 있어요.
 
+#### 어느 주소가 추론 엔드포인트인가
+
+- 학습한 체크포인트(`wandb-artifact:///…:stepN`)는 **학습 엔드포인트**(`https://forge.coreweave.com/api/training/v1`)의 `/chat/completions`로 불러요. ART도 같은 주소로 추론해요(`ServerlessBackend._prepare_backend_for_training`이 학습 base_url을 그대로 돌려줌).
+- `https://api.inference.wandb.ai/v1`(W&B Serverless Inference)은 공개 베이스 모델 ID(예: `meta-llama/Llama-3.1-8B-Instruct`)만 받아요. SFT 전 베이스 모델을 비교할 때만 쓰세요.
+- 학습 엔드포인트에는 `GET /models`가 없어요(404). 그래서 Argos의 "연결 시험"과 에이전트 폼의 모델 목록은 실패로 보이지만, 연결은 그대로 저장되고 모델 칸은 직접 입력하는 칸으로 바뀌어요. `model_id`를 붙여 넣으면 돼요.
+
 ### Argos에 연결
 
 1. 설정 → 모델 연결 → 연결 추가: 종류 "OpenAI 호환", 주소 `inference.base_url`, API 키 = `WANDB_API_KEY`(키체인에 저장돼요). 위치는 "클라우드"로 표시돼요.
 2. 설정 → 커스텀 에이전트 → 봇 만들기: 기반 에이전트 "Argos 하네스", 모델 연결은 위 연결, 모델은 `model_id`. 연결의 모델 목록에 학습한 체크포인트가 안 보이면 YAML 가져오기로 `backend: native`, `model: wandb-artifact:///…`를 지정해요.
 3. 채널 기본 에이전트로 정하거나 `@이름`으로 불러 써요. 툴 승인 규칙(Auto-Edit / Ask)은 다른 하네스 에이전트와 같아요.
+
+### 데이터셋과 하이퍼파라미터 권장
+
+처음 만든 시드 데이터(6개 시나리오, 학습 51 / 평가 9)는 26개 툴 중 12개(`list_dir`, `glob_files`, `delete_task`, `delete_event`, `capture_note`, `list_inbox`, `list_tasks`, `list_channels`, `create_channel`, `search_notes`, `update_event`, `delete_file`)를 한 번도 부르지 않았어요. 오류 복구, 승인 거절, 툴 없이 답하는 턴도 없었어요. 그대로 학습하면 이 툴들을 안 쓰고 모든 턴에 툴을 부르는 쪽으로 기울어요. `generate_seed_data.py`에 시나리오 6개를 더했어요:
+
+| 시나리오 | 가르치는 것 |
+|---|---|
+| `explore_workspace` | `list_dir` → `glob_files` → `read_file`로 파일을 찾은 뒤 읽기 |
+| `recover_from_error` | 실제 하네스 오류 문구(`오류: NotFoundError: …`)를 보고 `list_channels`로 확인한 뒤 다시 호출 |
+| `delete_with_approval` | `list_tasks` → `delete_task`/`delete_event`, 승인 거절 문구를 받으면 존중하고 알리기 |
+| `no_tool_needed` | 개념 질문은 툴 없이 답하고, 정보가 모자라면 되물은 뒤 `create_event` |
+| `capture_and_inbox` | 애매한 메모는 `capture_note`, 이어서 `list_inbox` |
+| `english_notes_and_channel` | 영어 사용자: `search_notes`, `create_channel`, `update_event`, 영어로 답하기 |
+
+권장 생성량: 시나리오당 25~30개 이상.
+
+```bash
+uv run --project backend python training/generate_seed_data.py --count 360 --eval-ratio 0.15
+# 학습 308 / 평가 52, 툴 25종 (delete_file 제외) 모두 등장
+# 일반화를 따로 보려면 한 시나리오를 평가 전용으로 뺄 수 있어요:
+#   --holdout-scenario recover_from_error
+```
+
+합성 데이터는 템플릿 문장이라 다양성이 낮아요. 실제 사용 로그가 쌓이면 `argos.sft_export`로 뽑은 데이터를 섞어 주세요(실사용 비율 30% 이상 권장). 평가에는 실사용 run을 우선 쓰세요.
+
+하이퍼파라미터 시작점 (serverless, LoRA rank는 서비스 고정):
+
+| 베이스 모델 | `--epochs` | `--batch-size` | `--lr` | 참고 |
+|---|---|---|---|---|
+| `Qwen/Qwen3.8-27B` | 2 | 4 | 1e-4 | 한국어·툴콜이 이미 좋아서 과적합에 주의. 학습 데이터 300개 기준 약 150 스텝 |
+| `meta-llama/Llama-3.1-8B-Instruct` | 3 | 4 | 2e-4 | 한국어가 약해서 한국어 예시가 더 필요해요. 기본 chat template은 한 턴에 툴콜 하나만 지원(현재 데이터도 턴당 1개). 툴 결과 역할은 `ipython`으로 바뀌어요 |
+
+- `--assistant-turns all`(기본)을 권장해요. 툴콜 턴과 최종 답 모두에서 배워야 해요.
+- 먼저 `--dry-run`, 그다음 평가 데이터로 베이스 모델을 `eval_harness.py`로 채점해 기준선을 잡으세요(`api.inference.wandb.ai`). 학습 후 같은 평가로 비교해요.

@@ -172,6 +172,26 @@ def validate_file(path: Path, max_examples: int | None = None) -> FileReport:
     return report
 
 
+# --- the API key ---------------------------------------------------------------------------
+
+
+def resolve_api_key() -> tuple[str | None, str]:
+    """(key, where it came from): WANDB_API_KEY, else the key `wandb login` saved in
+    ~/.netrc (api.wandb.ai). The key itself is never printed."""
+    key = os.environ.get("WANDB_API_KEY")
+    if key:
+        return key, "env:WANDB_API_KEY"
+    try:
+        import netrc
+
+        entry = netrc.netrc().authenticators("api.wandb.ai")
+    except (OSError, netrc.NetrcParseError):
+        entry = None
+    if entry and entry[2]:
+        return entry[2], "~/.netrc (wandb login)"
+    return None, "none"
+
+
 # --- training ----------------------------------------------------------------------------
 
 
@@ -195,14 +215,12 @@ def inference_settings(base_url: str, model_id: str) -> dict[str, Any]:
     }
 
 
-async def train(args: argparse.Namespace) -> dict[str, Any]:
+async def train(args: argparse.Namespace, api_key: str) -> dict[str, Any]:
     import art  # openpipe-art; imported only for a real run
     from art.serverless.backend import ServerlessBackend
     from art.utils.sft import train_sft_from_file
 
-    backend = ServerlessBackend(
-        api_key=os.environ["WANDB_API_KEY"], base_url=args.training_base_url or None
-    )
+    backend = ServerlessBackend(api_key=api_key, base_url=args.training_base_url or None)
     model = art.TrainableModel(
         name=args.model_name,
         project=args.project,
@@ -327,11 +345,13 @@ def main(argv: list[str] | None = None) -> int:
     train_report = validate_file(args.train_file, args.max_examples)
     eval_report = validate_file(args.eval_file, args.max_examples)
     problems = check_config(args) + train_report.errors
-    key_set = bool(os.environ.get("WANDB_API_KEY"))
+    api_key, key_source = resolve_api_key()
+    key_set = api_key is not None
     batches = -(-train_report.examples * args.epochs // args.batch_size)
     plan: dict[str, Any] = {
         "dry_run": args.dry_run,
         "wandb_api_key_set": key_set,
+        "wandb_api_key_source": key_source,
         "model": {
             "base_model": args.base_model,
             "project": args.project,
@@ -356,7 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.dry_run:
         if not key_set:
-            plan["note"] = "WANDB_API_KEY is not set: a real run would stop here."
+            plan["note"] = (
+                "No W&B API key (WANDB_API_KEY or `wandb login`): a real run would stop here."
+            )
         plan["expected_inference"] = inference_settings(
             args.training_base_url or "<ART default base_url>",
             f"wandb-artifact:///{args.entity or '<entity>'}/{args.project}/"
@@ -372,10 +394,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(plan, ensure_ascii=False, indent=2), file=sys.stderr)
         print("fix the problems above before spending credits", file=sys.stderr)
         return 1
-    if not key_set:
-        print("WANDB_API_KEY is not set (https://wandb.ai/authorize)", file=sys.stderr)
+    if api_key is None:
+        print(
+            "No W&B API key: export WANDB_API_KEY or run `wandb login` "
+            "(https://wandb.ai/authorize)",
+            file=sys.stderr,
+        )
         return 2
-    result = asyncio.run(train(args))
+    print(f"W&B API key from {key_source}", file=sys.stderr)
+    result = asyncio.run(train(args, api_key))
     output = json.dumps({"plan": plan, "result": result}, ensure_ascii=False, indent=2)
     print(output)
     if args.out_json:
