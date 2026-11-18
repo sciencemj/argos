@@ -51,6 +51,7 @@ from argos import (
     providers,
     remote,
     services,
+    sft_export,
     summarizer,
     usage,
     vault,
@@ -1643,6 +1644,58 @@ async def run_steps(session: Session, run_id: str) -> list[RunStepOut]:
 @router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
 async def cancel_run(request: Request, run_id: str) -> dict[str, bool]:
     return {"cancelled": request.app.state.runner.cancel(run_id)}
+
+
+@router.get(
+    "/sft/export",
+    response_class=Response,
+    responses={200: {"content": {"application/x-ndjson": {}}}},
+)
+async def export_sft(
+    request: Request,
+    session: Session,
+    split: Literal["all", "train", "eval"] = "all",
+    min_tool_steps: Annotated[int, Query(ge=0)] = 0,
+    eval_ratio: Annotated[float, Query(ge=0.0, le=1.0)] = 0.1,
+    only_success: bool = True,
+    native_only: bool = False,
+    mask: bool = True,
+    metadata: bool = True,
+    limit: Annotated[int | None, Query(ge=1, le=10000)] = None,
+) -> Response:
+    """Exports finished agent runs as OpenAI messages+tools JSONL (local only)."""
+    headers = dict(request.scope.get("headers") or [])
+    client_host = (request.client.host if request.client else "").strip().lower()
+    is_loopback = client_host in ("", "127.0.0.1", "::1", "localhost", "testclient")
+    if (
+        not is_loopback
+        or b"tailscale-user-login" in headers
+        or b"tailscale-headers-info" in headers
+        or request.scope.get("state", {}).get("remote_base")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SFT 내보내기는 이 Mac에서만 실행할 수 있어요",
+        )
+    examples = await sft_export.export(
+        session,
+        sft_export.ExportOptions(
+            only_success=only_success,
+            min_tool_steps=min_tool_steps,
+            mask=mask,
+            eval_ratio=eval_ratio,
+            native_only=native_only,
+            limit=limit,
+            split=split,
+            metadata=metadata,
+        ),
+    )
+    filename = "sft.jsonl" if split == "all" else f"{split}.jsonl"
+    return Response(
+        sft_export.to_jsonl(examples),
+        media_type="application/x-ndjson; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/settings/agents")

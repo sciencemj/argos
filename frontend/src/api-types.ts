@@ -668,6 +668,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sft/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Sft
+         * @description Exports finished agent runs as OpenAI messages+tools JSONL (local only).
+         */
+        get: operations["export_sft_api_v1_sft_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/agents": {
         parameters: {
             query?: never;
@@ -5599,6 +5619,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_sft_api_v1_sft_export_get: {
+        parameters: {
+            query?: {
+                split?: "all" | "train" | "eval";
+                min_tool_steps?: number;
+                eval_ratio?: number;
+                only_success?: boolean;
+                native_only?: boolean;
+                mask?: boolean;
+                metadata?: boolean;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
                 };
             };
             /** @description Validation Error */

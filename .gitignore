@@ -236,6 +236,9 @@ frontend/dist/
 *.db-shm
 *.db-wal
 data/
+training/outputs/
+wandb/
+
 
 # macOS
 .DS_Store
