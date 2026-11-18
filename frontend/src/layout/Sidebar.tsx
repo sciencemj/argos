@@ -19,13 +19,20 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   type FormEvent,
+  Fragment,
   type MouseEvent,
   type ReactNode,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import {
+  Link,
+  NavLink,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import { useBusyAgents } from "../agentStream";
 import { AgentAvatar } from "../agents";
 import {
@@ -34,6 +41,7 @@ import {
   useAgentSettings,
   useAgents,
   useChannels,
+  useChannelThreads,
   useCreateChannel,
   useNotifications,
   useOpenDM,
@@ -157,7 +165,7 @@ export function Sidebar({
 
       <div className="flex min-h-0 grow flex-col gap-5 overflow-y-auto px-2.5 pt-1.5 pb-3.5">
         <Section title={tr("지켜보는 중")}>
-          <NavLink to="/" end className={row}>
+          <NavLink to="/today" className={row}>
             <SunIcon />
             <span className="grow">today</span>
             <span className={`${count} text-meta`}>{todayCount}</span>
@@ -299,6 +307,7 @@ function SortableChannels({
   onMenu: (event: MouseEvent<HTMLAnchorElement>, channel: Channel) => void;
 }) {
   const reorder = useReorderChannels();
+  const { channelId } = useParams();
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     // Touch: a long press, so a swipe still scrolls the drawer.
@@ -326,13 +335,15 @@ function SortableChannels({
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {channels.map((c) => (
-          <ChannelRow
-            key={c.id}
-            channel={c}
-            days={due.get(c.id)}
-            unread={unread?.[c.id] ?? 0}
-            onContextMenu={(event) => onMenu(event, c)}
-          />
+          <Fragment key={c.id}>
+            <ChannelRow
+              channel={c}
+              days={due.get(c.id)}
+              unread={unread?.[c.id] ?? 0}
+              onContextMenu={(event) => onMenu(event, c)}
+            />
+            {c.id === channelId && <ChannelSessions channelId={c.id} />}
+          </Fragment>
         ))}
       </SortableContext>
     </DndContext>
@@ -391,6 +402,65 @@ function ChannelRow({
       {unread > 0 && <UnreadDot count={unread} />}
       {days !== undefined && <DdayBadge days={days} />}
     </NavLink>
+  );
+}
+
+const SESSIONS_SHOWN = 6;
+
+/** The open channel's conversations (v0.2, Discord-style tree): a new one, then the
+ * recent ones, newest activity first; a dot marks one an agent is answering in. */
+function ChannelSessions({ channelId }: { channelId: string }) {
+  const threads = useChannelThreads(channelId);
+  const [params] = useSearchParams();
+  const [all, setAll] = useState(false);
+  const current = params.get("session");
+  const list = threads.data ?? [];
+  const shown = all ? list : list.slice(0, SESSIONS_SHOWN);
+  const item =
+    "flex h-7 items-center gap-2 rounded-full pr-3 pl-8 text-[12.5px] text-text-3 hover:bg-inset hover:text-ink aria-[current=true]:bg-inset aria-[current=true]:text-ink";
+  return (
+    <nav
+      aria-label={tr("대화 목록", "Conversations")}
+      className="flex flex-col gap-px pb-1"
+    >
+      <Link
+        to={`/c/${channelId}`}
+        aria-current={current === null || undefined}
+        className={item}
+      >
+        <PlusIcon size={12} />
+        <span className="grow truncate">{tr("새 세션", "New session")}</span>
+      </Link>
+      {shown.map((t) => (
+        <Link
+          key={t.root_message_id}
+          to={`/c/${channelId}?session=${t.root_message_id}`}
+          aria-current={current === t.root_message_id || undefined}
+          className={item}
+          title={t.preview}
+        >
+          <span
+            className={`size-1.5 shrink-0 rounded-full ${t.active ? "animate-pulse bg-ink" : "bg-line"}`}
+            aria-hidden
+          />
+          <span className="grow truncate">{t.title}</span>
+          <span className="shrink-0 font-mono text-[10.5px] text-meta">
+            {fmt(t.updated_at, "M/d")}
+          </span>
+        </Link>
+      ))}
+      {list.length > SESSIONS_SHOWN && (
+        <button
+          type="button"
+          className="h-6 cursor-pointer pl-8 text-left text-[11.5px] text-meta hover:text-ink"
+          onClick={() => setAll(!all)}
+        >
+          {all
+            ? tr("접기", "Show less")
+            : tt`이전 대화 ${list.length - SESSIONS_SHOWN}개 더`}
+        </button>
+      )}
+    </nav>
   );
 }
 

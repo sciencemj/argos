@@ -10,6 +10,8 @@ import { Shell } from "./layout/Shell";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CalendarTab } from "./pages/CalendarTab";
 import { ChannelPage, FeedTab } from "./pages/ChannelPage";
+import { ChatTab } from "./pages/ChatTab";
+import { HomeRedirect } from "./pages/HomeRedirect";
 import { KanbanTab } from "./pages/KanbanTab";
 import { MaterialsTab } from "./pages/MaterialsTab";
 import { NotesTab } from "./pages/NotesTab";
@@ -34,7 +36,8 @@ const router = createBrowserRouter(
       path: "/",
       element: <Shell />,
       children: [
-        { index: true, element: <TodayPage /> },
+        { index: true, element: <HomeRedirect /> },
+        { path: "today", element: <TodayPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "approvals", element: <ApprovalsPage /> },
         { path: "notifications", element: <NotificationsPage /> },
@@ -43,7 +46,8 @@ const router = createBrowserRouter(
           path: "c/:channelId",
           element: <ChannelPage />,
           children: [
-            { index: true, element: <FeedTab /> },
+            { index: true, element: <ChatTab /> },
+            { path: "feed", element: <FeedTab /> },
             { path: "kanban", element: <KanbanTab /> },
             { path: "calendar", element: <CalendarTab /> },
             { path: "notes", element: <NotesTab /> },

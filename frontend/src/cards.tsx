@@ -593,7 +593,10 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   const payload = approval.payload_json as {
     title?: string;
     when?: string | null;
+    tool?: string; // a native harness tool call (action "tool")
+    args?: Record<string, unknown>;
   };
+  const toolCall = approval.action === "tool";
   const pending = approval.status === "pending";
   // Deletions strike the object out; a merge suggestion (from the LMS sync) does not.
   const deletes = approval.action.startsWith("delete_");
@@ -616,7 +619,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
           {pending ? tr("승인 필요") : STATUS_TEXT[approval.status]}
         </span>
         <span className="font-mono text-[12px] text-meta">
-          {approval.action}
+          {toolCall ? payload.tool : approval.action}
         </span>
         <span className="grow" />
         <span className="text-[12px] text-meta">
@@ -633,6 +636,16 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
           <span className="font-mono text-[12px] text-text-3">{when}</span>
         )}
       </div>
+      {toolCall && payload.args && Object.keys(payload.args).length > 0 && (
+        <details className="text-[12px] text-text-3">
+          <summary className="cursor-pointer">
+            {tr("인자 보기", "Arguments")}
+          </summary>
+          <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-inset p-2 font-mono text-[11px] whitespace-pre-wrap text-text-2 select-text">
+            {JSON.stringify(payload.args, null, 2)}
+          </pre>
+        </details>
+      )}
       {approval.error && (
         <p className="m-0 text-[12.5px] text-danger">{approval.error}</p>
       )}

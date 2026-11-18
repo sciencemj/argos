@@ -52,6 +52,7 @@ import {
 import { LmsNoticeCard } from "./lmsNotice";
 import { Markdown } from "./markdown";
 import { PawTrail } from "./paws";
+import { ToolSteps } from "./toolSteps";
 import { btn, card, Dialog, ErrorText, field, label } from "./ui";
 
 const COMMANDS = [
@@ -375,6 +376,7 @@ function AgentBody({
           )}
         </div>
       )}
+      <ToolSteps message={message} />
       {(text || running) && (
         <div className="text-[13.5px] leading-[1.65] text-text-2 select-text">
           <Markdown text={text} />
@@ -722,6 +724,10 @@ export function Composer({
   root,
   sessionId,
   narrow = false,
+  agentSession = false,
+  onPosted,
+  placeholder,
+  draft,
 }: {
   channel: Channel;
   /** The thread replied to: its agent gets the skills, its coding mode the toggle. */
@@ -729,6 +735,12 @@ export function Composer({
   /** DM: continue this conversation instead of the current one. */
   sessionId?: string;
   narrow?: boolean;
+  /** A new message starts a conversation with the channel's agent (chat view, v0.2). */
+  agentSession?: boolean;
+  onPosted?: (message: Message) => void;
+  placeholder?: string;
+  /** Text put into the box from outside (quick-start prompts); changes replace it. */
+  draft?: { text: string; key: number };
 }) {
   const threadRootId = root?.id;
   const post = usePostMessage();
@@ -736,6 +748,11 @@ export function Composer({
   const settings = useAgentSettings();
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    input.current?.focus();
+  }, [draft]);
   const highlight = useRef<HTMLDivElement>(null);
   const files = useAttachmentDrafts();
   const drop = useFileDrop(files.add);
@@ -841,11 +858,13 @@ export function Composer({
         // A thread always says its mode (the toggle may switch it); a new message only
         // turns coding on.
         coding: codeable ? (threadRootId ? coding : coding || null) : null,
+        agent_session: agentSession && !threadRootId,
       },
       {
-        onSuccess: () => {
+        onSuccess: (message) => {
           setText("");
           files.clear();
+          onPosted?.(message);
         },
       },
     );
@@ -993,13 +1012,14 @@ export function Composer({
               files.add(pasted);
             }}
             placeholder={
-              coding && codeable
+              placeholder ??
+              (coding && codeable
                 ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
                 : threadRootId
                   ? tr("스레드에 답장… (/task, /debate 같은 명령도 돼요)")
                   : dm
                     ? tt`${dmAgent?.display_name ?? tr("에이전트")}에게 메시지`
-                    : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`
+                    : tt`${channel.name === "inbox" ? tr("내 공간") : `#${channel.name}`}에 적기 — 그냥 쓰면 Argos가 알아서 정리해요`)
             }
             className="relative z-10 block w-full resize-none border-0 bg-transparent p-0 font-sans text-[15px] leading-[1.6] break-words text-transparent caret-text selection:bg-step-3/30 outline-none placeholder:text-meta focus-visible:outline-none"
           />

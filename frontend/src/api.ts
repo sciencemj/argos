@@ -31,6 +31,11 @@ export type InboxAccept = Schemas["InboxAccept"];
 export type PromoteFields = Schemas["MessageConvert"];
 export type Attachment = Schemas["AttachmentOut"];
 export type LmsNotice = Schemas["LmsNoticeOut"];
+export type ChannelThread = Schemas["ChannelSessionOut"];
+export type ChannelFile = Schemas["ChannelFileOut"];
+export type KnowledgeDoc = Schemas["KnowledgeDocOut"];
+export type RunStep = Schemas["RunStepOut"];
+export type PermissionMode = "auto_edit" | "ask";
 
 export const STATUSES: { id: TaskStatus; label: string }[] = [
   { id: "backlog", label: tr("백로그") },
@@ -137,13 +142,20 @@ export function invalidateFor(
     // a message's files are linked right after it is stored; LMS files list in 자료
     attachment: [...feeds, ["materials"]],
     // A message makes its DM conversation current, and may be unread elsewhere.
-    message: [...feeds, ["dm-sessions"], ["unread"]],
+    message: [...feeds, ["dm-sessions"], ["unread"], ["channel-threads"]],
     channel_read: [["unread"]],
     dm_session: [["dm-sessions"]],
     routine: [["routines"]],
-    approval: [["approvals"], ...feeds],
+    approval: [["approvals"], ["run-steps"], ...feeds],
     // Job status lives on the card; a finished answer becomes unread.
-    agent_run: [["tasks"], ["task"], ["unread"], ...feeds],
+    agent_run: [
+      ["tasks"],
+      ["task"],
+      ["unread"],
+      ["channel-threads"],
+      ["run-steps"],
+      ...feeds,
+    ],
     routine_check: [["routines"]],
     channel: [
       ["channels"],
@@ -852,6 +864,105 @@ export const useStartDmSession = () =>
       }),
     ),
   );
+
+// --- chat-first channels (v0.2): sessions, files, tool steps ------------------------
+
+/** A channel's conversations for the sidebar's session tree, newest activity first. */
+export const useChannelThreads = (channelId: string | undefined) =>
+  useQuery({
+    queryKey: ["channel-threads", channelId],
+    enabled: Boolean(channelId),
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/threads", {
+          params: { path: { channel_id: channelId ?? "" } },
+        }),
+      ),
+  });
+
+export const useChannelFiles = (channelId: string, enabled = true) =>
+  useQuery({
+    queryKey: ["channel-files", channelId],
+    enabled,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/files", {
+          params: { path: { channel_id: channelId } },
+        }),
+      ),
+  });
+
+export const useChannelKnowledge = (channelId: string, enabled = true) =>
+  useQuery({
+    queryKey: ["channel-knowledge", channelId],
+    enabled,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/channels/{channel_id}/knowledge", {
+          params: { path: { channel_id: channelId } },
+        }),
+      ),
+  });
+
+function useChannelFilesWrite<A, R>(fn: (args: A) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["channel-files"] });
+      void qc.invalidateQueries({ queryKey: ["channel-knowledge"] });
+    },
+  });
+}
+
+export const useUploadChannelFile = () =>
+  useChannelFilesWrite(
+    ({
+      channelId,
+      file,
+      folder = "",
+    }: {
+      channelId: string;
+      file: File;
+      folder?: string;
+    }) =>
+      call(
+        client.POST("/api/v1/channels/{channel_id}/files", {
+          params: { path: { channel_id: channelId } },
+          // The generated type says string (OpenAPI "binary"); the form carries the File.
+          body: { file: file as unknown as string, folder },
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append("file", file);
+            if (folder) form.append("folder", folder);
+            return form;
+          },
+        }),
+      ),
+  );
+
+export const useDeleteChannelFile = () =>
+  useChannelFilesWrite(
+    ({ channelId, path }: { channelId: string; path: string }) =>
+      call(
+        client.DELETE("/api/v1/channels/{channel_id}/files", {
+          params: { path: { channel_id: channelId }, query: { path } },
+        }),
+      ),
+  );
+
+/** A native harness run's tool calls, results and approvals (after it streamed). */
+export const useRunSteps = (runId: string | undefined, enabled = true) =>
+  useQuery({
+    queryKey: ["run-steps", runId],
+    enabled: Boolean(runId) && enabled,
+    queryFn: () =>
+      call(
+        client.GET("/api/v1/runs/{run_id}/steps", {
+          params: { path: { run_id: runId ?? "" } },
+        }),
+      ),
+  });
 
 export const cancelRun = (runId: string) =>
   call(

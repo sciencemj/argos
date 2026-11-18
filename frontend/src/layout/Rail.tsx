@@ -121,7 +121,7 @@ export function Rail({
         className={`${railButton} ${activeKey === "home" ? active : idle}`}
         onClick={() => {
           onPickArea(null);
-          navigate("/");
+          navigate("/today");
         }}
       >
         {tr("홈")}

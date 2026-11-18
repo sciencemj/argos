@@ -25,8 +25,10 @@ import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { fmt } from "../dates";
 import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
-import { PlusIcon, SettingsIcon } from "../icons";
+import { FolderIcon, PlusIcon, SettingsIcon } from "../icons";
+import { LAST_CHANNEL } from "../lastChannel";
 import { btn, Dialog, ErrorText, field, label } from "../ui";
+import { WorkspacePanel } from "../workspacePanel";
 import { PrivateCovered, PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
 const tab =
@@ -34,16 +36,20 @@ const tab =
 
 export const useChannel = () => useOutletContext<Channel>();
 
+// Courses and projects open on a conversation (v0.2 "가안 A"); the feed keeps the rest.
 const TABS = [
-  { path: "", label: tr("피드") },
+  { path: "", label: tr("채팅", "Chat") },
+  { path: "feed", label: tr("피드") },
   { path: "kanban", label: tr("칸반") },
   { path: "calendar", label: tr("캘린더") },
   { path: "notes", label: tr("노트") },
   { path: "materials", label: tr("자료") },
 ];
 
-const SYSTEM_TABS = TABS.slice(0, 3); // #today-style channels have no vault folder
-const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(1)];
+const FEED_FIRST = [{ path: "", label: tr("피드") }, ...TABS.slice(2)];
+const SYSTEM_TABS = FEED_FIRST.slice(0, 3); // #today-style channels have no vault folder
+const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(2)];
+const PANEL = "argos-workspace-panel";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -58,7 +64,9 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
     ? SPACE_TABS
     : channel.kind === "system"
       ? SYSTEM_TABS
-      : TABS;
+      : channel.kind === "course" || channel.kind === "project"
+        ? TABS
+        : FEED_FIRST;
   const base = `/c/${channel.id}`;
 
   useEffect(() => {
@@ -86,7 +94,10 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
         target = Number(digit[1]) - 1;
       if (target === null) return;
       e.preventDefault(); // ⌥[ would otherwise type “ into the message box
-      navigate(`${base}/${tabs[target].path}${window.location.search}`);
+      const search = new URLSearchParams(window.location.search);
+      search.delete("session"); // a conversation belongs to the chat tab
+      const query = search.toString();
+      navigate(`${base}/${tabs[target].path}${query ? `?${query}` : ""}`);
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "Alt" || !e.altKey) setShowKeys(false);
@@ -110,7 +121,7 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
       >
         {tabs.map((t, i) => (
           <NavLink
-            key={t.path || "feed"}
+            key={t.path || "index"}
             to={t.path || "."}
             end={t.path === ""}
             className={tab}
@@ -151,7 +162,32 @@ export function ChannelPage() {
   );
   const personal = data?.channels.find((c) => c.kind === "personal");
   // The feed reads in a centered column; kanban, calendar and notes get more room.
-  const onFeed = useMatch("/c/:channelId") !== null;
+  const onIndex = useMatch("/c/:channelId") !== null;
+  const onFeedTab = useMatch("/c/:channelId/feed") !== null;
+  const onFeed = onIndex || onFeedTab;
+  const [panel, setPanel] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const togglePanel = (open: boolean) => {
+    setPanel(open);
+    try {
+      localStorage.setItem(PANEL, open ? "1" : "0");
+    } catch {
+      // private windows: the panel just won't be remembered
+    }
+  };
+  useEffect(() => {
+    if (!channel || channel.kind === "dm") return;
+    try {
+      localStorage.setItem(LAST_CHANNEL, channel.id);
+    } catch {
+      // nothing to remember then
+    }
+  }, [channel]);
   const column = onFeed ? FEED_COLUMN : "mx-auto w-full max-w-[1480px]";
   // Reading the feed clears the sidebar's unread mark (내 공간 also shows 일상).
   const shownIds = [channel?.id, channel?.id === inbox?.id ? personal?.id : ""];
@@ -186,6 +222,7 @@ export function ChannelPage() {
   if (channel.kind === "dm") {
     return <DMPage channel={channel} />;
   }
+  const chatFirst = channel.kind === "course" || channel.kind === "project";
 
   return (
     <>
@@ -198,6 +235,19 @@ export function ChannelPage() {
             {!space && <span className="text-hash">#</span>}{" "}
             {space ? tr("내 공간") : channel.name}
           </h1>
+          {chatFirst && <PermissionToggle channel={channel} />}
+          {chatFirst && (
+            <button
+              type="button"
+              aria-label={tr("워크스페이스와 자료", "Workspace & knowledge")}
+              aria-pressed={panel}
+              title={tr("워크스페이스 · 자료", "Workspace · Knowledge")}
+              className={`flex size-9 cursor-pointer items-center justify-center rounded-full border ${panel ? "border-ink bg-ink text-on-dark" : "border-line-soft bg-card text-text-3 hover:text-ink"}`}
+              onClick={() => togglePanel(!panel)}
+            >
+              <FolderIcon />
+            </button>
+          )}
           {editable && (
             <button
               type="button"
@@ -220,10 +270,20 @@ export function ChannelPage() {
           )}
         </div>
       </header>
-      <div
-        className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
-      >
-        <Outlet context={space && !onFeed && personal ? personal : channel} />
+      <div className="relative flex min-h-0 w-full grow">
+        <div
+          className={`flex min-h-0 min-w-0 grow flex-col ${onFeed ? "" : column}`}
+        >
+          <Outlet
+            context={space && !onIndex && personal ? personal : channel}
+          />
+        </div>
+        {chatFirst && panel && (
+          <WorkspacePanel
+            channel={channel}
+            onClose={() => togglePanel(false)}
+          />
+        )}
       </div>
       {editable && settingsChannel && (
         <ChannelSettings
@@ -250,6 +310,43 @@ export function ChannelPage() {
         />
       )}
     </>
+  );
+}
+
+/** Header switch for the native harness's approvals in this channel (v0.2): Auto-Edit
+ * lets reads and workspace edits run, Ask waits for the user on every write. */
+function PermissionToggle({ channel }: { channel: Channel }) {
+  const update = useUpdateChannel();
+  const mode = channel.permission_mode ?? "auto_edit";
+  const option =
+    "h-7 cursor-pointer rounded-full px-3 text-[12px] font-medium aria-pressed:bg-card aria-pressed:text-ink aria-pressed:shadow-sm text-text-3";
+  return (
+    <fieldset
+      className="m-0 flex items-center gap-0.5 rounded-full border-0 bg-inset p-[3px] max-md:hidden"
+      title={tr(
+        "Auto-Edit: 읽기와 작업 폴더 안 수정은 바로, 삭제·명령 실행은 승인 후 · Ask: 모든 쓰기·명령에 승인",
+        "Auto-Edit: reads and workspace edits run at once; deletes and commands ask · Ask: every write and command asks",
+      )}
+    >
+      <legend className="sr-only">
+        {tr("에이전트 실행 권한", "Agent permissions")}
+      </legend>
+      {(["auto_edit", "ask"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={mode === value}
+          disabled={update.isPending}
+          className={option}
+          onClick={() =>
+            mode !== value &&
+            update.mutate({ id: channel.id, permission_mode: value })
+          }
+        >
+          {value === "auto_edit" ? "Auto-Edit" : "Ask"}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 

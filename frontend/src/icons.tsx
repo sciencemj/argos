@@ -212,6 +212,22 @@ export const FileIcon = ({ size = 16 }: P) => (
   </Stroke>
 );
 
+export const WrenchIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path
+      d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8a2.8 2.8 0 0 1-4-4l8-8z"
+      transform="rotate(0)"
+    />
+    <path d="M14.7 6.3 17 4a4 4 0 0 0-5.3 5.3" />
+  </Stroke>
+);
+
+export const FolderIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </Stroke>
+);
+
 /** Private chat: the DM's ghost button. */
 export const GhostIcon = ({ size = 18 }: P) => (
   <Stroke size={size} width={1.6}>

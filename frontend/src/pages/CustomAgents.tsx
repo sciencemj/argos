@@ -27,6 +27,14 @@ const BACKENDS = [
     label: tr("모델 연결"),
     hint: tr("Ollama나 OpenAI 호환 서버의 모델"),
   },
+  {
+    id: "native",
+    label: tr("Argos 하네스", "Argos harness"),
+    hint: tr(
+      "모델 연결 + Argos 자체 도구 루프 (파일·셸·플러그인, 인라인 승인)",
+      "A model connection in Argos's own tool loop (files, shell, plugins, inline approval)",
+    ),
+  },
 ] as const;
 
 const KIND_TEXT = {
@@ -174,7 +182,9 @@ function AgentDialog({
   // "" until the list loads: the default provider.
   const chosenProvider =
     providerList.find((p) => p.id === providerId) ?? defaultProvider;
-  const local = backend === "ollama";
+  // Both run on a model connection; the harness also has the workspace/plugin tools.
+  const native = backend === "native";
+  const local = backend === "ollama" || native;
   const openai = local && chosenProvider?.kind === "openai";
   const [prompt, setPrompt] = useState(agent?.system_prompt ?? "");
   const [allowed, setAllowed] = useState<string[]>(agent?.tools ?? []);
@@ -332,12 +342,20 @@ function AgentDialog({
           <legend className={`${label} mb-1`}>
             {tr("쓸 수 있는 Argos 도구")}
           </legend>
+          {native && (
+            <p className="m-0 text-[12px] text-text-3">
+              {tr(
+                "쓰기·명령 실행은 채널의 권한 모드(Auto-Edit / Ask)에 따라 대화 안에서 승인을 받아요.",
+                "Writes and commands ask for approval in the chat, following the channel's mode (Auto-Edit / Ask).",
+              )}
+            </p>
+          )}
           {(["read", "write", "approval"] as const).map((kind) => (
             <div key={kind} className="flex flex-col gap-1">
               <span className="text-[12px] text-text-3">{KIND_TEXT[kind]}</span>
               <div className="flex flex-wrap gap-1.5">
                 {tools.data
-                  ?.filter((t) => t.kind === kind)
+                  ?.filter((t) => t.kind === kind && (native || !t.native_only))
                   .map((t) => (
                     <label
                       key={t.name}
@@ -351,6 +369,16 @@ function AgentDialog({
                         onChange={() => setAllowed(toggle(allowed, t.name))}
                       />
                       {t.name}
+                      {t.source.startsWith("plugin:") && (
+                        <span className="rounded-full bg-inset px-1.5 font-sans text-[10px] text-meta">
+                          {tt`플러그인 ${t.source.slice(7)}`}
+                        </span>
+                      )}
+                      {t.native_only && !t.source.startsWith("plugin:") && (
+                        <span className="rounded-full bg-inset px-1.5 font-sans text-[10px] text-meta">
+                          {tr("하네스", "harness")}
+                        </span>
+                      )}
                     </label>
                   ))}
               </div>

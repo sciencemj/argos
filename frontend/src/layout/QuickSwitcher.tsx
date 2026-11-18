@@ -53,7 +53,7 @@ export function QuickSwitcher({
                 onSelect={() =>
                   go(
                     c.kind === "system" && c.name === "today"
-                      ? "/"
+                      ? "/today"
                       : `/c/${c.id}`,
                   )
                 }
