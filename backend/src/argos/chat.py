@@ -251,8 +251,11 @@ async def _route(
             if agent is None or agent.backend not in (
                 AgentBackend.CLAUDE_CODE,
                 AgentBackend.CODEX,
+                AgentBackend.NATIVE,  # the Argos harness: file/shell tools, inline approval
             ):
-                raise services.InvalidError("코딩 잡은 @claude나 @codex에게만 맡길 수 있어요")
+                raise services.InvalidError(
+                    "코딩 잡은 @claude, @codex나 Argos 하네스 에이전트에게만 맡길 수 있어요"
+                )
             title = job_title(instructions)
             # Validate the directory before anything is stored (PLAN §8.1 allowlist).
             workspace = services.job_workspace(settings.job_roots, directory, title)

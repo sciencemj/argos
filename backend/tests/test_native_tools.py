@@ -408,3 +408,42 @@ async def test_search_knowledge_tool(
     async with maker() as s:
         await knowledge.remove_upload(s, channel.id, "summary.md")
     assert json.loads(await search.handler({"query": "우선순위"}, ctx)) == []
+
+
+async def test_plugin_links_out_of_the_folder_are_skipped(tmp_path: Path) -> None:
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    outside = tmp_path / "evil.py"
+    outside.write_text(PLUGIN)
+    os.symlink(outside, folder / "evil.py")
+    registry = ToolRegistry()
+    [status] = load_plugins(folder, registry)
+    assert status.error and "weather" not in registry
+
+
+async def test_every_waiter_on_an_approval_wakes() -> None:
+    import asyncio
+
+    from argos.approval_waits import ApprovalWaits
+
+    waits = ApprovalWaits()
+
+    async def pending() -> bool | None:
+        return None
+
+    first = asyncio.create_task(waits.wait("a", pending, poll=10))
+    second = asyncio.create_task(waits.wait("a", pending, poll=10))
+    await asyncio.sleep(0)
+    waits.settle("a", True)
+    assert await first is True and await second is True
+    assert waits.waiting() == []
+
+
+def test_mcp_serves_every_destructive_tool_as_an_approval_request() -> None:
+    from fastapi import FastAPI
+
+    from argos import mcp_server
+
+    mcp_server.build_mcp(FastAPI())
+    assert mcp_server.DESTRUCTIVE == {"delete_task", "delete_event"}
+    assert mcp_server.DESTRUCTIVE <= set(mcp_server.TOOL_NAMES)

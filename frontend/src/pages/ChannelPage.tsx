@@ -230,7 +230,7 @@ export function ChannelPage() {
         data-tauri-drag-region="deep"
         className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
       >
-        <div className="flex items-center gap-3.5">
+        <div className="flex items-center gap-3.5 max-md:gap-2">
           <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {!space && <span className="text-hash">#</span>}{" "}
             {space ? tr("내 공간") : channel.name}
@@ -319,10 +319,10 @@ function PermissionToggle({ channel }: { channel: Channel }) {
   const update = useUpdateChannel();
   const mode = channel.permission_mode ?? "auto_edit";
   const option =
-    "h-7 cursor-pointer rounded-full px-3 text-[12px] font-medium aria-pressed:bg-card aria-pressed:text-ink aria-pressed:shadow-sm text-text-3";
+    "h-7 cursor-pointer rounded-full px-3 text-[12px] font-medium whitespace-nowrap aria-pressed:bg-card aria-pressed:text-ink aria-pressed:shadow-sm text-text-3 max-md:px-2.5 max-md:text-[11.5px]";
   return (
     <fieldset
-      className="m-0 flex items-center gap-0.5 rounded-full border-0 bg-inset p-[3px] max-md:hidden"
+      className="m-0 flex shrink-0 items-center gap-0.5 rounded-full border-0 bg-inset p-[3px]"
       title={tr(
         "Auto-Edit: 읽기와 작업 폴더 안 수정은 바로, 삭제·명령 실행은 승인 후 · Ask: 모든 쓰기·명령에 승인",
         "Auto-Edit: reads and workspace edits run at once; deletes and commands ask · Ask: every write and command asks",
@@ -343,7 +343,14 @@ function PermissionToggle({ channel }: { channel: Channel }) {
             update.mutate({ id: channel.id, permission_mode: value })
           }
         >
-          {value === "auto_edit" ? "Auto-Edit" : "Ask"}
+          {value === "auto_edit" ? (
+            <>
+              <span className="max-md:hidden">Auto-Edit</span>
+              <span className="md:hidden">Auto</span>
+            </>
+          ) : (
+            "Ask"
+          )}
         </button>
       ))}
     </fieldset>

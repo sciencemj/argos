@@ -13,7 +13,7 @@ finished text to its reply message once, so SQLite sees one write per run.
 import asyncio
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -281,12 +281,21 @@ class _RunApprovals:
         agent: Agent,
         channel_id: str,
         thread_root_id: str | None,
+        *,
+        pause: Callable[[], None] | None = None,
+        resume: Callable[[], Awaitable[None]] | None = None,
+        timeout: float | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._run_id = run_id
         self._agent = agent
         self._channel_id = channel_id
         self._thread_root_id = thread_root_id
+        # A job gives its concurrency slot back while it waits (pause) and takes one
+        # again before the approved tool runs (resume), so waiting jobs block nobody.
+        self._pause = pause
+        self._resume = resume
+        self._timeout = timeout  # None: wait as long as the user takes
 
     async def request(self, tool: ToolDef, args: dict[str, Any], summary: str) -> str:
         async with self._sessionmaker() as session:
@@ -313,7 +322,25 @@ class _RunApprovals:
             async with self._sessionmaker() as session:
                 return await services.approval_decision(session, approval_id)
 
-        return await approval_waits.wait(approval_id, decided)
+        if self._pause is not None:
+            self._pause()
+        try:
+            answer = await asyncio.wait_for(
+                approval_waits.wait(approval_id, decided), self._timeout
+            )
+        except TimeoutError:
+            async with self._sessionmaker() as session:
+                await services.expire_run_approvals(
+                    session,
+                    self._run_id,
+                    "승인을 기다리다 시간이 지났어요",
+                    approval_id=approval_id,
+                )
+            answer = False
+        # Not on cancellation: the run ends and must not wait for a slot first.
+        if self._resume is not None:
+            await self._resume()
+        return answer
 
 
 class Runner:
@@ -527,6 +554,7 @@ class Runner:
         trace: list[str] = []  # job log: one line per tool step
         status, error = RunStatus.DONE, None
         native = paused = False
+        remaining: float | None = None  # run time left when an approval paused the clock
         try:
             if job is not None:
                 await hub.publish("agent.status", ids | {"status": "대기 중"})
@@ -555,9 +583,9 @@ class Runner:
             loop = asyncio.get_running_loop()
             async with asyncio.timeout(limit) as deadline:
                 async for event in adapter.stream(transcript, context, session_key):
-                    if paused:  # the user answered: the clock runs again
+                    if paused:  # the user answered: the clock runs on with what was left
                         paused = False
-                        deadline.reschedule(loop.time() + limit)
+                        deadline.reschedule(loop.time() + (remaining or limit))
                     match event:
                         case Token(text=text):
                             parts.append(text)
@@ -594,6 +622,8 @@ class Runner:
                         ):
                             # Waiting for the user is not the agent being slow.
                             paused = True
+                            when = deadline.when()
+                            remaining = max(0.0, when - loop.time()) if when else None
                             deadline.reschedule(None)
                             trace.append(f"{self._clock()} 승인 대기: {summary}")
                             await self._step(
@@ -646,6 +676,16 @@ class Runner:
         else:
             await hub.publish("agent.done", ids | {"status": status})
 
+    def _release_slot(self, job: "_Job") -> None:
+        if job.slot:
+            job.slot = False
+            self._job_slots.release()
+
+    async def _take_slot(self, job: "_Job") -> None:
+        if not job.slot:
+            await self._job_slots.acquire()
+            job.slot = True
+
     def _clock(self) -> str:
         return f"{datetime.now(self.settings.zoneinfo):%H:%M:%S}"
 
@@ -693,7 +733,16 @@ class Runner:
                 await session.get(Message, run.reply_message_id) if run.reply_message_id else None
             )
         thread = reply.thread_root_id if reply is not None else run.thread_root_id
-        gate = _RunApprovals(self._sessionmaker, run_id, agent, channel.id, thread)
+        gate = _RunApprovals(
+            self._sessionmaker,
+            run_id,
+            agent,
+            channel.id,
+            thread,
+            pause=(lambda: self._release_slot(job)) if job is not None else None,
+            resume=(lambda: self._take_slot(job)) if job is not None else None,
+            timeout=self.settings.approval_timeout or None,
+        )
         project = Path(channel.workspace_path) if channel.workspace_path else None
         harness = HarnessRun(
             run_id=run_id,

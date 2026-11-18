@@ -114,3 +114,20 @@ test("a finished call shows its output, no buttons", () => {
   expect(screen.getByText("hello")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "승인" })).toBeNull();
 });
+
+test("the user's open/close wins over the waiting state", () => {
+  mocks.pending.data = [{ id: "ap1" }];
+  const step = {
+    id: "c1",
+    name: "run_command",
+    args: {},
+    approvalId: "ap1",
+  };
+  const { container, rerender } = render(<ToolStepCard step={step} />);
+  const details = container.querySelector("details") as HTMLDetailsElement;
+  expect(details.open).toBe(true); // waiting: opened for the user
+  details.open = false;
+  fireEvent(details, new Event("toggle"));
+  rerender(<ToolStepCard step={{ ...step }} />);
+  expect(details.open).toBe(false); // closed by the user, stays closed
+});

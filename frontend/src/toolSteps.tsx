@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { type LiveStep, useLive } from "./agentStream";
 import {
   type Message,
@@ -74,6 +75,9 @@ export function ToolStepCard({ step }: { step: LiveStep }) {
     Boolean(step.approvalId) &&
     step.output === undefined &&
     (pending.data ?? []).some((a) => a.id === step.approvalId);
+  // The user's own open/close wins; until they touch it, a call waiting for them opens.
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? waiting;
   const tone = step.isError
     ? "text-danger"
     : step.output === undefined
@@ -81,7 +85,11 @@ export function ToolStepCard({ step }: { step: LiveStep }) {
       : "text-meta";
   return (
     <details
-      open={waiting}
+      open={open}
+      onToggle={(e) => {
+        // Only a change the user made: our own `open` updates fire toggle too.
+        if (e.currentTarget.open !== open) setToggled(e.currentTarget.open);
+      }}
       className={`group rounded-2xl border bg-inset/60 text-[12.5px] ${waiting ? "border-danger-line" : "border-line-soft"}`}
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none">

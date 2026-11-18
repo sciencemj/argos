@@ -78,6 +78,10 @@ export function useRealtime(): LinkState {
         }
         if (event.type.startsWith("agent.")) {
           onAgentEvent(event.type, event.data);
+          if (event.type === "agent.approval") {
+            // A run is waiting: the approval badge and inline buttons need it now.
+            void qc.invalidateQueries({ queryKey: ["approvals"] });
+          }
           if (event.type === "agent.done" || event.type === "agent.error") {
             invalidateFor(qc, "agent_run");
             void qc.invalidateQueries({ queryKey: ["usage"] }); // job counts

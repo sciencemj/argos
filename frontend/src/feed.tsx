@@ -1,6 +1,7 @@
 import {
   type FormEvent,
   type KeyboardEvent,
+  type Ref,
   useEffect,
   useRef,
   useState,
@@ -1121,11 +1122,14 @@ export function ThreadReplies({
   replies,
   channelId,
   wide = false,
+  scrollerRef,
 }: {
   root: Message;
   replies: Message[];
   channelId: string;
   wide?: boolean;
+  /** The scrolling list, for a caller that follows new replies (chat view). */
+  scrollerRef?: Ref<HTMLDivElement>;
 }) {
   const channels = useChannels();
   const channel = channels.data?.channels.find((c) => c.id === channelId);
@@ -1134,7 +1138,10 @@ export function ThreadReplies({
 
   return (
     <>
-      <div className="flex min-h-0 grow flex-col overflow-y-auto">
+      <div
+        ref={scrollerRef}
+        className="flex min-h-0 grow flex-col overflow-y-auto"
+      >
         <div
           className={`flex flex-col gap-5 pb-4 ${wide ? "px-8" : "px-5"} ${column}`}
         >

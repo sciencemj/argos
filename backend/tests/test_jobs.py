@@ -96,7 +96,7 @@ def test_job_moves_card_and_reports_in_thread(
     [
         ("/job @codex 초안 --dir /etc", "허용된 작업 디렉터리 밖"),
         ("/job @codex 초안 --dir ../../outside", "허용된 작업 디렉터리 밖"),
-        ("/job @hermes 초안", "@claude나 @codex"),
+        ("/job @hermes 초안", "Argos 하네스 에이전트"),
         ("/job 초안만", "/job @claude"),
     ],
 )

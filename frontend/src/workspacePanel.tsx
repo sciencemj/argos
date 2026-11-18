@@ -1,4 +1,4 @@
-import { type DragEvent, useRef, useState } from "react";
+import { type DragEvent, useEffect, useRef, useState } from "react";
 import {
   type Channel,
   useChannelFiles,
@@ -55,6 +55,17 @@ export function WorkspacePanel({
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(0);
   const [confirm, setConfirm] = useState<string | null>(null);
+  // Every file that failed in this panel, with why; the user clears them.
+  const [failed, setFailed] = useState<{ name: string; reason: string }[]>([]);
+  // Escape backs out of a pending delete.
+  useEffect(() => {
+    if (!confirm) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirm(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirm]);
   const lms = (docs.data ?? []).filter((d) => d.source === "lms");
   const uploads = files.data ?? [];
   const searchable =
@@ -67,8 +78,9 @@ export function WorkspacePanel({
     for (const file of picked) {
       try {
         await upload.mutateAsync({ channelId: channel.id, file });
-      } catch {
-        // shown below through upload.error
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setFailed((list) => [...list, { name: file.name, reason }]);
       } finally {
         setBusy((n) => n - 1);
       }
@@ -140,7 +152,32 @@ export function WorkspacePanel({
             e.target.value = "";
           }}
         />
-        <ErrorText error={upload.error ?? remove.error} />
+        {failed.length > 0 && (
+          <div
+            role="alert"
+            className="flex flex-col gap-1 rounded-xl border border-danger-line bg-danger-bg px-3 py-2 text-[12px] text-danger"
+          >
+            <div className="flex items-center">
+              <span className="grow font-medium">
+                {tt`올리지 못한 파일 ${failed.length}개`}
+              </span>
+              <button
+                type="button"
+                className="cursor-pointer text-[11.5px] underline"
+                onClick={() => setFailed([])}
+              >
+                {tr("지우기", "Clear")}
+              </button>
+            </div>
+            {failed.map((f, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the same file may fail twice
+              <span key={i} className="truncate" title={f.reason}>
+                {f.name} — {f.reason}
+              </span>
+            ))}
+          </div>
+        )}
+        <ErrorText error={remove.error} />
 
         <section className="flex flex-col gap-1">
           <h3 className="m-0 px-1 text-[11.5px] font-medium text-meta">
@@ -173,16 +210,25 @@ export function WorkspacePanel({
               </div>
               <IndexBadge indexed={f.indexed} />
               {confirm === f.path ? (
-                <button
-                  type="button"
-                  className="h-7 cursor-pointer rounded-full bg-danger px-2.5 text-[11.5px] font-medium text-on-dark"
-                  onClick={() => {
-                    setConfirm(null);
-                    remove.mutate({ channelId: channel.id, path: f.path });
-                  }}
-                >
-                  {tr("삭제")}
-                </button>
+                <span className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    className="h-7 cursor-pointer rounded-full bg-danger px-2.5 text-[11.5px] font-medium text-on-dark"
+                    onClick={() => {
+                      setConfirm(null);
+                      remove.mutate({ channelId: channel.id, path: f.path });
+                    }}
+                  >
+                    {tr("삭제")}
+                  </button>
+                  <button
+                    type="button"
+                    className="h-7 cursor-pointer rounded-full px-2 text-[11.5px] text-text-3 hover:text-ink"
+                    onClick={() => setConfirm(null)}
+                  >
+                    {tr("취소")}
+                  </button>
+                </span>
               ) : (
                 <button
                   type="button"

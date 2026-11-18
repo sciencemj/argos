@@ -166,4 +166,10 @@ def build_mcp(app: FastAPI) -> MCPServer:
 
         return await run(work)
 
+    # Every destructive Argos tool needs an approval-request version above: one added
+    # to argos_tools without it must fail loudly, not vanish or run unapproved.
+    served = {t.name for t in mcp._tool_manager.list_tools()}  # pyright: ignore[reportPrivateUsage]
+    missing = DESTRUCTIVE - served
+    if missing:
+        raise RuntimeError(f"destructive tools without an MCP approval wrapper: {missing}")
     return mcp

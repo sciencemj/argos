@@ -2501,7 +2501,11 @@ async def approval_decision(session: AsyncSession, approval_id: str) -> bool | N
 
 
 async def expire_run_approvals(
-    session: AsyncSession, run_id: str | None = None, reason: str = "실행이 끝나 취소됐어요"
+    session: AsyncSession,
+    run_id: str | None = None,
+    reason: str = "실행이 끝나 취소됐어요",
+    *,
+    approval_id: str | None = None,
 ) -> None:
     """Tool approvals nobody can act on any more: their run ended (`run_id`), or, with
     no run id, every pending one (at startup no run is waiting)."""
@@ -2510,6 +2514,8 @@ async def expire_run_approvals(
     )
     if run_id is not None:
         query = query.where(Approval.run_id == run_id)
+    if approval_id is not None:
+        query = query.where(Approval.id == approval_id)
     now = datetime.now(UTC)
     for approval in (await session.scalars(query)).all():
         await _update(

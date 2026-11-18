@@ -17,6 +17,7 @@ Small local models often write broken tool arguments: `repair_json` tries the us
 fixes, and when that fails the model gets the error as the tool result and may retry.
 """
 
+import ast
 import asyncio
 import json
 import re
@@ -251,7 +252,6 @@ class ArgsError(ValueError):
 
 
 FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
-TRAILING_COMMA = re.compile(r",\s*([}\]])")
 PY_LITERALS = re.compile(r"\b(True|False|None)\b")
 
 
@@ -288,10 +288,92 @@ def _close_open(text: str) -> str:
     return text + "".join(reversed(stack))
 
 
+def _literal_object(text: str) -> dict[str, Any] | None:
+    """Python-literal form (single quotes, True/False/None, trailing commas) read
+    safely with ast.literal_eval; only a dict that is also valid JSON data counts."""
+    try:
+        value = ast.literal_eval(text)
+    except (ValueError, SyntaxError, MemoryError, RecursionError, TypeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    try:
+        return json.loads(json.dumps(value))  # drops tuples/sets/bytes and the like
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize(text: str) -> str:
+    """JSON-ifies Python-ish text outside string literals only: True/False/None and
+    trailing commas are fixed between strings, single-quoted strings become JSON
+    strings, and nothing inside a string is touched."""
+    out: list[str] = []
+    plain: list[str] = []
+
+    def flush() -> None:
+        chunk = "".join(plain)
+        chunk = PY_LITERALS.sub(
+            lambda m: {"True": "true", "False": "false"}.get(m.group(1), "null"), chunk
+        )
+        out.append(chunk)
+        plain.clear()
+
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch not in "\"'":
+            plain.append(ch)
+            i += 1
+            continue
+        flush()
+        j = i + 1
+        content: list[str] = []
+        while j < len(text) and text[j] != ch:
+            if text[j] == "\\" and j + 1 < len(text):
+                content.append(text[j : j + 2])
+                j += 2
+                continue
+            content.append(text[j])
+            j += 1
+        body = "".join(content)
+        if ch == "'":
+            body = body.replace("\\'", "'").replace('"', '\\"')
+        out.append(f'"{body}"')
+        i = j + 1
+    flush()
+    return _drop_trailing_commas("".join(out))
+
+
+def _drop_trailing_commas(text: str) -> str:
+    """Removes a `,` followed only by whitespace and `}`/`]`, outside strings."""
+    result: list[str] = []
+    in_string = escaped = False
+    for index, ch in enumerate(text):
+        if in_string:
+            result.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == ",":
+            rest = text[index + 1 :].lstrip()
+            if rest[:1] in ("}", "]"):
+                continue
+        result.append(ch)
+    return "".join(result)
+
+
 def repair_json(raw: str | None) -> dict[str, Any]:
     """The arguments object, repairing what small models commonly break: code fences,
     words around the object, trailing commas, single quotes, Python literals and a
-    cut-off end. Empty means no arguments. Raises ArgsError when nothing works."""
+    cut-off end. Fixes apply outside string literals only, so a value such as
+    "None of 'these'" arrives unchanged. Empty means no arguments. Raises ArgsError
+    when nothing works."""
     text = (raw or "").strip()
     if not text:
         return {}
@@ -304,18 +386,11 @@ def repair_json(raw: str | None) -> dict[str, Any]:
         raise ArgsError("arguments are not a JSON object")
     end = text.rfind("}")
     body = text[start : end + 1] if end > start else text[start:]
-    candidates = [body]
-    fixed = TRAILING_COMMA.sub(r"\1", body)
-    candidates.append(fixed)
-    if '"' not in fixed:
-        candidates.append(fixed.replace("'", '"'))
-    candidates.append(
-        PY_LITERALS.sub(
-            lambda m: {"True": "true", "False": "false"}.get(m.group(1), "null"), candidates[-1]
-        )
-    )
-    candidates.append(TRAILING_COMMA.sub(r"\1", _close_open(text[start:])))
-    for candidate in candidates:
+    if (value := _loads_object(body)) is not None:
+        return value
+    if (value := _literal_object(body)) is not None:
+        return value
+    for candidate in (_normalize(body), _normalize(_close_open(text[start:]))):
         if (value := _loads_object(candidate)) is not None:
             return value
     raise ArgsError("arguments are not valid JSON")

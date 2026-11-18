@@ -67,6 +67,11 @@ def load_plugins(directory: Path, registry: ToolRegistry) -> list[PluginStatus]:
             continue
         status = PluginStatus(name=name, path=str(path))
         statuses.append(status)
+        if not path.resolve().is_relative_to(directory.resolve()):
+            # A link out of the plugins folder: only code put there is loaded.
+            status.error = "plugins 폴더 밖을 가리키는 링크라 건너뛰었어요"
+            log.warning("tool plugin %s points outside %s; skipped", name, directory)
+            continue
         proxy = PluginRegistry(registry, name)
         module_name = f"argos_plugin_{name}"
         try:

@@ -11,13 +11,16 @@ POLL_SECONDS = 5.0
 
 
 class ApprovalWaits:
+    """Several waiters may wait on one approval (a retried gate, another view of the
+    run): each gets its own future and all of them are woken."""
+
     def __init__(self) -> None:
-        self._futures: dict[str, asyncio.Future[bool]] = {}
+        self._futures: dict[str, set[asyncio.Future[bool]]] = {}
 
     def settle(self, approval_id: str, approved: bool) -> None:
-        future = self._futures.get(approval_id)
-        if future is not None and not future.done():
-            future.set_result(approved)
+        for future in self._futures.get(approval_id, set()):
+            if not future.done():
+                future.set_result(approved)
 
     async def wait(
         self,
@@ -27,8 +30,8 @@ class ApprovalWaits:
     ) -> bool:
         """True once approved, False once rejected (or failed). `decided` reads the saved
         decision: None while it is still pending."""
-        future = asyncio.get_running_loop().create_future()
-        self._futures[approval_id] = future
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        self._futures.setdefault(approval_id, set()).add(future)
         try:
             while True:
                 answer = await decided()
@@ -39,7 +42,11 @@ class ApprovalWaits:
                 except TimeoutError:
                     continue
         finally:
-            self._futures.pop(approval_id, None)
+            waiting = self._futures.get(approval_id)
+            if waiting is not None:
+                waiting.discard(future)
+                if not waiting:
+                    del self._futures[approval_id]
 
     def waiting(self) -> list[str]:
         return list(self._futures)

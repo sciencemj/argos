@@ -13,7 +13,7 @@ import pytest
 from fakes import FakeClassifier
 from fastapi.testclient import TestClient
 
-from argos import harness, providers
+from argos import harness, providers, services
 from argos.agents import (
     AgentEvent,
     AgentUnavailable,
@@ -120,6 +120,11 @@ def test_permission_decisions(tmp_path: Path) -> None:
         ('{"a": True, "b": None}', {"a": True, "b": None}),
         ('{"path": "a.txt", "lines": [1, 2', {"path": "a.txt", "lines": [1, 2]}),
         ('{"text": "cut off', {"text": "cut off"}),
+        # Fixes stay outside strings: Python words and commas inside values survive.
+        ('{"q": "True or None, ]", "n": None,}', {"q": "True or None, ]", "n": None}),
+        ("{'q': 'it\\'s None', 'ok': True}", {"q": "it's None", "ok": True}),
+        ("{'a': \"say 'False'\", 'b': [1, 2,],}", {"a": "say 'False'", "b": [1, 2]}),
+        ('{"text": "None at all', {"text": "None at all"}),
     ],
 )
 def test_repair_json(raw: str, expected: dict[str, Any]) -> None:
@@ -630,3 +635,98 @@ def test_channel_permission_mode_and_leftover_approvals(app: TestClient) -> None
         ]
     )
     assert gone[0]["error"]
+
+
+def test_a_job_waiting_for_approval_frees_its_slot(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """job_concurrency=1: a native job paused on an approval must not hold the only
+    slot, so the next job runs meanwhile; approving resumes the first."""
+    config = settings.model_copy(update={"job_roots": [tmp_path / "jobs"], "job_concurrency": 1})
+    ran: list[str] = []
+
+    async def rm(args: dict[str, Any], ctx: ToolContext) -> str:
+        ran.append("rm")
+        return "deleted"
+
+    registry = ToolRegistry([ToolDef("rm", "delete", {"type": "object"}, "destructive", rm)])
+    scripts = [
+        ScriptedLLM([LLMDone("", [call("c1", "rm", "{}")]), LLMDone("첫 잡 끝")]),
+        ScriptedLLM([LLMDone("둘째 잡 끝")]),
+    ]
+
+    def factory(
+        agent: Agent,
+        settings: Settings,
+        sessions: Any = None,
+        job_workspace: Any = None,
+        no_tools: bool = False,
+        coding: bool = False,
+        harness: HarnessRun | None = None,
+    ) -> NativeHarnessAdapter:
+        assert harness is not None
+        ctx = ToolContext(workspace=Path(job_workspace), agent=agent.name)
+        return NativeHarnessAdapter(scripts.pop(0), agent.name, registry, ctx, harness.gate)
+
+    with TestClient(create_app(config)) as app:
+        app.app.state.classifier = FakeClassifier(error="no model")  # type: ignore[attr-defined]
+        app.app.state.runner.adapter_factory = factory  # type: ignore[attr-defined]
+        created = app.post(
+            "/api/v1/agents",
+            json={"name": "nat", "display_name": "Nat", "backend": "native", "model": "m"},
+        )
+        assert created.status_code == 201, created.text
+        channel = _course(app)
+        url = f"/api/v1/channels/{channel}/messages"
+        first = app.post(url, json={"body": "/job @nat 첫 잡"})
+        assert first.status_code == 201, first.text
+        [approval] = _wait(
+            lambda: app.get("/api/v1/approvals", params={"status": "pending"}).json()
+        )
+        second = app.post(url, json={"body": "/job @nat 둘째 잡"}).json()
+
+        def status(message: dict[str, Any]) -> str:
+            return app.get(f"/api/v1/tasks/{message['ref_id']}").json()["job"]["status"]
+
+        _wait(lambda: status(second) == "done")  # ran while the first one waited
+        assert status(first.json()) == "running" and ran == []
+        assert app.post(f"/api/v1/approvals/{approval['id']}/approve").status_code == 200
+        _wait(lambda: status(first.json()) == "done")
+        assert ran == ["rm"]
+
+
+async def test_an_unanswered_approval_times_out(settings: Settings) -> None:
+    from argos.db import make_engine, make_sessionmaker
+    from argos.runner import _RunApprovals  # pyright: ignore[reportPrivateUsage]
+
+    engine = make_engine(settings.db_url)
+    maker = make_sessionmaker(engine)
+    async with maker() as s:
+        areas = await services.list_areas(s)
+        area = (
+            areas[0] if areas else await services.create_area(s, name="a", icon=None, actor="user")
+        )
+        channel = await services.create_channel(
+            s, name="c", area_id=area.id, kind=services.ChannelKind.COURSE, actor="user"
+        )
+    events: list[str] = []
+
+    async def resume() -> None:
+        events.append("resume")
+
+    gate = _RunApprovals(
+        maker,
+        "run-1",
+        Agent(name="nat", display_name="Nat", backend=AgentBackend.NATIVE),
+        channel.id,
+        None,
+        pause=lambda: events.append("pause"),
+        resume=resume,
+        timeout=0.2,
+    )
+    approval_id = await gate.request(tool("w", "write"), {}, "쓰기")
+    assert await gate.wait(approval_id) is False
+    assert events == ["pause", "resume"]
+    async with maker() as s:
+        assert await services.approval_decision(s, approval_id) is False
+    await engine.dispose()

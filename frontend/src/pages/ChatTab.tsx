@@ -128,11 +128,11 @@ function SessionView({
   const [, setParams] = useSearchParams();
   const scroller = useRef<HTMLDivElement>(null);
   const last = thread.data?.replies.at(-1)?.id;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: follow the newest reply
+  // Follow the conversation: the newest reply comes into view as it arrives.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the last reply changes
   useEffect(() => {
-    scroller.current
-      ?.querySelector("div.overflow-y-auto")
-      ?.scrollTo({ top: 1e9 });
+    const el = scroller.current;
+    if (el) el.scrollTo({ top: el.scrollHeight });
   }, [last]);
   if (
     thread.isError ||
@@ -152,15 +152,42 @@ function SessionView({
         </button>
       </div>
     );
-  if (!thread.data) return null;
+  if (!thread.data) return <SessionSkeleton />;
   return (
-    <div ref={scroller} className="flex min-h-0 grow flex-col">
+    <div className="flex min-h-0 grow flex-col">
       <ThreadReplies
         root={thread.data.root}
         replies={thread.data.replies}
         channelId={channel.id}
         wide
+        scrollerRef={scroller}
       />
+    </div>
+  );
+}
+
+/** While a conversation loads: grey message shapes, so the page does not jump. */
+function SessionSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={tr("대화를 불러오는 중", "Loading conversation")}
+      className={`${FEED_COLUMN} flex grow flex-col gap-6 px-8 py-6 max-md:px-4`}
+    >
+      {[72, 48, 64].map((width) => (
+        <div key={width} className="flex animate-pulse gap-3">
+          <div className="size-9 shrink-0 rounded-full bg-inset" />
+          <div className="flex grow flex-col gap-2">
+            <div className="h-3 w-24 rounded-full bg-inset" />
+            <div
+              className="h-3 rounded-full bg-inset"
+              style={{ width: `${width}%` }}
+            />
+            <div className="h-3 w-1/3 rounded-full bg-inset" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
