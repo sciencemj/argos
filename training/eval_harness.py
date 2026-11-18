@@ -388,6 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wandb-run-name", default=None, help="W&B run name")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
     parser.add_argument(
+        "--log-report",
+        type=Path,
+        default=None,
+        help="log an existing --out-json report to W&B and exit (no model calls)",
+    )
+    parser.add_argument(
         "--score-answers",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -401,8 +407,79 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+ARTIFACT_PREFIX = "wandb-artifact:///"
+STEP_COLUMNS = [
+    "run_id",
+    "step_index",
+    "prompt_preview",
+    "expected_tool",
+    "predicted_tool",
+    "json_valid",
+    "tool_match",
+    "schema_valid",
+    "exact_args_match",
+    "expects_tool",
+    "raw_arguments",
+    "error",
+]
+
+
+def _safe_name(model: str) -> str:
+    return model.removeprefix(ARTIFACT_PREFIX).replace("/", "-")
+
+
+def _model_config(model: str) -> dict[str, Any]:
+    """W&B treats a config value starting with `wandb-artifact://` as an artifact it
+    must resolve (and fails on serverless checkpoint ids), so those go in as a path."""
+    if model.startswith(ARTIFACT_PREFIX):
+        return {"model_artifact": model.removeprefix(ARTIFACT_PREFIX)}
+    return {"model": model}
+
+
+def log_to_wandb(
+    *,
+    project: str,
+    run_name: str,
+    config: dict[str, Any],
+    summary: dict[str, Any],
+    steps: list[dict[str, Any]],
+) -> None:
+    import wandb  # type: ignore[import-not-found]
+
+    run = wandb.init(project=project, name=run_name, job_type="eval", config=config)
+    try:
+        table = wandb.Table(columns=STEP_COLUMNS)
+        for row in steps:
+            table.add_data(*[row.get(c) for c in STEP_COLUMNS])
+        run.log({"eval/predictions": table, **{f"eval/{k}": v for k, v in summary.items()}})
+    finally:
+        run.finish()
+
+
+def log_saved_report(path: Path, project: str, run_name: str | None) -> None:
+    """Logs a report written by --out-json to W&B without calling the model again."""
+    report = json.loads(path.read_text(encoding="utf-8"))
+    model = str(report.get("model") or "")
+    log_to_wandb(
+        project=project,
+        run_name=run_name or f"eval-{_safe_name(model)}",
+        config={
+            **_model_config(model),
+            "base_url": report.get("base_url"),
+            "eval_file": report.get("eval_file"),
+            "from_report": str(path),
+        },
+        summary=report["summary"],
+        steps=report.get("steps") or [],
+    )
+    print(json.dumps({"model": model, **report["summary"]}, ensure_ascii=False))
+
+
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
+    if args.log_report is not None:
+        log_saved_report(args.log_report, args.wandb_project, args.wandb_run_name)
+        return
     if not args.eval_file.is_file():
         raise SystemExit(f"Eval file not found: {args.eval_file}")
 
@@ -440,41 +517,18 @@ def main(argv: list[str] | None = None) -> None:
         args.out_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if not args.no_wandb:
-        import wandb  # type: ignore[import-not-found]
-
-        run = wandb.init(
+        log_to_wandb(
             project=args.wandb_project,
-            name=args.wandb_run_name or f"eval-{args.model}",
-            job_type="eval",
+            run_name=args.wandb_run_name or f"eval-{_safe_name(args.model)}",
             config={
-                "model": args.model,
+                **_model_config(args.model),
                 "base_url": args.base_url,
                 "eval_file": str(args.eval_file),
                 "temperature": args.temperature,
             },
+            summary=summary,
+            steps=[asdict(r) for r in results],
         )
-        try:
-            columns = [
-                "run_id",
-                "step_index",
-                "prompt_preview",
-                "expected_tool",
-                "predicted_tool",
-                "json_valid",
-                "tool_match",
-                "schema_valid",
-                "exact_args_match",
-                "expects_tool",
-                "raw_arguments",
-                "error",
-            ]
-            table = wandb.Table(columns=columns)
-            for r in results:
-                row = asdict(r)
-                table.add_data(*[row[c] for c in columns])
-            run.log({"eval/predictions": table, **{f"eval/{k}": v for k, v in summary.items()}})
-        finally:
-            run.finish()
 
     print(json.dumps({"model": args.model, **summary}, ensure_ascii=False))
 
