@@ -1063,11 +1063,22 @@ class LinkFolderIn(BaseModel):
     path: str = Field(min_length=1, max_length=1000)
 
 
-def _this_mac_only(request: Request) -> None:
-    """Giving agents a folder on this computer is decided on this computer, not from a
-    phone through Tailscale serve."""
-    if request.headers.get("tailscale-user-login") or getattr(request.state, "remote_base", None):
-        raise HTTPException(403, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
+def from_this_mac(request: Request) -> bool:
+    """A request from this computer itself: a loopback client, and not relayed by
+    Tailscale serve (identity headers or the remote path prefix)."""
+    headers = dict(request.scope.get("headers") or [])
+    client = (request.client.host if request.client else "").strip().lower()
+    return (
+        client in ("", "127.0.0.1", "::1", "localhost", "testclient")
+        and b"tailscale-user-login" not in headers
+        and b"tailscale-headers-info" not in headers
+        and not request.scope.get("state", {}).get("remote_base")
+    )
+
+
+def _this_mac_only(request: Request, message: str) -> None:
+    if not from_this_mac(request):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
 
 
 @router.post("/channels/{channel_id}/folders")
@@ -1076,7 +1087,7 @@ async def link_channel_folder(
 ) -> ChannelOut:
     """Links a local folder to the channel: its agents' file tools may then read and
     edit there like in the channel's own workspace."""
-    _this_mac_only(request)
+    _this_mac_only(request, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
     channel = await services.link_folder(
         session, channel_id, body.path, config.data_dir, config.db_path, USER
     )
@@ -1090,7 +1101,7 @@ async def unlink_channel_folder(
     channel_id: str,
     path: Annotated[str, Query(max_length=1000)],
 ) -> ChannelOut:
-    _this_mac_only(request)
+    _this_mac_only(request, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
     channel = await services.unlink_folder(session, channel_id, path, USER)
     return ChannelOut.model_validate(channel)
 
@@ -1707,19 +1718,7 @@ async def export_sft(
     limit: Annotated[int | None, Query(ge=1, le=10000)] = None,
 ) -> Response:
     """Exports finished agent runs as OpenAI messages+tools JSONL (local only)."""
-    headers = dict(request.scope.get("headers") or [])
-    client_host = (request.client.host if request.client else "").strip().lower()
-    is_loopback = client_host in ("", "127.0.0.1", "::1", "localhost", "testclient")
-    if (
-        not is_loopback
-        or b"tailscale-user-login" in headers
-        or b"tailscale-headers-info" in headers
-        or request.scope.get("state", {}).get("remote_base")
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="SFT 내보내기는 이 Mac에서만 실행할 수 있어요",
-        )
+    _this_mac_only(request, "SFT 내보내기는 이 Mac에서만 실행할 수 있어요")
     examples = await sft_export.export(
         session,
         sft_export.ExportOptions(

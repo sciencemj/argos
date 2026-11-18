@@ -27,7 +27,7 @@ import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
 import { FolderIcon, PlusIcon, SettingsIcon } from "../icons";
 import { LAST_CHANNEL } from "../lastChannel";
-import { btn, Dialog, ErrorText, field, label } from "../ui";
+import { btn, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
 import { WorkspacePanel } from "../workspacePanel";
 import { PrivateCovered, PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
@@ -351,24 +351,26 @@ function DMPage({ channel }: { channel: Channel }) {
             )}
           </div>
           {list.length > 0 && (
-            <select
-              aria-label={tr("대화 고르기")}
+            <SelectMenu
+              ariaLabel={tr("대화 고르기")}
               className={`${field} w-auto max-w-[280px] truncate max-md:max-w-[120px]`}
               value={shown?.id ?? ""}
-              onChange={(e) =>
-                setPicked(
-                  e.target.value === current?.id ? null : e.target.value,
-                )
+              onChange={(value) =>
+                setPicked(value === current?.id ? null : value)
               }
-            >
-              {list.map((s, i) => (
-                <option key={s.id} value={s.id}>
-                  {(s.title ?? tr("새 대화")) +
-                    ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
-                    (i === 0 ? ` ${tr("(현재)")}` : "")}
-                </option>
-              ))}
-            </select>
+              options={[
+                ...list.map((s, i) => ({
+                  value: s.id,
+                  label: (
+                    <>
+                      {(s.title ?? tr("새 대화")) +
+                        ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
+                        (i === 0 ? ` ${tr("(현재)")}` : "")}
+                    </>
+                  ),
+                })),
+              ]}
+            />
           )}
           <PrivateGhost agent={agent} />
           <button
@@ -476,34 +478,31 @@ function ChannelSettings({
         {!space && (
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("영역")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={areaId}
-              onChange={(event) => setAreaId(event.target.value)}
-            >
-              <option value="">{tr("전체 (영역 없음)")}</option>
-              {areas.map((area) => (
-                <option key={area.id} value={area.id}>
-                  {area.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setAreaId(value)}
+              options={[
+                { value: "", label: tr("전체 (영역 없음)") },
+                ...areas.map((area) => ({ value: area.id, label: area.name })),
+              ]}
+            />
           </label>
         )}
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("기본 에이전트 (/ask를 받음)")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-          >
-            <option value="">{tr("앱 기본값 따르기")}</option>
-            {agents.data?.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.display_name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setAgentId(value)}
+            options={[
+              { value: "", label: tr("앱 기본값 따르기") },
+              ...(agents.data ?? []).map((a) => ({
+                value: a.id,
+                label: a.display_name,
+              })),
+            ]}
+          />
         </label>
         {!space && (
           <label className="flex flex-col gap-1">

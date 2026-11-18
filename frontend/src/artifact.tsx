@@ -146,7 +146,9 @@ export function ArtifactView({
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       // Only our own frame, and only a number: nothing else crosses the sandbox.
-      if (e.source !== frame.current?.contentWindow) return;
+      // A sandbox without allow-same-origin has the opaque origin "null".
+      if (e.origin !== "null" || e.source !== frame.current?.contentWindow)
+        return;
       const h = (e.data as { argosArtifactHeight?: unknown } | null)
         ?.argosArtifactHeight;
       if (typeof h === "number" && Number.isFinite(h))

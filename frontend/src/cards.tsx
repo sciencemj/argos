@@ -25,7 +25,16 @@ import { t, tr, tt } from "./i18n";
 import { PawIcon, ShieldIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { PawTrail } from "./paws";
-import { btn, Chip, card, DdayBadge, ErrorText, field, label } from "./ui";
+import {
+  btn,
+  Chip,
+  card,
+  DdayBadge,
+  ErrorText,
+  field,
+  label,
+  SelectMenu,
+} from "./ui";
 
 type Suggestion = {
   type?: "task" | "event" | "idea" | "study_note";
@@ -296,6 +305,7 @@ function FixForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (!channelId) return; // the channel is required (the picker cannot say so itself)
     const body: InboxAccept & { id: string } = {
       id: item.id,
       type,
@@ -320,31 +330,28 @@ function FixForm({
       <div className="grid grid-cols-2 gap-3.5">
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("유형")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={type}
-            onChange={(e) => setType(e.target.value as typeof type)}
-          >
-            <option value="task">{tr("할 일")}</option>
-            <option value="event">{tr("일정")}</option>
-            <option value="idea">{tr("아이디어 (백로그)")}</option>
-          </select>
+            onChange={(value) => setType(value)}
+            options={[
+              { value: "task", label: tr("할 일") },
+              { value: "event", label: tr("일정") },
+              { value: "idea", label: tr("아이디어 (백로그)") },
+            ]}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("채널")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={channelId}
-            onChange={(e) => setChannelId(e.target.value)}
-            required
-          >
-            <option value="">{tr("골라 주세요")}</option>
-            {channels.map((c) => (
-              <option key={c.id} value={c.id}>
-                {channelLabel(c)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setChannelId(value)}
+            options={[
+              { value: "", label: tr("골라 주세요") },
+              ...channels.map((c) => ({ value: c.id, label: channelLabel(c) })),
+            ]}
+          />
         </label>
       </div>
       <label className="flex flex-col gap-1">
@@ -399,7 +406,11 @@ function FixForm({
       )}
       <ErrorText error={accept.error} />
       <div className="flex gap-2">
-        <button type="submit" className={btn.cta} disabled={accept.isPending}>
+        <button
+          type="submit"
+          className={btn.cta}
+          disabled={accept.isPending || !channelId}
+        >
           {tr("추가하기")}
         </button>
         <button type="button" className={btn.ghost} onClick={onDone}>
@@ -543,19 +554,16 @@ export function InboxRow({ item }: { item: InboxItem }) {
       </div>
       <div className="flex items-center gap-1.5">
         {!target && (
-          <select
-            aria-label={tr("채널 고르기")}
+          <SelectMenu
+            ariaLabel={tr("채널 고르기")}
             className={`${field} h-8 w-auto min-w-0 grow text-[12.5px]`}
             value={picked}
-            onChange={(e) => setPicked(e.target.value)}
-          >
-            <option value="">{tr("채널 고르기")}</option>
-            {pickable.map((c) => (
-              <option key={c.id} value={c.id}>
-                {channelLabel(c)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setPicked(value)}
+            options={[
+              { value: "", label: tr("채널 고르기") },
+              ...pickable.map((c) => ({ value: c.id, label: channelLabel(c) })),
+            ]}
+          />
         )}
         <button
           type="button"

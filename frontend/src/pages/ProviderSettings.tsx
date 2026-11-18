@@ -10,7 +10,7 @@ import {
   useTestProvider,
 } from "../api";
 import { tr, tt } from "../i18n";
-import { btn, card, Dialog, ErrorText, field, label } from "../ui";
+import { btn, card, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
 
 type Locality = Provider["locality"];
 type Strict = NonNullable<Provider["strict_locality"]>;
@@ -269,11 +269,11 @@ function ProviderDialog({
           </label>
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("종류")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={kind}
-              onChange={(e) => {
-                const next = e.target.value as Provider["kind"];
+              onChange={(value) => {
+                const next = value;
                 edited(setKind)(next);
                 // A preset address of the old kind would be wrong for the new one.
                 const presets = Object.values(PRESETS)
@@ -282,13 +282,8 @@ function ProviderDialog({
                 if (!baseUrl.trim() || presets.includes(baseUrl.trim()))
                   setBaseUrl(PRESETS[next][0]?.url ?? "");
               }}
-            >
-              {KINDS.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
+              options={[...KINDS.map((k) => ({ value: k.id, label: k.label }))]}
+            />
           </label>
         </div>
         <div className="flex flex-col gap-1">
@@ -356,17 +351,18 @@ function ProviderDialog({
         )}
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("더 엄격하게 표시")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={strict ?? ""}
-            onChange={(e) => setStrict((e.target.value || null) as Strict)}
-          >
-            <option value="">{tr("자동")}</option>
-            {(known === "device" || strict === "network") && (
-              <option value="network">{tr("내 네트워크로")}</option>
-            )}
-            <option value="cloud">{tr("클라우드로")}</option>
-          </select>
+            onChange={(value) => setStrict((value || null) as Strict)}
+            options={[
+              { value: "", label: tr("자동") },
+              ...(known === "device" || strict === "network"
+                ? [{ value: "network", label: tr("내 네트워크로") }]
+                : []),
+              { value: "cloud", label: tr("클라우드로") },
+            ]}
+          />
         </label>
         <div className="flex flex-wrap items-center gap-3">
           <button

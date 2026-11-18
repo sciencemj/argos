@@ -3,7 +3,7 @@ import { AgentAvatar } from "./agents";
 import { cancelRun, type Job, type Task, useConfig, useStartJob } from "./api";
 import { useOpenThread } from "./feed";
 import { t, tr, tt } from "./i18n";
-import { btn, ErrorText, field, label } from "./ui";
+import { btn, ErrorText, field, label, SelectMenu } from "./ui";
 
 /** Coding agents that can take a job (PLAN Phase 6). */
 export const JOB_AGENTS = [
@@ -239,17 +239,14 @@ export function JobSection({ task }: { task: Task }) {
         >
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("에이전트")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={agent}
-              onChange={(e) => setAgent(e.target.value)}
-            >
-              {JOB_AGENTS.map((a) => (
-                <option key={a.name} value={a.name}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setAgent(value)}
+              options={[
+                ...JOB_AGENTS.map((a) => ({ value: a.name, label: a.label })),
+              ]}
+            />
           </label>
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("맡길 일")}</span>

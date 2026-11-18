@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { selectValue } from "../test-select";
 import { ClassifierSection } from "./SettingsPage";
 
 const mocks = vi.hoisted(() => ({
@@ -80,19 +81,18 @@ beforeEach(() => {
 
 test("provider select lists only ollama providers", () => {
   render(<ClassifierSection />);
-  const select = screen.getByLabelText("모델 연결") as HTMLSelectElement;
-  expect([...select.options].map((o) => o.textContent)).toEqual([
+  const select = screen.getByLabelText("모델 연결");
+  expect(select.dataset.value).toBe("home");
+  fireEvent.click(select);
+  expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
     "Home",
     "GPU",
   ]);
-  expect(select.value).toBe("home");
 });
 
 test("saves provider with model", () => {
   render(<ClassifierSection />);
-  fireEvent.change(screen.getByLabelText("모델 연결"), {
-    target: { value: "gpu" },
-  });
+  selectValue(screen.getByLabelText("모델 연결"), "gpu");
   expect(mocks.modelsFor).toHaveBeenLastCalledWith("gpu");
   fireEvent.click(screen.getByRole("radio", { name: /gemma4:e4b/ }));
   fireEvent.click(screen.getByRole("button", { name: "저장" }));

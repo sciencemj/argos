@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { AgentAvatar } from "./agents";
 import {
   type Agent,
   type Channel,
@@ -6,64 +6,51 @@ import {
   useUpdateChannel,
 } from "./api";
 import { tr, tt } from "./i18n";
-import { useIsMobile } from "./ui";
+import { SelectMenu, type SelectOption, useIsMobile } from "./ui";
 
 /** The chat composer's bottom bar (v0.2, Orca-style): attach and permission mode on
  * the left; agent, context ring and send on the right. */
 
 const pill =
-  "h-8 max-w-full cursor-pointer appearance-none truncate rounded-full border border-line-soft bg-inset pr-7 pl-3 text-[12.5px] font-medium text-text-2 outline-none hover:text-ink focus-visible:border-ink disabled:opacity-50";
+  "h-8 max-w-full rounded-full border border-line-soft bg-inset px-3 text-[12.5px] font-medium text-text-2 outline-none hover:text-ink focus-visible:border-ink";
 
-function Chevron() {
+const BACKEND_TEXT: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+  hermes: "Hermes",
+  ollama: tr("모델 연결", "Model connection"),
+  native: tr("Argos 하네스", "Argos harness"),
+};
+
+function ShieldMini() {
   return (
     <svg
-      aria-hidden="true"
-      width="12"
-      height="12"
+      width="15"
+      height="15"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
-      className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-meta"
+      strokeWidth="1.8"
+      aria-hidden="true"
     >
-      <path d="m6 9 6 6 6-6" />
+      <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" />
     </svg>
   );
 }
 
-function Select({
-  label,
-  value,
-  onChange,
-  disabled,
-  title,
-  fixed = false,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  title?: string;
-  fixed?: boolean; // keeps its full width on narrow screens
-  children: ReactNode;
-}) {
+function PencilMini() {
   return (
-    <span
-      className={`relative inline-flex min-w-0 ${fixed ? "shrink-0" : "shrink"}`}
-      title={title}
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
     >
-      <select
-        aria-label={label}
-        className={pill}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {children}
-      </select>
-      <Chevron />
-    </span>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+    </svg>
   );
 }
 
@@ -72,26 +59,54 @@ export function PermissionSelect({ channel }: { channel: Channel }) {
   const update = useUpdateChannel();
   const mode: PermissionMode = channel.permission_mode ?? "auto_edit";
   const narrow = useIsMobile(); // phones: "Auto" leaves room for the agent's name
+  const options: SelectOption<PermissionMode>[] = [
+    {
+      value: "auto_edit",
+      label: "Auto-Edit",
+      icon: <PencilMini />,
+      description: tr(
+        "워크스페이스 안의 읽기·파일 편집은 자동으로 허용해요. 삭제·명령 실행은 승인을 받아요.",
+        "Reads and file edits in the workspace run on their own; deletes and commands ask first.",
+      ),
+    },
+    {
+      value: "ask",
+      label: "Ask",
+      icon: <ShieldMini />,
+      description: tr(
+        "모든 편집·명령 전에 승인을 요청합니다.",
+        "Asks before every edit and command.",
+      ),
+    },
+  ];
   return (
-    <Select
-      label={tr("에이전트 실행 권한", "Agent permissions")}
-      value={mode}
-      fixed
-      disabled={update.isPending}
-      title={tr(
-        "Auto-Edit: 읽기와 작업 폴더 안 수정은 바로, 삭제·명령 실행은 승인 후 · Ask: 모든 쓰기·명령에 승인",
-        "Auto-Edit: reads and workspace edits run at once; deletes and commands ask · Ask: every write and command asks",
+    <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5">
+      <SelectMenu
+        ariaLabel={tr("에이전트 실행 권한", "Agent permissions")}
+        value={mode}
+        options={options}
+        placement="top"
+        menuWidth={300}
+        className={pill}
+        disabled={update.isPending}
+        renderValue={(o) =>
+          o?.value === "auto_edit" && narrow ? "Auto" : o?.label
+        }
+        onChange={(value) =>
+          update.mutate({ id: channel.id, permission_mode: value })
+        }
+      />
+      {update.error && (
+        <span
+          role="alert"
+          title={update.error.message}
+          className="max-w-[180px] truncate text-[11.5px] text-danger"
+        >
+          {tr("권한을 바꾸지 못했어요", "Could not change it")}:{" "}
+          {update.error.message}
+        </span>
       )}
-      onChange={(value) =>
-        update.mutate({
-          id: channel.id,
-          permission_mode: value as PermissionMode,
-        })
-      }
-    >
-      <option value="auto_edit">{narrow ? "Auto" : "Auto-Edit"}</option>
-      <option value="ask">Ask</option>
-    </Select>
+    </span>
   );
 }
 
@@ -105,19 +120,28 @@ export function AgentSelect({
   value: string;
   onChange: (name: string) => void;
 }) {
+  const options: SelectOption[] = agents.map((a) => ({
+    value: a.name,
+    label: a.display_name,
+    text: a.display_name,
+    icon: <AgentAvatar id={a.name} size={18} />,
+    disabled: !a.available,
+    description: a.available
+      ? [BACKEND_TEXT[a.backend] ?? a.backend, a.model]
+          .filter(Boolean)
+          .join(" · ")
+      : (a.problem ?? tr("지금은 쓸 수 없어요", "Unavailable right now")),
+  }));
   return (
-    <Select
-      label={tr("답할 에이전트", "Agent")}
+    <SelectMenu
+      ariaLabel={tr("답할 에이전트", "Agent")}
       value={value}
+      options={options}
+      placement="top"
+      menuWidth={300}
+      className={`${pill} shrink`}
       onChange={onChange}
-    >
-      {agents.map((a) => (
-        <option key={a.id} value={a.name} disabled={!a.available}>
-          {a.display_name}
-          {a.available ? "" : ` ${tr("(사용 불가)", "(unavailable)")}`}
-        </option>
-      ))}
-    </Select>
+    />
   );
 }
 

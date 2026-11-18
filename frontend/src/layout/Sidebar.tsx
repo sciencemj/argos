@@ -72,6 +72,7 @@ import {
   ErrorText,
   field,
   label,
+  SelectMenu,
   useEnterOnChange,
 } from "../ui";
 
@@ -533,17 +534,14 @@ function AddChannelDialog({
         {data && data.areas.length > 0 ? (
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("영역")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={areaId || defaultAreaId}
-              onChange={(e) => setAreaId(e.target.value)}
-            >
-              {data.areas.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setAreaId(value)}
+              options={[
+                ...data.areas.map((a) => ({ value: a.id, label: a.name })),
+              ]}
+            />
           </label>
         ) : (
           <p className="m-0 text-[12.5px] text-text-3">
