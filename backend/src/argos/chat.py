@@ -79,6 +79,7 @@ async def post_message(
     session_id: str | None = None,
     coding: bool | None = None,
     attachment_ids: Sequence[str] = (),
+    agent_session: bool = False,
 ) -> Posted:
     """Stores the message and decides what happens next (see runner.py for routing):
     agents to answer, or an inbox item to classify, or neither. Attachments are checked
@@ -96,6 +97,7 @@ async def post_message(
         thread_root_id=thread_root_id,
         session_id=session_id,
         coding=coding,
+        agent_session=agent_session,
     )
     if files:
         await services.link_attachments(session, posted.message, files, "user")
@@ -112,6 +114,7 @@ async def _route(
     thread_root_id: str | None,
     session_id: str | None,
     coding: bool | None,
+    agent_session: bool = False,
 ) -> Posted:
     channel = await services.get_channel(session, channel_id)
     personal = (
@@ -174,7 +177,9 @@ async def _route(
     # Coding mode is a conversation too: with the channel's agent when none is named.
     coding_agent = (
         await services.default_agent(session, agent_channel, settings.default_agent)
-        if coding and not (mentioned or dm_agent) and not commands.is_command(body)
+        if (coding or agent_session)
+        and not (mentioned or dm_agent)
+        and not commands.is_command(body)
         else None
     )
     if (mentioned or dm_agent or coding_agent) and not names_agents and root is None:

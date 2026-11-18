@@ -29,7 +29,7 @@ async def test_provider_name_unique(session: AsyncSession) -> None:
 @pytest.mark.parametrize(
     "bad",
     [
-        {"kind": "anthropic"},
+        {"kind": "gemini"},
         {"base_url": "gpu"},
         {"strict_locality": "device"},
         {"name": "  "},

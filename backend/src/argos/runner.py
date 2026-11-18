@@ -17,23 +17,29 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import attachments, course_lms, services
+from argos import attachments, course_lms, knowledge, services
 from argos.agents import (
     AgentAdapter,
     AgentUnavailable,
+    ApprovalNeeded,
     Failure,
     Status,
     Token,
+    ToolCall,
+    ToolResult,
     Turn,
     build_adapter,
 )
+from argos.approval_waits import approval_waits
 from argos.config import Settings
 from argos.debate import DebateRunner
+from argos.harness import HarnessRun, ToolDef
 from argos.hub import hub
 from argos.models import (
     Agent,
@@ -57,6 +63,7 @@ log = logging.getLogger(__name__)
 
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9_\-가-힣]+)")
 TRANSCRIPT_LIMIT = 30  # messages sent back to an agent
+WS_OUTPUT_LIMIT = 4000  # characters of a tool result sent over the WebSocket
 WEEKDAY_KO = "월화수목금토일"
 
 
@@ -263,6 +270,52 @@ class _AgentSessions:
             await services.set_agent_session(session, self._agent_id, key, value)
 
 
+class _RunApprovals:
+    """A native run's ApprovalGate: an Approval row (and its card in the run's thread),
+    then a pause until the user decides."""
+
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        run_id: str,
+        agent: Agent,
+        channel_id: str,
+        thread_root_id: str | None,
+    ) -> None:
+        self._sessionmaker = sessionmaker
+        self._run_id = run_id
+        self._agent = agent
+        self._channel_id = channel_id
+        self._thread_root_id = thread_root_id
+
+    async def request(self, tool: ToolDef, args: dict[str, Any], summary: str) -> str:
+        async with self._sessionmaker() as session:
+            approval = await services.request_approval(
+                session,
+                action=services.TOOL_APPROVAL,
+                payload={
+                    "tool": tool.name,
+                    "tool_kind": tool.kind,
+                    "source": tool.source,
+                    "plugin": tool.plugin,
+                    "args": args,
+                },
+                actor=f"agent:{self._agent.name}",
+                run_id=self._run_id,
+                channel_id=self._channel_id,
+                summary=summary,
+                thread_root_id=self._thread_root_id,
+            )
+            return approval.id
+
+    async def wait(self, approval_id: str) -> bool:
+        async def decided() -> bool | None:
+            async with self._sessionmaker() as session:
+                return await services.approval_decision(session, approval_id)
+
+        return await approval_waits.wait(approval_id, decided)
+
+
 class Runner:
     """Owns the asyncio task of every live run so a run can be cancelled by id."""
 
@@ -279,6 +332,9 @@ class Runner:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._job_slots = asyncio.Semaphore(max(1, settings.job_concurrency))
         self.usage: UsageMonitor | None = None  # set by the app (PLAN Phase 9)
+        # The inbox classifier native capture_note calls hand their notes to (the app
+        # swaps it when settings change, so it is read at run time).
+        self.classifier: Callable[[], Any] = lambda: None
 
     @property
     def sessionmaker(self) -> async_sessionmaker[AsyncSession]:
@@ -470,6 +526,7 @@ class Runner:
         parts: list[str] = []
         trace: list[str] = []  # job log: one line per tool step
         status, error = RunStatus.DONE, None
+        native = paused = False
         try:
             if job is not None:
                 await hub.publish("agent.status", ids | {"status": "대기 중"})
@@ -478,7 +535,10 @@ class Runner:
                 await self._job_started(run_id, agent, job)
             await hub.publish("agent.status", ids | {"status": "thinking"})
             sessions = _AgentSessions(self._sessionmaker, agent.id)
-            if job is not None:
+            if agent.backend == AgentBackend.NATIVE:
+                native = True
+                adapter = await self._native_adapter(run_id, agent, sessions, job, no_tools, coding)
+            elif job is not None:
                 adapter = self.adapter_factory(
                     agent, self.settings, sessions, job_workspace=job.workspace
                 )
@@ -492,18 +552,69 @@ class Runner:
                 adapter = self.adapter_factory(agent, self.settings, sessions)
             working = job is not None or coding is not None
             limit = self.settings.job_timeout if working else self.settings.agent_timeout
-            async with asyncio.timeout(limit):
+            loop = asyncio.get_running_loop()
+            async with asyncio.timeout(limit) as deadline:
                 async for event in adapter.stream(transcript, context, session_key):
+                    if paused:  # the user answered: the clock runs again
+                        paused = False
+                        deadline.reschedule(loop.time() + limit)
                     match event:
                         case Token(text=text):
                             parts.append(text)
                             await hub.publish("agent.token", ids | {"text": text})
                         case Status(text=text):
-                            now = datetime.now(self.settings.zoneinfo)
-                            trace.append(f"{now:%H:%M:%S} {text}")
+                            trace.append(f"{self._clock()} {text}")
                             await hub.publish("agent.status", ids | {"status": text})
                         case Failure(message=message):
                             raise AgentUnavailable(message)
+                        case ToolCall(id=call_id, name=name, args=args):
+                            trace.append(f"{self._clock()} 도구 호출: {name}")
+                            await self._step(run_id, "tool_call", call_id, name, args=args)
+                            await hub.publish(
+                                "agent.tool_call", ids | {"id": call_id, "name": name, "args": args}
+                            )
+                        case ToolResult(id=call_id, name=name, output=output, is_error=bad):
+                            mark = "실패" if bad else "완료"
+                            trace.append(f"{self._clock()} 도구 {mark}: {name}")
+                            await self._step(
+                                run_id, "tool_result", call_id, name, output=output, is_error=bad
+                            )
+                            await hub.publish(
+                                "agent.tool_result",
+                                ids
+                                | {
+                                    "id": call_id,
+                                    "name": name,
+                                    "output": output[:WS_OUTPUT_LIMIT],
+                                    "is_error": bad,
+                                },
+                            )
+                        case ApprovalNeeded(
+                            approval_id=approval_id, tool_name=name, args=args, summary=summary
+                        ):
+                            # Waiting for the user is not the agent being slow.
+                            paused = True
+                            deadline.reschedule(None)
+                            trace.append(f"{self._clock()} 승인 대기: {summary}")
+                            await self._step(
+                                run_id,
+                                "approval",
+                                None,
+                                name,
+                                args=args,
+                                output=summary,
+                                approval_id=approval_id,
+                            )
+                            await hub.publish(
+                                "agent.approval",
+                                ids
+                                | {
+                                    "approval_id": approval_id,
+                                    "tool_name": name,
+                                    "args": args,
+                                    "summary": summary,
+                                },
+                            )
         except asyncio.CancelledError:
             status = RunStatus.CANCELLED
         except TimeoutError:
@@ -518,13 +629,15 @@ class Runner:
                 self._job_slots.release()
         text = "".join(parts).strip()
         async with self._sessionmaker() as session:
+            if native:  # an approval left open would wake nobody
+                await services.expire_run_approvals(session, run_id)
             await services.finish_run(
                 session,
                 run_id,
                 text=text,
                 status=status,
                 error=error,
-                log="\n".join(trace) if job is not None or coding is not None else None,
+                log="\n".join(trace) if job is not None or coding is not None or native else None,
             )
             if job is not None and status == RunStatus.DONE:
                 await _move(session, job.task_id, TaskStatus.REVIEW, agent)
@@ -532,3 +645,73 @@ class Runner:
             await hub.publish("agent.error", ids | {"error": error})
         else:
             await hub.publish("agent.done", ids | {"status": status})
+
+    def _clock(self) -> str:
+        return f"{datetime.now(self.settings.zoneinfo):%H:%M:%S}"
+
+    async def _step(
+        self,
+        run_id: str,
+        kind: str,
+        call_id: str | None,
+        name: str,
+        *,
+        args: dict[str, Any] | None = None,
+        output: str | None = None,
+        is_error: bool = False,
+        approval_id: str | None = None,
+    ) -> None:
+        async with self._sessionmaker() as session:
+            await services.add_run_step(
+                session,
+                run_id,
+                kind=kind,
+                call_id=call_id,
+                tool_name=name,
+                args=args,
+                output=output,
+                is_error=is_error,
+                approval_id=approval_id,
+            )
+
+    async def _native_adapter(
+        self,
+        run_id: str,
+        agent: Agent,
+        sessions: "_AgentSessions",
+        job: "_Job | None",
+        no_tools: bool,
+        coding: Path | None,
+    ) -> AgentAdapter:
+        """The native harness with this run's approvals and permission mode."""
+        async with self._sessionmaker() as session:
+            run = await services.get_run(session, run_id)
+            channel = await services.get_channel(session, run.channel_id)
+            mode = services.effective_permission_mode(channel, self.settings.permission_mode)
+            await services.set_run_permission_mode(session, run_id, mode)
+            reply = (
+                await session.get(Message, run.reply_message_id) if run.reply_message_id else None
+            )
+        thread = reply.thread_root_id if reply is not None else run.thread_root_id
+        gate = _RunApprovals(self._sessionmaker, run_id, agent, channel.id, thread)
+        project = Path(channel.workspace_path) if channel.workspace_path else None
+        harness = HarnessRun(
+            run_id=run_id,
+            channel_id=channel.id,
+            permission_mode=mode,
+            gate=gate,
+            workspace=knowledge.channel_dir(self.settings.argos_workspace, channel.id),
+            roots=(project,) if project is not None else (),
+            sessionmaker=self._sessionmaker,
+            classifier=self.classifier(),
+        )
+        workspace = job.workspace if job is not None else coding
+        return self.adapter_factory(
+            agent,
+            self.settings,
+            sessions,
+            job_workspace=workspace,
+            no_tools=no_tools,
+            coding=coding is not None,
+            harness=harness,
+        )

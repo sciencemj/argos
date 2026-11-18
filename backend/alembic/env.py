@@ -24,8 +24,11 @@ def render_item(type_: str, obj: Any, autogen_context: Any) -> str | Literal[Fal
 
 
 def include_name(name: str | None, type_: str, _parent: object) -> bool:
-    """The FTS5 index (note_fts and its shadow tables) is created by hand, not by models."""
-    return not (type_ == "table" and name is not None and name.startswith("note_fts"))
+    """The FTS5 indexes (note_fts, knowledge_fts and their shadow tables) are created by
+    hand, not by models."""
+    return not (
+        type_ == "table" and name is not None and name.startswith(("note_fts", "knowledge_fts"))
+    )
 
 
 def run_migrations_offline() -> None:
