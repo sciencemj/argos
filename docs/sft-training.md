@@ -134,3 +134,65 @@ python training/eval_harness.py --eval-file training/data/eval.jsonl --offline-r
 - `--eval-file` (기본 `training/data/eval.jsonl`), `--base-url` (기본 `http://127.0.0.1:11434/v1`), `--api-key` (기본 `ollama`), `--model` (기본 `qwen2.5:7b`)
 - `--temperature` (`0.0`), `--timeout`, `--limit`, `--out-json`
 - `--wandb-project` (`argos-sft`), `--wandb-run-name`, `--no-wandb`, `--offline-replay`
+
+---
+
+## 6. GPU 없이 W&B Serverless SFT (`train_wandb_serverless.py`)
+
+로컬 GPU가 없을 때(예: Mac) W&B Training(CoreWeave Serverless Training)에 학습을 맡기는 경로예요. OpenPipe ART의 `ServerlessBackend`가 `train.jsonl`을 올려 LoRA 어댑터를 학습하고, 끝난 체크포인트는 바로 OpenAI 호환 엔드포인트로 서빙돼요. 학생 플랜의 W&B Training 크레딧이 쓰여요.
+
+### 설치
+
+```bash
+python3 -m venv .venv-train && source .venv-train/bin/activate
+pip install -r training/requirements-serverless.txt   # openpipe-art, wandb, openai (GPU 패키지 없음)
+export WANDB_API_KEY=...                               # https://wandb.ai/authorize
+```
+
+### 먼저 dry-run (크레딧 0)
+
+ART를 불러오지 않고 데이터와 설정만 검사해요: JSONL 형식, 역할, 툴콜 인자 JSON, `tools`에 없는 툴 호출, 짝 없는 툴 결과, 마지막 턴이 어시스턴트인지, 지원 베이스 모델인지. 예상 옵티마이저 스텝 수와 학습 후 붙일 주소 형식도 보여 줘요. 문제가 있으면 종료 코드 1이에요.
+
+```bash
+python training/train_wandb_serverless.py --dry-run
+```
+
+### 학습
+
+```bash
+python training/train_wandb_serverless.py \
+  --train-file training/data/train.jsonl \
+  --eval-file training/data/eval.jsonl \
+  --project argos-sft --model-name argos-harness \
+  --base-model Qwen/Qwen3.8-27B --epochs 3 --batch-size 2 --lr 2e-4 \
+  --out-json training/outputs/serverless.json
+```
+
+- 베이스 모델: `Qwen/Qwen3.8-27B`(기본), `Qwen/Qwen3.6-35B-A3B`, `meta-llama/Llama-3.1-8B-Instruct`, `google/gemma-4-26B-A4B-it`, `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B`. 목록에 없는 모델은 `--allow-unlisted-model`.
+- LoRA rank·alpha는 서비스가 베이스 모델마다 고정해요(옵션으로 바꿀 수 없음).
+- `--assistant-turns all|last`: 손실을 모든 어시스턴트 턴(툴콜 포함)에 줄지, 마지막 답에만 줄지.
+- `--training-base-url`: 기본은 문서의 `https://forge.coreweave.com/api/training/v1`. `""`를 주면 설치된 ART의 기본 주소를 써요.
+- serverless SFT에는 eval loss가 없어요. `eval.jsonl`은 검사만 하고, 학습 뒤 `eval_harness.py`로 채점해요.
+
+끝나면 다음을 출력해요(`--out-json`에도 저장):
+- `model_id`: `wandb-artifact:///<entity>/<project>/<model-name>:step<N>`
+- `inference.base_url`: OpenAI 호환 주소 (API 키는 `WANDB_API_KEY`)
+- `artifacts_url`: W&B 프로젝트의 아티팩트 페이지
+- `inference.eval_harness`: 바로 붙여 넣을 평가 명령
+
+### 평가
+
+```bash
+python training/eval_harness.py --eval-file training/data/eval.jsonl \
+  --base-url https://forge.coreweave.com/api/training/v1 --api-key "$WANDB_API_KEY" \
+  --model "wandb-artifact:///<entity>/argos-sft/argos-harness:step<N>" \
+  --wandb-project argos-sft --out-json training/outputs/eval-serverless.json
+```
+
+같은 명령에서 `--model`만 베이스 모델로 바꾸면 SFT 전후를 비교할 수 있어요.
+
+### Argos에 연결
+
+1. 설정 → 모델 연결 → 연결 추가: 종류 "OpenAI 호환", 주소 `inference.base_url`, API 키 = `WANDB_API_KEY`(키체인에 저장돼요). 위치는 "클라우드"로 표시돼요.
+2. 설정 → 커스텀 에이전트 → 봇 만들기: 기반 에이전트 "Argos 하네스", 모델 연결은 위 연결, 모델은 `model_id`. 연결의 모델 목록에 학습한 체크포인트가 안 보이면 YAML 가져오기로 `backend: native`, `model: wandb-artifact:///…`를 지정해요.
+3. 채널 기본 에이전트로 정하거나 `@이름`으로 불러 써요. 툴 승인 규칙(Auto-Edit / Ask)은 다른 하네스 에이전트와 같아요.
