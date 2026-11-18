@@ -182,12 +182,15 @@ backend/    FastAPI + async SQLAlchemy (SQLite WAL), Alembic migrations
   argos/approval_waits.py inline tool-approval wait registry
   argos/agents.py         adapters: native harness, Hermes, Claude Agent SDK, Codex, Ollama
   argos/mcp_server.py     the MCP server external agents use
+  argos/sft_export.py     SFT trajectory exporter (CLI & local /api/v1/sft/export)
   argos/desktop.py        entry point of the server inside the desktop app
 frontend/   React 19 + Vite + Tailwind v4 + TanStack Query
 desktop/    Tauri 2 shell: sidecar server, menu bar, quick capture, updater
 integrations/  the argos skills installed into agent tools
+training/   synthetic seed generator, Unsloth QLoRA + W&B training, tool-calling eval
 ```
 
 More in [docs/PLAN.md](docs/PLAN.md) (design and phases), [docs/desktop.md](docs/desktop.md) (the
-app, updates and releases), [docs/mcp-setup.md](docs/mcp-setup.md) (MCP tools) and
+app, updates and releases), [docs/mcp-setup.md](docs/mcp-setup.md) (MCP tools),
+[docs/sft-training.md](docs/sft-training.md) (SFT export, training and eval), and
 [docs/decisions.md](docs/decisions.md) (decisions made along the way).

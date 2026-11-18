@@ -177,12 +177,14 @@ backend/    FastAPI + async SQLAlchemy(SQLite WAL), Alembic 마이그레이션
   argos/approval_waits.py 인라인 툴 승인 대기 레지스트리
   argos/agents.py         어댑터: 네이티브 하네스, Hermes, Claude Agent SDK, Codex, Ollama
   argos/mcp_server.py     외부 에이전트가 쓰는 MCP 서버
+  argos/sft_export.py     SFT 트래젝토리 추출기 (CLI 및 로컬 /api/v1/sft/export)
   argos/desktop.py        데스크톱 앱 안에서 도는 서버의 진입점
 frontend/   React 19 + Vite + Tailwind v4 + TanStack Query
 desktop/    Tauri 2 셸: 서버 실행, 메뉴 막대, 빠른 입력, 업데이트
 integrations/  에이전트 도구에 설치하는 argos 스킬
+training/   합성 시드 데이터 생성, Unsloth QLoRA + W&B 학습, 툴콜 평가
 ```
 
 더 자세한 내용은 [docs/PLAN.md](docs/PLAN.md)(설계와 단계), [docs/desktop.md](docs/desktop.md)(앱, 업데이트,
-릴리스), [docs/mcp-setup.md](docs/mcp-setup.md)(MCP 도구), [docs/decisions.md](docs/decisions.md)(진행하며
-내린 결정)에 있어요.
+릴리스), [docs/mcp-setup.md](docs/mcp-setup.md)(MCP 도구), [docs/sft-training.md](docs/sft-training.md)(SFT
+추출·학습·평가), [docs/decisions.md](docs/decisions.md)(진행하며 내린 결정)에 있어요.
