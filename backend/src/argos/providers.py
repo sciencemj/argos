@@ -48,6 +48,11 @@ class ProviderError(Exception):
     """The server could not be reached or answered something unexpected."""
 
 
+class ProviderNoModelList(ProviderError):
+    """The server answers but has no model list (GET /models is 404), e.g. W&B Forge's
+    training endpoint: it still serves chat completions for models named by hand."""
+
+
 class ProviderUnreachable(ProviderError):
     """No answer at all: the server is down or the address is wrong."""
 
@@ -152,8 +157,12 @@ async def _get_json(
     try:
         async with httpx2.AsyncClient(timeout=LIST_TIMEOUT, follow_redirects=False) as http:
             response = await http.get(url, headers=headers, params=params)
+            if response.status_code == 404:
+                raise ProviderNoModelList(f"{url} has no model list")
             response.raise_for_status()
             return response.json()
+    except ProviderNoModelList:
+        raise
     except Exception as exc:
         raise ProviderError(f"cannot reach {url}: {type(exc).__name__}") from exc
 

@@ -1434,6 +1434,7 @@ LOCALITY_TEXT = {
     "cloud": "클라우드 · 입력이 외부로 전송돼요",
 }
 UNREACHABLE_TEXT = "연결할 수 없어요. 주소와 서버가 켜져 있는지 확인해 주세요."
+NO_MODEL_LIST_TEXT = "모델 목록을 주지 않는 서버예요. 에이전트의 모델 이름을 직접 적어 주세요."
 
 
 @router.get("/agents/models")
@@ -1469,6 +1470,8 @@ async def agent_models(
             return ModelsOut(models=[], error="Hermes 모델은 게이트웨이 설정에서 정해요")
     except (agents.AgentUnavailable, classifier.ClassifierError) as exc:
         return ModelsOut(models=[], error=str(exc))
+    except providers.ProviderNoModelList:
+        return ModelsOut(models=[], error=NO_MODEL_LIST_TEXT)
     except providers.ProviderError:
         return ModelsOut(models=[], error=UNREACHABLE_TEXT)
     except Exception as exc:  # a CLI that changed its output: say so, keep the form usable
@@ -3013,6 +3016,8 @@ async def _keychain(request: Request, action: str, provider_id: str, key: str = 
 async def _models_out(p: providers.ProviderConfig) -> ProviderModelsOut:
     try:
         found = await providers.list_models(p)
+    except providers.ProviderNoModelList:
+        return ProviderModelsOut(reachable=True, error=NO_MODEL_LIST_TEXT, locality=p.locality)
     except providers.ProviderError:
         return ProviderModelsOut(reachable=False, error=UNREACHABLE_TEXT, locality=p.locality)
     return ProviderModelsOut(

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from anthropic import APIConnectionError as AnthropicConnectionError
 from anthropic import AsyncAnthropic
-from openai import APIConnectionError, AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from argos.agents import (
     NO_VISION,
@@ -509,6 +509,7 @@ class OpenAIChatLLM:
         self._model = model
         self._extra = extra
         self._unreachable = unreachable
+        self._streams = True  # False once the server refused a streamed answer
 
     async def turn(
         self, system: str, history: list[HMsg], tools: list[ToolDef]
@@ -516,14 +517,29 @@ class OpenAIChatLLM:
         kwargs: dict[str, Any] = {}
         if tools:
             kwargs["tools"] = [t.openai_spec() for t in tools]
+        messages = cast(Any, openai_messages(system, history))
+        if not self._streams:
+            async for event in self._whole(messages, kwargs):
+                yield event
+            return
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
-                messages=cast(Any, openai_messages(system, history)),
+                messages=messages,
                 stream=True,
                 extra_body=self._extra,
                 **kwargs,
             )
+        except APIStatusError as exc:
+            if exc.status_code < 500:
+                raise _unavailable(exc, self._unreachable) from exc
+            # Some gateways cannot relay a streamed answer (W&B Forge's training
+            # endpoint answers 500 to every stream=True call): ask for it whole, and
+            # keep doing so for the rest of this run.
+            self._streams = False
+            async for event in self._whole(messages, kwargs):
+                yield event
+            return
         except Exception as exc:
             raise _unavailable(exc, self._unreachable) from exc
         text: list[str] = []
@@ -551,6 +567,31 @@ class OpenAIChatLLM:
             await response.close()
         calls = [replace(c, id=c.id or _call_id()) for _, c in sorted(slots.items()) if c.name]
         yield LLMDone("".join(text), calls)
+
+    async def _whole(self, messages: Any, kwargs: dict[str, Any]) -> AsyncIterator[Token | LLMDone]:
+        """The same turn without streaming: the text arrives as one Token."""
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                stream=False,
+                extra_body=self._extra,
+                **kwargs,
+            )
+        except Exception as exc:
+            raise _unavailable(exc, self._unreachable) from exc
+        message = response.choices[0].message if response.choices else None
+        text = (message.content or "") if message is not None else ""
+        if text:
+            yield Token(text)
+        calls: list[PendingCall] = []
+        for tc in (message.tool_calls or []) if message is not None else []:
+            function = getattr(tc, "function", None)
+            if function is None or not function.name:
+                continue
+            raw = function.arguments or ""
+            calls.append(PendingCall(id=tc.id or _call_id(), name=function.name, raw=raw))
+        yield LLMDone(text, calls)
 
 
 # --- Anthropic ------------------------------------------------------------------------

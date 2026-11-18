@@ -183,3 +183,12 @@ def _model(request: httpx2.Request) -> str:
     import json
 
     return json.loads(request.content)["model"]
+
+
+async def test_list_models_without_a_model_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W&B Forge's training endpoint has no GET /models (404) but serves chat: that is
+    "no list", not "unreachable"."""
+    mock_http(monkeypatch, lambda _: httpx2.Response(404, json={"detail": "Not Found"}))
+    p = cfg(kind="openai", base_url="https://forge.test/api/training/v1", api_key="k")
+    with pytest.raises(providers.ProviderNoModelList):
+        await providers.list_models(p)

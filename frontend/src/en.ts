@@ -1,4 +1,7 @@
 export const en: Record<string, string> = {
+  연결됨: "Connected",
+  "모델 목록을 주지 않는 서버예요. 에이전트의 모델 이름을 직접 적어 주세요.":
+    "This server doesn't list its models. Type the model name in the agent settings.",
   "이 채널과 메시지를 삭제할까요? 연결된 옵시디언 노트 파일은 남아요.":
     "Delete this channel and its messages? Linked Obsidian notes will remain.",
   "이 채널에는 할 일이나 일정도 있어요. 계속하면 함께 삭제됩니다.":

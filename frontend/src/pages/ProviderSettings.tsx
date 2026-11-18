@@ -174,7 +174,9 @@ function ProviderStatus({ id }: { id: string }) {
   if (!data) return null;
   return data.reachable ? (
     <span className="text-[12px] text-meta">
-      {tt`연결됨 · 모델 ${data.models?.length ?? 0}개`}
+      {data.error
+        ? `${tr("연결됨")} · ${errorText(data.error)}`
+        : tt`연결됨 · 모델 ${data.models?.length ?? 0}개`}
     </span>
   ) : (
     <span className="text-[12px] text-danger [overflow-wrap:anywhere]">
@@ -379,7 +381,9 @@ function ProviderDialog({
           {result &&
             (result.reachable ? (
               <span className="text-[12.5px] text-text-2">
-                {tt`모델 ${result.models?.length ?? 0}개`}
+                {result.error
+                  ? errorText(result.error)
+                  : tt`모델 ${result.models?.length ?? 0}개`}
               </span>
             ) : (
               <span className="text-[12.5px] text-danger [overflow-wrap:anywhere]">

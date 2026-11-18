@@ -730,3 +730,55 @@ async def test_an_unanswered_approval_times_out(settings: Settings) -> None:
     async with maker() as s:
         assert await services.approval_decision(s, approval_id) is False
     await engine.dispose()
+
+
+async def test_openai_llm_falls_back_to_whole_answers_when_streaming_fails() -> None:
+    """W&B Forge answers 500 to stream=True: the turn is asked for whole, and later
+    turns skip streaming."""
+    import openai
+
+    requests: list[bool] = []
+    message = SimpleNamespace(
+        content="목록을 볼게요",
+        tool_calls=[
+            SimpleNamespace(
+                id="c9",
+                function=SimpleNamespace(name="list_tasks", arguments='{"channel": "알고리즘"}'),
+            )
+        ],
+    )
+
+    async def create(**kwargs: Any) -> Any:
+        requests.append(bool(kwargs["stream"]))
+        if kwargs["stream"]:
+            response = httpx2.Response(500, request=httpx2.Request("POST", "http://forge.test"))
+            raise openai.InternalServerError("cannot stream", response=response, body=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    client: Any = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    llm = OpenAIChatLLM(client, "wandb-artifact:///me/p/m:step1")
+    events = await _collect(llm.turn("sys", [HMsg("user", "hi")], [tool("list_tasks", "read")]))
+    assert events[0] == Token("목록을 볼게요")
+    done = events[-1]
+    assert isinstance(done, LLMDone)
+    assert [(c.id, c.name, c.raw) for c in done.calls] == [
+        ("c9", "list_tasks", '{"channel": "알고리즘"}')
+    ]
+    await _collect(llm.turn("sys", [HMsg("user", "again")], []))
+    assert requests == [True, False, False]  # streaming tried once, then skipped
+
+
+async def test_openai_llm_client_errors_are_not_retried_whole() -> None:
+    import openai
+
+    calls: list[bool] = []
+
+    async def create(**kwargs: Any) -> Any:
+        calls.append(bool(kwargs["stream"]))
+        response = httpx2.Response(401, request=httpx2.Request("POST", "http://forge.test"))
+        raise openai.AuthenticationError("bad key", response=response, body=None)
+
+    client: Any = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with pytest.raises(AgentUnavailable):
+        await _collect(OpenAIChatLLM(client, "m").turn("sys", [HMsg("user", "hi")], []))
+    assert calls == [True]
