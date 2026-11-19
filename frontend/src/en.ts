@@ -778,8 +778,6 @@ export const en: Record<string, string> = {
   클라우드로: "As cloud",
   "시험하는 중…": "Testing…",
   "연결 시험": "Test connection",
-  "Ollama나 OpenAI 호환 서버의 모델":
-    "A model on Ollama or an OpenAI-compatible server",
   "이미지 보내기": "Send images",
   "내 네트워크의 서버에서 실행돼요": "Runs on a server in your network",
   "입력한 내용이 외부 서버로 전송돼요":

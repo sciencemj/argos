@@ -12,6 +12,7 @@ dependencies = [
     "anthropic>=2.10.0",
     "claude-agent-sdk>=0.2.159",
     "fastapi>=0.141.1",
+    "google-genai>=3.6.1",
     "icalendar>=7.3.0",
     "keyring>=25.7.0",
     "mcp>=2.2.0",

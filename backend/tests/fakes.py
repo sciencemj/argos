@@ -63,6 +63,7 @@ def fake_agents(**agents: FakeAgent) -> Any:
         job_workspace: Any = None,
         no_tools: bool = False,
         coding: bool = False,
+        harness: Any = None,
     ) -> FakeAgent:
         if agent.name not in agents:
             raise AgentUnavailable(f"{agent.name} unavailable in tests")

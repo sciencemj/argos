@@ -3756,7 +3756,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Kind */
-            kind?: ("ollama" | "openai" | "anthropic") | null;
+            kind?: ("ollama" | "openai" | "anthropic" | "google") | null;
             /** Base Url */
             base_url?: string | null;
             /** Api Key */
@@ -3788,7 +3788,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "ollama" | "openai" | "anthropic";
+            kind: "ollama" | "openai" | "anthropic" | "google";
             /** Base Url */
             base_url: string;
             /** Has Api Key */
@@ -3810,7 +3810,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "ollama" | "openai" | "anthropic";
+            kind: "ollama" | "openai" | "anthropic" | "google";
             /** Base Url */
             base_url: string;
             /** Api Key */
