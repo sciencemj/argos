@@ -22,10 +22,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
 
-from argos import lms_canvas, lms_extension, services
+from argos import knowledge, lms_canvas, lms_extension, services
 from argos.api import Config, Session
+from argos.config import Settings
 from argos.summarizer import LmsSummaries
 
 router = APIRouter(prefix="/api/v1/lms", tags=["lms"])
@@ -482,6 +484,14 @@ async def import_data(
     return LmsImportResult(**result)
 
 
+async def _index_materials(session: AsyncSession, config: Settings) -> None:
+    """The new material's text into the knowledge index (search_knowledge)."""
+    try:
+        await knowledge.index_lms_materials(session, config.attachments_dir)
+    except Exception:  # the index is a convenience: never fail the upload over it
+        logging.getLogger(__name__).exception("indexing LMS materials failed")
+
+
 @router.post("/materials/needed")
 async def materials_needed(
     body: LmsImport,
@@ -514,16 +524,16 @@ async def material_file(
             body = LmsMaterialUpload.model_validate_json(metadata)
         except ValidationError as exc:
             raise HTTPException(422, "학습자료 정보를 확인해 주세요") from exc
-        return LmsImportResult(
-            **await services.import_lms_material(
-                session,
-                body.account_id,
-                body.item.model_dump(),
-                file.file,
-                config.attachments_dir,
-                min(config.attachment_max_mb, 25) * 1024 * 1024,
-            )
+        result = await services.import_lms_material(
+            session,
+            body.account_id,
+            body.item.model_dump(),
+            file.file,
+            config.attachments_dir,
+            min(config.attachment_max_mb, 25) * 1024 * 1024,
         )
+        await _index_materials(session, config)
+        return LmsImportResult(**result)
 
 
 @router.post("/materials/download")
@@ -567,13 +577,13 @@ async def material_download(
                     502, "자료 저장소에 연결하지 못했어요. 다시 수집해 주세요"
                 ) from exc
         source.seek(0)
-        return LmsImportResult(
-            **await services.import_lms_material(
-                session,
-                body.account_id,
-                item,
-                source,
-                config.attachments_dir,
-                min(config.attachment_max_mb, 25) * 1024 * 1024,
-            )
+        result = await services.import_lms_material(
+            session,
+            body.account_id,
+            item,
+            source,
+            config.attachments_dir,
+            min(config.attachment_max_mb, 25) * 1024 * 1024,
         )
+        await _index_materials(session, config)
+        return LmsImportResult(**result)

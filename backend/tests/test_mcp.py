@@ -37,7 +37,7 @@ def test_tool_list(server: str) -> None:
         "list_channels", "get_today", "get_schedule", "list_tasks", "list_inbox",
         "get_course_progress", "add_task", "update_task", "move_task", "create_event",
         "update_event", "capture_note", "delete_task", "delete_event", "search_notes",
-        "create_channel", "search_course_lms",
+        "create_channel", "search_course_lms", "search_knowledge",
     }  # fmt: skip
 
 

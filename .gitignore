@@ -151,6 +151,7 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-train/
 env/
 venv/
 ENV/
@@ -236,6 +237,9 @@ frontend/dist/
 *.db-shm
 *.db-wal
 data/
+training/outputs/
+wandb/
+
 
 # macOS
 .DS_Store

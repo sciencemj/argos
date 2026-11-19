@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { selectValue } from "../test-select";
 import { LmsSection } from "./LmsSettings";
 
 const mocks = vi.hoisted(() => ({
@@ -209,18 +210,15 @@ test("a course can be merged into one of my channels after confirming", () => {
     ],
     merge_targets: [{ channel_id: "mine", name: "머신러닝" }],
   };
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
   render(<LmsSection />);
   expect(
     screen.queryByLabelText("알림·메시지 합칠 채널"),
   ).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("기계학습 합칠 채널"), {
-    target: { value: "mine" },
-  });
-  expect(confirm).toHaveBeenCalled();
+  selectValue(screen.getByLabelText("기계학습 합칠 채널"), "mine");
+  expect(mocks.merge.mutate).not.toHaveBeenCalled(); // waits for a yes
+  fireEvent.click(screen.getByRole("button", { name: "합치기" }));
   expect(mocks.merge.mutate).toHaveBeenCalledWith({
     channelId: "lms1",
     targetId: "mine",
   });
-  confirm.mockRestore();
 });

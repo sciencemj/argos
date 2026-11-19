@@ -25,13 +25,16 @@
     "@tanstack/react-query": "^5.103.2",
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
+    "mermaid": "^12.3.0",
     "openapi-fetch": "^0.17.0",
+    "preact": "10",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
     "react-router": "^8.4.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

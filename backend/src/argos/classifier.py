@@ -616,7 +616,8 @@ def classifier_endpoint(settings: Settings) -> tuple[str, str]:
     or the Hermes gateway exactly as .env says."""
     if settings.classifier_provider == "ollama":
         p = providers.classifier_provider(settings)
-        return p.base_url, p.api_key or "ollama"  # Ollama ignores the key; the SDK needs one
+        # Ollama ignores the key; the SDK needs one.
+        return providers.openai_base_url(p), p.api_key or "ollama"
     key = settings.classifier_api_key
     return (
         settings.classifier_base_url or DEFAULT_BASE_URLS["hermes"],

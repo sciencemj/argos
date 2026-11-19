@@ -3,8 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Argos: 개인용 학업·프로젝트 대시보드. 채널(과목·프로젝트)별 채팅 피드·칸반·캘린더, 인박스 AI 분류,
-에이전트(Hermes·Claude·Codex·로컬 모델) 대화와 코딩 잡, 에이전트용 MCP 서버. 이 Mac에서만 돌고
-외부 접근은 Tailscale serve(tailnet 전용)로만.
+에이전트(Argos 네이티브 하네스·Hermes·Claude·Codex·로컬 모델) 대화와 코딩 잡, 에이전트용 MCP 서버.
+v0.2(`feat/v0.2-agent-harness`)부터 채널 첫 화면은 채팅 우선(가안 A)이고, 툴콜 모델 SFT 파이프라인(`training/`)이 있다.
+이 Mac에서만 돌고 외부 접근은 Tailscale serve(tailnet 전용)로만.
 
 ## 작업 규칙 (docs/PLAN.md §0 요약)
 
@@ -22,6 +23,11 @@ Argos: 개인용 학업·프로젝트 대시보드. 채널(과목·프로젝트)
 - **다른 사람도 쓸 수 있게 만든다**(2026-09-25 사용자 요청). 볼트 경로, 폴더 구조, 캘린더 이름, 할 일
   표기, 호스트 주소 등 개인 환경에 따른 값은 설정(기본값 포함)이나 자동 감지(예: 옵시디언 설정을 읽기 전용으로)로
   두고 코드·UI 문구에 박지 않는다.
+- **패키지·실행 도구**: Python(백엔드, `training/` 스크립트, 일회성 스크립트)은 **`uv`**만 쓴다:
+  `cd backend && uv sync`, `uv run ...`, 저장소 루트에서는 `uv run --project backend python ...`, 별도 환경은
+  `uv venv` + `uv pip install -r ...`. bare `python`/`python3`/`pip`는 쓰지 않는다. 프런트엔드·데스크톱 JS는
+  **`bun`**만 쓴다: `bun install`, `bun run <script>`, `bunx <tool>`. `npm`/`npx`/`yarn`/`pnpm`은 쓰지 않는다
+  (lockfile은 `bun.lock`).
 - UI는 `docs/design/*.dc.html`(라이트/다크 쌍) 디자인 캔버스를 따른다. 색은 `frontend/src/index.css`의
   토큰(CSS 변수)만 쓴다.
 
@@ -39,6 +45,11 @@ make api-types    # 백엔드 OpenAPI → frontend/src/api-types.ts. API 모델�
 cd backend && uv run pytest tests/test_jobs.py::test_job_moves_card_and_reports_in_thread -q
 cd backend && uv run alembic revision --autogenerate -m "..."   # 모델 변경 시, 그다음 alembic check
 cd frontend && bunx vitest run src/dates.test.ts
+
+# 툴콜 SFT (docs/sft-training.md)
+uv run --project backend python -m argos.sft_export --out-dir training/data      # 실제 run → train/eval.jsonl
+uv run --project backend python training/generate_seed_data.py --out-dir training/data  # 합성 시드 데이터
+uv venv training/.venv && uv pip install --python training/.venv -r training/requirements-serverless.txt
 ```
 
 포트 8000은 데스크톱 앱(`docs/desktop.md`, 데이터는 `~/Library/Application Support/Argos`) 몫이다. 에이전트
@@ -91,14 +102,47 @@ vitest, build), api-types 최신 여부.
   `run_turn(no_tools=True)`로 실행해 그 스레드에 쓰게 한 뒤 같은 글을 `hermes send`로 보낸다. 에이전트가 없거나
   실패·빈 답이면 `digest_markdown` 목록. "지금 보내기"는 `POST /notify/digest`(별도 키라 그날 자동 요약을 막지 않음).
 - **`agents.py`**: 어댑터 `stream(transcript, context, session)`가 `Token`/`Status`/`Failure`를 낸다.
-  Hermes(게이트웨이 Responses API + `conversation`), Claude(claude-agent-sdk, uuid5 세션 +
+  `AgentBackend`: `native`(Argos 하네스, 아래), Hermes(게이트웨이 Responses API + `conversation`), Claude(claude-agent-sdk, uuid5 세션 +
   `get_session_info`로 resume 판단), Codex(`codex app-server` JSON-RPC, 전용 `CODEX_HOME`에 auth.json·skills·AGENTS.md만
   링크, thread id는 `agent_session` 테이블), Ollama. 채팅은 Argos MCP 도구 + 사용자 스킬(Claude는 훅 끔),
   잡은 파일·셸 도구 + 샌드박스 + 작업 디렉터리 허용 목록, 코딩 모드 스레드(`message.coding`)는 채널
   작업 폴더(`channel.workspace_path`, 허용 목록 안)에서 사용자 설정·네트워크까지. `/이름`은 `skills.py`가
   에이전트 스킬로 풀어 준다. `build_adapter`가 에이전트 → 어댑터를 고른다.
 - **`mcp_server.py`**: 같은 프로세스의 `/mcp`(Streamable HTTP). `?agent=` 또는 `X-Argos-Agent`로
-  호출자 식별. 삭제 도구는 즉시 지우지 않고 approval을 만든다(사용자 승인 후 실행).
+  호출자 식별. 툴은 `argos_tools.py` 함수의 시그니처·docstring으로 동적 등록. 삭제 도구는 즉시 지우지 않고
+  approval을 만든다(사용자 승인 후 실행).
+- **`providers.py`**: 모델 연결(Phase 20, `model_provider` 행, 키는 키체인). 종류는 `ollama`·`openai`(OpenAI 호환)·
+  `anthropic`. Anthropic `base_url`은 `/v1` 없는 루트(SDK가 붙임), OpenAI SDK를 쓰는 분류기·요약·비공개 대화는
+  Anthropic의 OpenAI 호환 엔드포인트(`<base>/v1`)로. 키는 항상 명시(환경 변수 `ANTHROPIC_API_KEY` 안 읽음).
+  위치(이 기기/내 네트워크/클라우드)는 주소로 계산, 비공개 대화(`private.py`, services를 안 타는 유일한 기능) 허용 판단에 씀.
+
+#### v0.2 네이티브 에이전트 하네스
+
+- **`harness.py`**: 프로바이더 모델의 스트리밍 다중 턴 툴 루프. `ToolDef`(이름·스키마·`kind` read|write|destructive·
+  `source`/`plugin`)·`ToolRegistry`(`core_tools`), `decide()`가 권한 모드(`ARGOS_PERMISSION_MODE` 기본 `auto_edit`,
+  채널별 `channel.permission_mode`, 실행 값은 `agent_run.permission_mode`)와 경로로 자동 실행/승인 요청을 일괄 판단.
+  `HarnessLLM` 구현은 `OpenAIChatLLM`(chat.completions)·`AnthropicLLM`(Messages API), `repair_json`으로 깨진 툴 인자 복구.
+  `NativeHarnessAdapter`가 `Token` + `ToolCall`/결과 단계를 내고 러너가 `agent_run_step`에 저장(화면은 `toolSteps.tsx`).
+  `agents.build_adapter`가 `native`(또는 Anthropic 연결을 고른 로컬 모델 에이전트)일 때만 지연 import(순환 방지).
+- **승인 대기**: 툴 승인은 기존 `approval` 행(`action="tool"`, `run_id`) 재사용. run은 `approval_waits.py`(프로세스 내
+  future + 5초 DB 재확인)에서 멈춰 기다리고 승인되면 직접 실행. 대기 중 run 타임아웃 정지, 잡은 `job_concurrency` 슬롯 반납,
+  `ARGOS_APPROVAL_TIMEOUT`(기본 24시간) 지나면 거절. run 종료·서버 재시작 시 남은 툴 승인은 `failed`.
+- **`argos_tools.py`**: 도메인 툴(할 일·일정·채널·노트·인박스·LMS·`search_knowledge`)을 `(ToolContext, **args)` 함수로
+  한 번만 작성. MCP와 네이티브 하네스가 공유(네이티브는 시그니처로 만든 pydantic 모델로 인자 검증, 삭제는 `destructive`
+  인라인 승인 후 바로 삭제).
+- **`file_tools.py`**: `read_file`/`list_dir`/`glob_files`/`grep_files`/`write_file`/`edit_file`/`delete_file`/`run_command`.
+  채팅 run 작업 폴더는 `argos_workspace/channels/<채널 id>`(코딩·잡은 지정 폴더). `_resolve()`가 허용 루트(작업 폴더,
+  Argos 워크스페이스, `job_roots`, 채널 `workspace_path`, `linked_folders`) 밖은 승인해도 거부(심링크·`..` 해석 후).
+  덮어쓰는 파일은 `data_dir/file-backups/<run id>/`에 백업.
+- **`extra_tools.py`**: `render_artifact`(HTML/SVG/Mermaid/TSX를 툴 호출 인자로 넘기면 화면이 sandbox iframe으로 그림),
+  `web_fetch`(http(s)·공개 IP만, 리다이렉트마다 재검사, SSRF 방어), `ask_agent`(같은 스레드에 자식 run `kind="delegate"`,
+  `parent_run_id`/`depth`, `ARGOS_MAX_AGENT_DEPTH` 기본 2, 조상 에이전트 재호출 금지).
+- **`plugins.py`**: `data_dir/plugins/*.py`의 `register(registry)`를 시작 때 로드(`GET /plugins`). 코어 툴 덮어쓰기 금지,
+  실패한 플러그인은 등록한 툴 전부 롤백. 플러그인 툴도 `kind`대로 권한 게이트를 받는다.
+- **`knowledge.py`**: 채널 업로드(`argos_workspace/channels/<id>/uploads`)와 LMS 자료 텍스트를 `knowledge_doc` +
+  `knowledge_fts`(trigram)에 색인, `search_knowledge`가 읽음. 경로는 `resolve_upload`로만.
+- **`sft_export.py`**: 끝난 run(스레드 대화 + `agent_run_step` 툴 단계 + 최종 답)을 OpenAI `{"messages","tools"}` JSONL로
+  내보냄(비밀값 `[REDACTED]`, `run_id` 해시로 train/eval 고정 분할, `tool_specs()`가 툴 스키마). CLI `python -m argos.sft_export`.
 - **`remote.py`**: 폰에서 열기(Phase 14). Tailscale CLI 래퍼(`status`/`serve --set-path`, 테스트는 fake)와
   `RemoteGate` 미들웨어: serve로 온 요청은 `Tailscale-User-Login`이 `remote_allowed`에 있어야 하고, `/argos` 접두사를
   떼고 처리한다. 빌드된 화면은 그 경로로 열리면 `rewrite_index`가 자산 주소와 `<meta name="argos-base">`를 고친다.
@@ -125,10 +169,32 @@ vitest, build), api-types 최신 여부.
   생기면 여기에 추가.
 - `realtime.ts`: `/ws` 하나로 `object.*` 이벤트 → `invalidateFor`, `agent.*` 이벤트 → `agentStream.ts`
   (스트리밍 중인 답 텍스트를 메시지별로 보관). 재연결 시 전체 refetch.
-- 라우트: `/`(Today), `/c/:channelId`(피드) + `/kanban`, `/calendar`, `/settings`, `/approvals`.
-  우측 패널은 URL 쿼리(`?task=`, `?thread=`)로 열린다(`layout/Shell.tsx`).
+- 라우트(`main.tsx`): `/`는 마지막으로 연 채널(`lastChannel.ts`, 없으면 첫 과목·프로젝트, 그것도 없으면 Today)로
+  이동(`HomeRedirect.tsx`), Today는 `/today`. `/c/:channelId`는 과목·프로젝트면 첫 탭이 채팅(`pages/ChatTab.tsx`,
+  `?session=<루트 메시지 id>`), 피드는 `/c/:id/feed`, 그 밖에 `/kanban`, `/calendar`, `/notes`, `/materials`.
+  시스템·내 공간 채널은 피드 그대로. `/settings`, `/approvals`, `/notifications`, `/review`, `/quick`, `/welcome`.
+  우측 패널은 URL 쿼리(`?task=`, `?thread=`, `&wide=1`)로 열린다(`layout/Shell.tsx`). 사이드바 세션 목록은
+  `GET /channels/{id}/threads`.
+- **Chat-first(가안 A, v0.2)**: `ChatTab.tsx`의 새 대화 첫 메시지는 `agent_session: true`로 보내 인박스 대신 채널 기본
+  에이전트와 스레드 시작. `composerBar.tsx`(입력창 하단 막대: 첨부·권한 모드 왼쪽, 에이전트 선택·컨텍스트 링·전송 오른쪽),
+  `workspacePanel.tsx`(채널 파일 업로드 `/files`·LMS 자료 색인 상태·연결 폴더, 열림 상태는 기기별 localStorage),
+  `toolSteps.tsx`(툴 호출 단계·인라인 승인), `artifact.tsx`(`render_artifact`를 `sandbox` iframe + 네트워크 없는 CSP로,
+  tsx는 sucrase + Preact, mermaid는 `securityLevel: strict`, 둘 다 지연 로딩).
+- `ui.tsx` 공용 컴포넌트: 네이티브 `<select>`·`window.confirm` 대신 테마 맞춘 `SelectMenu`·`ConfirmDialog`를 쓴다
+  (테스트는 `test-select.ts` 헬퍼).
 - `feed.tsx`(채팅 피드·입력창·에이전트 답 카드), `cards.tsx`(메시지에 붙는 할 일·일정·제안·승인 카드),
   `jobs.tsx`(잡 상태), `pages/KanbanTab.tsx`(dnd-kit, 낙관적 이동).
+
+### 학습 파이프라인 (`training/`, 앱 코드와 분리)
+
+네이티브 하네스용 툴콜 모델 SFT·평가(`docs/sft-training.md`). 데이터 형식은 모두 OpenAI `messages + tools` JSONL.
+
+- `generate_seed_data.py`: `argos.sft_export.tool_specs()`의 실제 툴 스키마로 합성 다중 턴 궤적 → `training/data/{train,eval}.jsonl`.
+- `train_sft.py`: Unsloth + TRL `SFTTrainer` LoRA(로컬 Linux + CUDA, `requirements.txt`), W&B 로깅, merged/GGUF 내보내기·HF Hub 푸시.
+- `train_wandb_serverless.py`: OpenPipe ART `ServerlessBackend`로 W&B Training(GPU 없이 Mac 가능, `requirements-serverless.txt`),
+  체크포인트가 OpenAI 호환 엔드포인트로 바로 서빙. `--dry-run`은 크레딧을 쓰지 않음.
+- `eval_harness.py`: OpenAI 호환 URL(Ollama·vLLM·Forge 등)의 모델로 `eval.jsonl` 채점(JSON 유효율·툴 선택·스키마 준수·인자 일치), W&B 테이블.
+- 결과 JSON은 `training/outputs/`. 학습 의존성은 백엔드 `pyproject`에 넣지 않고 `training/requirements*.txt` + 별도 `uv venv`.
 
 ## 테스트
 
@@ -160,4 +226,5 @@ UI를 바꾸면 테스트 통과로 끝내지 말고 실제 화면을 보고 확
 - `docs/PLAN.md`: 전체 설계, Phase별 범위와 완료 기준, 보안·동기화·볼트 안전 규칙(§8)
 - `docs/decisions.md`: PLAN과 달라진 결정 기록
 - `docs/hermes-setup.md`, `docs/mcp-setup.md`: Hermes 게이트웨이·MCP 연결 절차
+- `docs/sft-training.md`: SFT 데이터 추출·학습·평가 가이드
 - `integrations/hermes/skills/argos/SKILL.md`: Hermes가 Argos 도구를 쓰는 규칙(스킬로 등록)

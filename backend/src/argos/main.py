@@ -23,12 +23,17 @@ from argos import (
     vault,
 )
 from argos.api import install_error_handlers, router, ws_router
+from argos.argos_tools import register_argos_tools
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
+from argos.extra_tools import register_extra_tools
+from argos.file_tools import register_file_tools
+from argos.harness import core_tools
 from argos.hub import hub
 from argos.lms import router as lms_router
 from argos.mcp_server import build_mcp
+from argos.plugins import load_plugins
 from argos.private import router as private_router
 from argos.runner import Runner
 from argos.summarizer import LmsSummaries, build_summarizer
@@ -40,6 +45,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         config.db_path.parent.mkdir(parents=True, exist_ok=True)
+        config.argos_workspace.mkdir(parents=True, exist_ok=True)  # native harness files
         await asyncio.to_thread(lms_extension.refresh, config.data_dir)
         engine = make_engine(config.db_url)
         app.state.sessionmaker = make_sessionmaker(engine)
@@ -55,8 +61,17 @@ def create_app(
         app.state.classifier = build_classifier(app.state.settings)
         app.state.summarizer = build_summarizer(app.state.settings)
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
+        app.state.runner.classifier = lambda: app.state.classifier
+        # Native harness tools (v0.2): Argos tools, workspace files/shell, then plugins.
+        register_argos_tools(core_tools)
+        register_file_tools(core_tools)
+        register_extra_tools(core_tools)
+        app.state.plugins = await asyncio.to_thread(
+            load_plugins, config.data_dir / "plugins", core_tools
+        )
         async with app.state.sessionmaker() as session:
             await services.abandon_running_runs(session)
+            await services.abandon_run_approvals(session)
             await services.sweep_attachments(session, config.attachments_dir, datetime.now(UTC))
         app.state.calendar_sync = caldav_sync.CalendarSync(
             app.state.sessionmaker, lambda: app.state.settings, caldav_sync.Keychain()
@@ -81,6 +96,8 @@ def create_app(
         )
         if config.lms_poll_minutes > 0:
             app.state.lms_sync.start()
+        # Materials downloaded before the knowledge index existed (or by the extension).
+        app.state.knowledge_index = asyncio.create_task(app.state.lms_sync.index_materials())
         app.state.backups = ops.Backups(lambda: app.state.settings)
         if config.auto_backup:
             app.state.backups.start()
@@ -119,6 +136,8 @@ def create_app(
         async with mcp.session_manager.run():
             yield
         stop_listening()
+        app.state.knowledge_index.cancel()
+        await asyncio.gather(app.state.knowledge_index, return_exceptions=True)
         if starting := getattr(app.state, "remote_start", None):
             await asyncio.wait([starting], timeout=5)
         await app.state.vault_sync.stop()

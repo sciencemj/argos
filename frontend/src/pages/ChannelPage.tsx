@@ -25,8 +25,10 @@ import { ChannelDeleteDialog } from "../ChannelDeleteDialog";
 import { fmt } from "../dates";
 import { FEED_COLUMN, Feed } from "../feed";
 import { tr } from "../i18n";
-import { PlusIcon, SettingsIcon } from "../icons";
-import { btn, Dialog, ErrorText, field, label } from "../ui";
+import { FolderIcon, PlusIcon, SettingsIcon } from "../icons";
+import { LAST_CHANNEL } from "../lastChannel";
+import { btn, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
+import { WorkspacePanel } from "../workspacePanel";
 import { PrivateCovered, PrivateGhost, PrivateOverlay } from "./PrivateLayer";
 
 const tab =
@@ -34,16 +36,20 @@ const tab =
 
 export const useChannel = () => useOutletContext<Channel>();
 
+// Courses and projects open on a conversation (v0.2 "가안 A"); the feed keeps the rest.
 const TABS = [
-  { path: "", label: tr("피드") },
+  { path: "", label: tr("채팅", "Chat") },
+  { path: "feed", label: tr("피드") },
   { path: "kanban", label: tr("칸반") },
   { path: "calendar", label: tr("캘린더") },
   { path: "notes", label: tr("노트") },
   { path: "materials", label: tr("자료") },
 ];
 
-const SYSTEM_TABS = TABS.slice(0, 3); // #today-style channels have no vault folder
-const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(1)];
+const FEED_FIRST = [{ path: "", label: tr("피드") }, ...TABS.slice(2)];
+const SYSTEM_TABS = FEED_FIRST.slice(0, 3); // #today-style channels have no vault folder
+const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(2)];
+const PANEL = "argos-workspace-panel";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -58,7 +64,9 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
     ? SPACE_TABS
     : channel.kind === "system"
       ? SYSTEM_TABS
-      : TABS;
+      : channel.kind === "course" || channel.kind === "project"
+        ? TABS
+        : FEED_FIRST;
   const base = `/c/${channel.id}`;
 
   useEffect(() => {
@@ -86,7 +94,10 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
         target = Number(digit[1]) - 1;
       if (target === null) return;
       e.preventDefault(); // ⌥[ would otherwise type “ into the message box
-      navigate(`${base}/${tabs[target].path}${window.location.search}`);
+      const search = new URLSearchParams(window.location.search);
+      search.delete("session"); // a conversation belongs to the chat tab
+      const query = search.toString();
+      navigate(`${base}/${tabs[target].path}${query ? `?${query}` : ""}`);
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "Alt" || !e.altKey) setShowKeys(false);
@@ -110,7 +121,7 @@ function ChannelTabs({ channel, space }: { channel: Channel; space: boolean }) {
       >
         {tabs.map((t, i) => (
           <NavLink
-            key={t.path || "feed"}
+            key={t.path || "index"}
             to={t.path || "."}
             end={t.path === ""}
             className={tab}
@@ -151,7 +162,32 @@ export function ChannelPage() {
   );
   const personal = data?.channels.find((c) => c.kind === "personal");
   // The feed reads in a centered column; kanban, calendar and notes get more room.
-  const onFeed = useMatch("/c/:channelId") !== null;
+  const onIndex = useMatch("/c/:channelId") !== null;
+  const onFeedTab = useMatch("/c/:channelId/feed") !== null;
+  const onFeed = onIndex || onFeedTab;
+  const [panel, setPanel] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const togglePanel = (open: boolean) => {
+    setPanel(open);
+    try {
+      localStorage.setItem(PANEL, open ? "1" : "0");
+    } catch {
+      // private windows: the panel just won't be remembered
+    }
+  };
+  useEffect(() => {
+    if (!channel || channel.kind === "dm") return;
+    try {
+      localStorage.setItem(LAST_CHANNEL, channel.id);
+    } catch {
+      // nothing to remember then
+    }
+  }, [channel]);
   const column = onFeed ? FEED_COLUMN : "mx-auto w-full max-w-[1480px]";
   // Reading the feed clears the sidebar's unread mark (내 공간 also shows 일상).
   const shownIds = [channel?.id, channel?.id === inbox?.id ? personal?.id : ""];
@@ -186,44 +222,76 @@ export function ChannelPage() {
   if (channel.kind === "dm") {
     return <DMPage channel={channel} />;
   }
+  const chatFirst = channel.kind === "course" || channel.kind === "project";
 
   return (
     <>
-      <header
-        data-tauri-drag-region="deep"
-        className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
-      >
-        <div className="flex items-center gap-3.5">
-          <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
-            {!space && <span className="text-hash">#</span>}{" "}
-            {space ? tr("내 공간") : channel.name}
-          </h1>
-          {editable && (
-            <button
-              type="button"
-              aria-label={tr("채널 설정")}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-soft bg-card text-text-3 hover:text-ink"
-              onClick={() => setEditing(true)}
-            >
-              <SettingsIcon />
-            </button>
-          )}
+      {/* The workspace panel is a full-height right column beside header + content,
+          like the sidebar on the left. */}
+      <div className="relative flex min-h-0 w-full grow">
+        <div className="flex min-h-0 min-w-0 grow flex-col">
+          <header
+            data-tauri-drag-region="deep"
+            className={`${column} flex flex-col gap-3 px-8 max-md:px-4 pt-[18px] pb-4`}
+          >
+            <div className="flex items-center gap-3.5 max-md:gap-2">
+              <h1 className="m-0 grow truncate text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+                {!space && <span className="text-hash">#</span>}{" "}
+                {space ? tr("내 공간") : channel.name}
+              </h1>
+              {chatFirst && (
+                <button
+                  type="button"
+                  aria-label={tr(
+                    "워크스페이스와 자료",
+                    "Workspace & knowledge",
+                  )}
+                  aria-pressed={panel}
+                  title={tr("워크스페이스 · 자료", "Workspace · Knowledge")}
+                  className={`flex size-9 cursor-pointer items-center justify-center rounded-full border ${panel ? "border-ink bg-ink text-on-dark" : "border-line-soft bg-card text-text-3 hover:text-ink"}`}
+                  onClick={() => togglePanel(!panel)}
+                >
+                  <FolderIcon />
+                </button>
+              )}
+              {editable && (
+                <button
+                  type="button"
+                  aria-label={tr("채널 설정")}
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-line-soft bg-card text-text-3 hover:text-ink"
+                  onClick={() => setEditing(true)}
+                >
+                  <SettingsIcon />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3.5">
+              <ChannelTabs channel={channel} space={space} />
+              <span className="grow" />
+              {settingsChannel?.vault_path && (
+                <span className="truncate text-[12.5px] text-meta max-md:hidden">
+                  {tr("옵시디언")}{" "}
+                  <span className="font-mono">
+                    {settingsChannel.vault_path}/
+                  </span>
+                </span>
+              )}
+            </div>
+          </header>
+          <div
+            className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
+          >
+            <Outlet
+              context={space && !onIndex && personal ? personal : channel}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3.5">
-          <ChannelTabs channel={channel} space={space} />
-          <span className="grow" />
-          {settingsChannel?.vault_path && (
-            <span className="truncate text-[12.5px] text-meta max-md:hidden">
-              {tr("옵시디언")}{" "}
-              <span className="font-mono">{settingsChannel.vault_path}/</span>
-            </span>
-          )}
-        </div>
-      </header>
-      <div
-        className={`flex min-h-0 w-full grow flex-col ${onFeed ? "" : column}`}
-      >
-        <Outlet context={space && !onFeed && personal ? personal : channel} />
+        {chatFirst && panel && (
+          <WorkspacePanel
+            channel={channel}
+            onClose={() => togglePanel(false)}
+          />
+        )}
       </div>
       {editable && settingsChannel && (
         <ChannelSettings
@@ -283,24 +351,26 @@ function DMPage({ channel }: { channel: Channel }) {
             )}
           </div>
           {list.length > 0 && (
-            <select
-              aria-label={tr("대화 고르기")}
+            <SelectMenu
+              ariaLabel={tr("대화 고르기")}
               className={`${field} w-auto max-w-[280px] truncate max-md:max-w-[120px]`}
               value={shown?.id ?? ""}
-              onChange={(e) =>
-                setPicked(
-                  e.target.value === current?.id ? null : e.target.value,
-                )
+              onChange={(value) =>
+                setPicked(value === current?.id ? null : value)
               }
-            >
-              {list.map((s, i) => (
-                <option key={s.id} value={s.id}>
-                  {(s.title ?? tr("새 대화")) +
-                    ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
-                    (i === 0 ? ` ${tr("(현재)")}` : "")}
-                </option>
-              ))}
-            </select>
+              options={[
+                ...list.map((s, i) => ({
+                  value: s.id,
+                  label: (
+                    <>
+                      {(s.title ?? tr("새 대화")) +
+                        ` · ${fmt(s.last_active_at, "M/d HH:mm")}` +
+                        (i === 0 ? ` ${tr("(현재)")}` : "")}
+                    </>
+                  ),
+                })),
+              ]}
+            />
           )}
           <PrivateGhost agent={agent} />
           <button
@@ -408,34 +478,31 @@ function ChannelSettings({
         {!space && (
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("영역")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={areaId}
-              onChange={(event) => setAreaId(event.target.value)}
-            >
-              <option value="">{tr("전체 (영역 없음)")}</option>
-              {areas.map((area) => (
-                <option key={area.id} value={area.id}>
-                  {area.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setAreaId(value)}
+              options={[
+                { value: "", label: tr("전체 (영역 없음)") },
+                ...areas.map((area) => ({ value: area.id, label: area.name })),
+              ]}
+            />
           </label>
         )}
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("기본 에이전트 (/ask를 받음)")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-          >
-            <option value="">{tr("앱 기본값 따르기")}</option>
-            {agents.data?.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.display_name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setAgentId(value)}
+            options={[
+              { value: "", label: tr("앱 기본값 따르기") },
+              ...(agents.data ?? []).map((a) => ({
+                value: a.id,
+                label: a.display_name,
+              })),
+            ]}
+          />
         </label>
         {!space && (
           <label className="flex flex-col gap-1">

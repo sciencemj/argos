@@ -1,5 +1,5 @@
-"""Model providers (PLAN Phase 20): named Ollama or OpenAI-compatible servers that
-agents and the inbox classifier choose between.
+"""Model providers (PLAN Phase 20): named Ollama, OpenAI(-compatible) or Anthropic servers
+that agents and the inbox classifier choose between.
 
 Rows live in `model_provider`; API keys live in the macOS Keychain. Runtime code reads a
 `ProviderConfig` snapshot from `Settings.model_providers`, so sync builders such as
@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import httpx2
 import keyring
 import keyring.errors
+from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,7 @@ from argos.models import ModelProvider
 if TYPE_CHECKING:
     from argos.config import Settings
 
-type ProviderKind = Literal["ollama", "openai"]
+type ProviderKind = Literal["ollama", "openai", "anthropic"]
 type Locality = Literal["device", "network", "cloud"]
 
 LOCALITY_ORDER: tuple[Locality, ...] = ("device", "network", "cloud")
@@ -40,10 +41,16 @@ KEYCHAIN_SERVICE = "Argos model provider API key"
 log = logging.getLogger(__name__)
 DEFAULT_NAME = "이 Mac"
 DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
+ANTHROPIC_VERSION = "2023-06-01"  # the Messages API version header
 
 
 class ProviderError(Exception):
     """The server could not be reached or answered something unexpected."""
+
+
+class ProviderNoModelList(ProviderError):
+    """The server answers but has no model list (GET /models is 404), e.g. W&B Forge's
+    training endpoint: it still serves chat completions for models named by hand."""
 
 
 class ProviderUnreachable(ProviderError):
@@ -55,7 +62,7 @@ class ProviderConfig:
     id: str
     name: str
     kind: ProviderKind
-    base_url: str  # up to and including /v1
+    base_url: str  # up to and including /v1; Anthropic: the root (the SDK adds /v1)
     api_key: str | None = field(repr=False)
     locality: Locality
     is_default: bool
@@ -70,13 +77,16 @@ class ProviderModel:
 
 
 def normalize_base_url(kind: ProviderKind, url: str) -> str:
-    """http(s) only, no trailing slash; Ollama addresses get their /v1."""
+    """http(s) only, no trailing slash; Ollama addresses get their /v1 and Anthropic ones
+    lose it (its SDK adds /v1 itself)."""
     url = url.strip().rstrip("/")
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError("주소는 http:// 또는 https://로 시작해야 해요")
     if kind == "ollama" and not url.endswith("/v1"):
         url += "/v1"
+    if kind == "anthropic":
+        url = url.removesuffix("/v1")
     return url
 
 
@@ -104,10 +114,27 @@ def unreachable_text(p: ProviderConfig) -> str:
     return f"{p.name}에 연결할 수 없어요 ({p.base_url})"
 
 
+def openai_base_url(p: ProviderConfig) -> str:
+    """Where the OpenAI SDK talks to the provider: Anthropic answers OpenAI-style requests
+    at its /v1 (its compatibility layer), so the classifier and plain chat work there too."""
+    return f"{p.base_url}/v1" if p.kind == "anthropic" else p.base_url
+
+
 def chat_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> AsyncOpenAI:
     # The SDK refuses an empty key; Ollama and most local servers ignore it.
     return AsyncOpenAI(
-        base_url=p.base_url, api_key=p.api_key or "none", timeout=timeout, max_retries=max_retries
+        base_url=openai_base_url(p),
+        api_key=p.api_key or "none",
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+
+
+def anthropic_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> AsyncAnthropic:
+    """Anthropic's own Messages API. The key comes from the Keychain only: an explicit
+    value keeps the SDK from reading ANTHROPIC_API_KEY out of the environment."""
+    return AsyncAnthropic(
+        base_url=p.base_url, api_key=p.api_key or "", timeout=timeout, max_retries=max_retries
     )
 
 
@@ -116,7 +143,7 @@ def private_client(p: ProviderConfig, *, timeout: float) -> AsyncOpenAI:
     (it would see the whole conversation) and no redirects (they would resend it)."""
     http = httpx2.AsyncClient(timeout=timeout, trust_env=False, follow_redirects=False)
     return AsyncOpenAI(
-        base_url=p.base_url, api_key=p.api_key or "none", max_retries=0, http_client=http
+        base_url=openai_base_url(p), api_key=p.api_key or "none", max_retries=0, http_client=http
     )
 
 
@@ -124,12 +151,18 @@ def _root(p: ProviderConfig) -> str:
     return p.base_url.removesuffix("/v1")
 
 
-async def _get_json(url: str, headers: dict[str, str] | None = None) -> Any:
+async def _get_json(
+    url: str, headers: dict[str, str] | None = None, params: dict[str, str] | None = None
+) -> Any:
     try:
         async with httpx2.AsyncClient(timeout=LIST_TIMEOUT, follow_redirects=False) as http:
-            response = await http.get(url, headers=headers)
+            response = await http.get(url, headers=headers, params=params)
+            if response.status_code == 404:
+                raise ProviderNoModelList(f"{url} has no model list")
             response.raise_for_status()
             return response.json()
+    except ProviderNoModelList:
+        raise
     except Exception as exc:
         raise ProviderError(f"cannot reach {url}: {type(exc).__name__}") from exc
 
@@ -137,6 +170,16 @@ async def _get_json(url: str, headers: dict[str, str] | None = None) -> Any:
 async def list_models(p: ProviderConfig, *, decision: bool = False) -> list[ProviderModel]:
     """Chat-capable models (plus Ollama decision models when `decision`), sorted local
     first. Raises ProviderError when the server cannot be reached."""
+    if p.kind == "anthropic":
+        headers = {"anthropic-version": ANTHROPIC_VERSION}
+        if p.api_key:
+            headers["x-api-key"] = p.api_key
+        data = await _get_json(f"{p.base_url}/v1/models", headers, {"limit": "1000"})
+        try:
+            names = sorted(str(m["id"]) for m in data["data"])
+        except (KeyError, TypeError) as exc:
+            raise ProviderError("unexpected /v1/models answer") from exc
+        return [ProviderModel(name, False, None) for name in names]
     if p.kind == "openai":
         headers = {"Authorization": f"Bearer {p.api_key}"} if p.api_key else None
         data = await _get_json(f"{p.base_url}/models", headers)
@@ -171,7 +214,9 @@ _VISION: dict[tuple[str, str], bool] = {}
 async def vision(p: ProviderConfig, model: str) -> bool:
     """Whether the model takes images. Ollama says so in /api/show; when that fails
     the server decides (True, not cached). OpenAI-compatible servers do not say: the
-    agent's send_images switch decides instead."""
+    agent's send_images switch decides instead. Claude models all take images."""
+    if p.kind == "anthropic":
+        return True
     if p.kind != "ollama":
         return False
     key = (p.base_url, model)

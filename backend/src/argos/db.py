@@ -19,6 +19,13 @@ NOTE_FTS_DDL = (
 )
 
 
+# Text of uploaded files and LMS materials (v0.2 Stage 1.2), same tokenizer as notes.
+KNOWLEDGE_FTS_DDL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5("
+    "doc_id UNINDEXED, title, body, tokenize='trigram')"
+)
+
+
 class Base(DeclarativeBase):
     pass
 

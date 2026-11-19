@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { selectValue } from "../test-select";
 import { NotifySection } from "./OpsSettings";
 
 const mocks = vi.hoisted(() => ({
@@ -59,15 +60,11 @@ test("turning the morning digest on keeps the other notice settings", () => {
 
 test("hour and agent pickers save their choice", () => {
   render(<NotifySection />);
-  fireEvent.change(screen.getByLabelText("아침 요약 시각"), {
-    target: { value: "8" },
-  });
+  selectValue(screen.getByLabelText("아침 요약 시각"), "8");
   expect(mocks.save.mutate).toHaveBeenLastCalledWith(
     expect.objectContaining({ morning_digest_hour: 8 }),
   );
-  fireEvent.change(screen.getByLabelText("아침 요약 에이전트"), {
-    target: { value: "claude" },
-  });
+  selectValue(screen.getByLabelText("아침 요약 에이전트"), "claude");
   expect(mocks.save.mutate).toHaveBeenLastCalledWith(
     expect.objectContaining({ morning_digest_agent: "claude" }),
   );
@@ -75,10 +72,8 @@ test("hour and agent pickers save their choice", () => {
 
 test("the hour picker offers only morning hours", () => {
   render(<NotifySection />);
-  const hours = screen
-    .getByLabelText("아침 요약 시각")
-    .querySelectorAll("option");
-  expect(hours).toHaveLength(12);
+  fireEvent.click(screen.getByLabelText("아침 요약 시각"));
+  expect(screen.getAllByRole("option")).toHaveLength(12);
 });
 
 test("send now asks for a digest", () => {
@@ -90,12 +85,12 @@ test("send now asks for a digest", () => {
 test("an agent that is gone shows as deleted, and the default can be picked", () => {
   mocks.settings.data = { ...mocks.settings.data, morning_digest_agent: "old" };
   render(<NotifySection />);
-  const picker = screen.getByLabelText(
-    "아침 요약 에이전트",
-  ) as HTMLSelectElement;
-  expect(picker.value).toBe("old");
+  const picker = screen.getByLabelText("아침 요약 에이전트");
+  expect(picker.dataset.value).toBe("old");
+  fireEvent.click(picker);
   expect(screen.getByRole("option", { name: "old (삭제됨)" })).toBeTruthy();
-  fireEvent.change(picker, { target: { value: "" } });
+  fireEvent.click(picker); // closes
+  selectValue(picker, "");
   expect(mocks.save.mutate).toHaveBeenLastCalledWith(
     expect.objectContaining({ morning_digest_agent: "" }),
   );

@@ -23,7 +23,7 @@ import {
   updateStatus,
 } from "../desktop";
 import { t, tr, tt } from "../i18n";
-import { btn, card, Dialog, ErrorText, field, label } from "../ui";
+import { btn, card, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
 import { ChangelogButton } from "../whatsNew";
 
 const WEEKDAYS = [
@@ -91,25 +91,23 @@ export function NotifySection() {
         </label>
         {data.hermes_available ? (
           <div className="flex items-center gap-2">
-            <select
+            <SelectMenu
               id="notify-target"
               className={field}
               value={data.hermes_target ?? ""}
               disabled={save.isPending}
-              onChange={(e) =>
-                change({ hermes_target: e.target.value || null })
-              }
-            >
-              <option value="">{tr("보내지 않음 (앱 안에서만)")}</option>
-              {targets.data?.map((t) => (
-                <option key={t.target} value={t.target}>
-                  {t.label}
-                </option>
-              ))}
-              {data.hermes_target && !known && (
-                <option value={data.hermes_target}>{data.hermes_target}</option>
-              )}
-            </select>
+              onChange={(value) => change({ hermes_target: value || null })}
+              options={[
+                { value: "", label: tr("보내지 않음 (앱 안에서만)") },
+                ...(targets.data ?? []).map((t) => ({
+                  value: t.target,
+                  label: t.label,
+                })),
+                ...(data.hermes_target && !known
+                  ? [{ value: data.hermes_target, label: data.hermes_target }]
+                  : []),
+              ]}
+            />
             <button
               type="button"
               className={`${btn.outline} shrink-0`}
@@ -167,36 +165,42 @@ export function NotifySection() {
         <span className={label}>{tr("주간 리뷰 (리뷰 화면에 표시)")}</span>
         <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-text">
           <span className="shrink-0 whitespace-nowrap">{tr("매주")}</span>
-          <select
-            aria-label={tr("리뷰 요일")}
+          <SelectMenu
+            ariaLabel={tr("리뷰 요일")}
             className={`${field} min-w-28 flex-1`}
-            value={data.weekly_review_weekday}
-            onChange={(e) =>
-              change({ weekly_review_weekday: Number(e.target.value) })
+            value={String(data.weekly_review_weekday)}
+            onChange={(value) =>
+              change({ weekly_review_weekday: Number(value) })
             }
-          >
-            {WEEKDAYS.map((d, i) => (
-              <option key={d} value={i}>
-                {d}
-                {tr("요일")}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label={tr("리뷰 시각")}
+            options={[
+              ...WEEKDAYS.map((d, i) => ({
+                value: String(i),
+                label: (
+                  <>
+                    {d}
+                    {tr("요일")}
+                  </>
+                ),
+              })),
+            ]}
+          />
+          <SelectMenu
+            ariaLabel={tr("리뷰 시각")}
             className={`${field} min-w-24 flex-1`}
-            value={data.weekly_review_hour}
-            onChange={(e) =>
-              change({ weekly_review_hour: Number(e.target.value) })
-            }
-          >
-            {HOURS.map((h) => (
-              <option key={h} value={h}>
-                {h}
-                {tr("시")}
-              </option>
-            ))}
-          </select>
+            value={String(data.weekly_review_hour)}
+            onChange={(value) => change({ weekly_review_hour: Number(value) })}
+            options={[
+              ...HOURS.map((h) => ({
+                value: String(h),
+                label: (
+                  <>
+                    {h}
+                    {tr("시")}
+                  </>
+                ),
+              })),
+            ]}
+          />
         </div>
       </div>
       <div className="flex flex-col gap-2">
@@ -220,43 +224,51 @@ export function NotifySection() {
           </span>
         </label>
         <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-text">
-          <select
-            aria-label={tr("아침 요약 시각", "Morning digest time")}
+          <SelectMenu
+            ariaLabel={tr("아침 요약 시각", "Morning digest time")}
             className={`${field} min-w-24 flex-1`}
-            value={data.morning_digest_hour}
-            onChange={(e) =>
-              change({ morning_digest_hour: Number(e.target.value) })
-            }
-          >
-            {MORNING_HOURS.map((h) => (
-              <option key={h} value={h}>
-                {h}
-                {tr("시")}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label={tr("아침 요약 에이전트", "Morning digest agent")}
+            value={String(data.morning_digest_hour)}
+            onChange={(value) => change({ morning_digest_hour: Number(value) })}
+            options={[
+              ...MORNING_HOURS.map((h) => ({
+                value: String(h),
+                label: (
+                  <>
+                    {h}
+                    {tr("시")}
+                  </>
+                ),
+              })),
+            ]}
+          />
+          <SelectMenu
+            ariaLabel={tr("아침 요약 에이전트", "Morning digest agent")}
             className={`${field} min-w-32 flex-1`}
             value={data.morning_digest_agent}
-            onChange={(e) => change({ morning_digest_agent: e.target.value })}
-          >
-            <option value="">{tr("기본 에이전트", "Default agent")}</option>
-            {agents.data &&
+            onChange={(value) => change({ morning_digest_agent: value })}
+            options={[
+              { value: "", label: tr("기본 에이전트", "Default agent") },
+              ...(agents.data &&
               data.morning_digest_agent &&
-              !agents.data.some(
-                (a) => a.name === data.morning_digest_agent,
-              ) && (
-                <option value={data.morning_digest_agent}>
-                  {data.morning_digest_agent} {tr("(삭제됨)", "(deleted)")}
-                </option>
-              )}
-            {(agents.data ?? []).map((a) => (
-              <option key={a.name} value={a.name}>
-                {a.display_name}
-              </option>
-            ))}
-          </select>
+              !agents.data.some((a) => a.name === data.morning_digest_agent)
+                ? [
+                    {
+                      value: data.morning_digest_agent,
+                      label: (
+                        <>
+                          {data.morning_digest_agent}{" "}
+                          {tr("(삭제됨)", "(deleted)")}
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
+              ...(agents.data ?? []).map((a) => ({
+                value: a.name,
+                label: a.display_name,
+              })),
+            ]}
+          />
           <button
             type="button"
             className={btn.outline}

@@ -61,7 +61,16 @@ import {
   toColumns,
 } from "../kanban";
 import { toast } from "../toast";
-import { btn, Chip, DdayBadge, Dialog, ErrorText, field, label } from "../ui";
+import {
+  btn,
+  Chip,
+  DdayBadge,
+  Dialog,
+  ErrorText,
+  field,
+  label,
+  SelectMenu,
+} from "../ui";
 import { useChannel } from "./ChannelPage";
 
 /** What the pointer is actually over wins; columns are tall, so corner distance alone
@@ -601,19 +610,16 @@ function NewTaskDialog({
         {chooseChannel && (
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("채널")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
-            >
-              {channels.data?.channels
-                .filter((c) => c.kind !== "system" && c.kind !== "dm")
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {channelLabel(c)}
-                  </option>
-                ))}
-            </select>
+              onChange={(value) => setTarget(value)}
+              options={[
+                ...(channels.data?.channels ?? [])
+                  .filter((c) => c.kind !== "system" && c.kind !== "dm")
+                  .map((c) => ({ value: c.id, label: channelLabel(c) })),
+              ]}
+            />
           </label>
         )}
         <label className="flex flex-col gap-1">
@@ -627,17 +633,14 @@ function NewTaskDialog({
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("상태")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus)}
-          >
-            {STATUSES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setStatus(value)}
+            options={[
+              ...STATUSES.map((s) => ({ value: s.id, label: s.label })),
+            ]}
+          />
         </label>
         <ErrorText error={create.error} />
         <div className="flex justify-end gap-2">

@@ -35,7 +35,7 @@ import { BASE } from "../base";
 import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
 import { LanguagePicker, ThemePicker } from "../LanguagePicker";
-import { btn, card, ErrorText, field, label } from "../ui";
+import { btn, card, ErrorText, field, label, SelectMenu } from "../ui";
 import { CustomAgentsSection } from "./CustomAgents";
 import { LmsSection } from "./LmsSettings";
 import {
@@ -352,21 +352,21 @@ export function ClassifierSection() {
           {ollamaProviders.length > 1 && (
             <label className="flex flex-col gap-1">
               <span className={label}>{tr("모델 연결")}</span>
-              <select
+              <SelectMenu
                 className={field}
                 value={selectedProvider}
-                onChange={(e) => {
-                  setProviderChoice(e.target.value);
+                onChange={(value) => {
+                  setProviderChoice(value);
                   setChoice(null);
                   setTitleChoice(null);
                 }}
-              >
-                {ollamaProviders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  ...ollamaProviders.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  })),
+                ]}
+              />
             </label>
           )}
           {models.isLoading && (
@@ -429,25 +429,36 @@ export function ClassifierSection() {
               "판단 모델은 유형과 채널만 골라요. 할 일·일정의 제목은 여기서 고른 모델이 다듬어요. 고르지 않으면 원문에서 날짜만 뺀 글이 제목이 돼요.",
             )}
           </p>
-          <select
+          <SelectMenu
             id="classifier-title-model"
             className={`${field} font-mono text-[13px]`}
             value={selectedTitle}
-            onChange={(e) => setTitleChoice(e.target.value)}
-          >
-            <option value="">{tr("원문에서 만들기 (모델 없이)")}</option>
-            {chatModels.map((m) => (
-              <option key={m.name} value={m.name}>
-                {m.name}
-                {m.remote ? ` · ${tr("클라우드")}` : ""}
-              </option>
-            ))}
-            {selectedTitle && !titleModel && models.data?.reachable && (
-              <option value={selectedTitle}>
-                {selectedTitle} · {tr("Ollama에서 찾을 수 없어요")}
-              </option>
-            )}
-          </select>
+            onChange={(value) => setTitleChoice(value)}
+            options={[
+              { value: "", label: tr("원문에서 만들기 (모델 없이)") },
+              ...chatModels.map((m) => ({
+                value: m.name,
+                label: (
+                  <>
+                    {m.name}
+                    {m.remote ? ` · ${tr("클라우드")}` : ""}
+                  </>
+                ),
+              })),
+              ...(selectedTitle && !titleModel && models.data?.reachable
+                ? [
+                    {
+                      value: selectedTitle,
+                      label: (
+                        <>
+                          {selectedTitle} · {tr("Ollama에서 찾을 수 없어요")}
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
           {selectedTitle && (
             <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0 pt-1">
               <legend className="mb-1.5 p-0 text-[12.5px] text-text-2">
@@ -568,26 +579,30 @@ function ModelRow({ agent }: { agent: Agent }) {
         <span className="w-28 shrink-0 text-[13.5px] text-ink">
           {agent.display_name}
         </span>
-        <select
-          aria-label={tt`${agent.display_name} 모델`}
+        <SelectMenu
+          ariaLabel={tt`${agent.display_name} 모델`}
           className={`${field} grow`}
           value={current}
           disabled={save.isPending}
-          onChange={(e) =>
-            save.mutate({ name: agent.name, model: e.target.value || null })
+          onChange={(value) =>
+            save.mutate({ name: agent.name, model: value || null })
           }
-        >
-          <option value="">{fallback}</option>
-          {known.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-              {m.description ? ` · ${m.description}` : ""}
-            </option>
-          ))}
-          {current && !known.some((m) => m.id === current) && (
-            <option value={current}>{current}</option>
-          )}
-        </select>
+          options={[
+            { value: "", label: fallback },
+            ...known.map((m) => ({
+              value: m.id,
+              label: (
+                <>
+                  {m.label}
+                  {m.description ? ` · ${m.description}` : ""}
+                </>
+              ),
+            })),
+            ...(current && !known.some((m) => m.id === current)
+              ? [{ value: current, label: current }]
+              : []),
+          ]}
+        />
       </div>
       {models.data?.error && (
         <span className="pl-9 text-[12px] text-meta">{models.data.error}</span>
@@ -1055,27 +1070,27 @@ export function ICloudSection() {
                   <span className="text-[11.5px] whitespace-nowrap text-meta">
                     {c.writable ? tr("Argos가 씀") : tr("읽기 전용")}
                   </span>
-                  <select
-                    aria-label={tt`${c.name} 일정을 넣을 채널`}
+                  <SelectMenu
+                    ariaLabel={tt`${c.name} 일정을 넣을 채널`}
                     className="h-9 w-44 shrink-0 cursor-pointer border-0 border-b border-line bg-transparent text-[13.5px] text-text outline-none focus:border-ink"
                     value={c.channel_id ?? ""}
                     disabled={setChannel.isPending}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setChannel.mutate({
                         calendar_url: c.url,
-                        channel_id: e.target.value || null,
+                        channel_id: value || null,
                       })
                     }
-                  >
-                    <option value="">{tr("내 공간 (기본)")}</option>
-                    {choices
-                      .filter((ch) => ch.kind !== "personal")
-                      .map((ch) => (
-                        <option key={ch.id} value={ch.id}>
-                          # {ch.name}
-                        </option>
-                      ))}
-                  </select>
+                    options={[
+                      { value: "", label: tr("내 공간 (기본)") },
+                      ...choices
+                        .filter((ch) => ch.kind !== "personal")
+                        .map((ch) => ({
+                          value: ch.id,
+                          label: <># {ch.name}</>,
+                        })),
+                    ]}
+                  />
                 </div>
               ))}
             </div>

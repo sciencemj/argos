@@ -180,6 +180,12 @@ export const SendIcon = ({ size = 16 }: P) => (
   </Stroke>
 );
 
+export const ArrowUpIcon = ({ size = 16 }: P) => (
+  <Stroke size={size} width={2.2}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Stroke>
+);
+
 export const ShieldIcon = ({ size = 16 }: P) => (
   <Stroke size={size}>
     <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" />
@@ -209,6 +215,22 @@ export const FileIcon = ({ size = 16 }: P) => (
   <Stroke size={size}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
     <path d="M14 3v5h5" />
+  </Stroke>
+);
+
+export const WrenchIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path
+      d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8a2.8 2.8 0 0 1-4-4l8-8z"
+      transform="rotate(0)"
+    />
+    <path d="M14.7 6.3 17 4a4 4 0 0 0-5.3 5.3" />
+  </Stroke>
+);
+
+export const FolderIcon = ({ size = 16 }: P) => (
+  <Stroke size={size}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
   </Stroke>
 );
 

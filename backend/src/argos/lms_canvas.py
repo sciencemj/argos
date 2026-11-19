@@ -26,7 +26,7 @@ import httpx2 as httpx
 import keyring
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from argos import services
+from argos import knowledge, services
 from argos.config import Settings
 from argos.lms_match import CourseMatcher, build_matcher, suggest_merges
 from argos.summarizer import LmsSummaries
@@ -740,10 +740,19 @@ class LmsSync:
                 services.TooLargeError,
             ) as exc:
                 warnings.append(f"{item['title']}: {exc}")
+        await self.index_materials()
         self.status.last_result = result
         self.status.last_error = None
         self.status.warnings = warnings[:20]
         await self.suggest()
+
+    async def index_materials(self) -> None:
+        """Course materials' text into the knowledge index (search_knowledge)."""
+        try:
+            async with self._sessionmaker() as session:
+                await knowledge.index_lms_materials(session, self._settings().attachments_dir)
+        except Exception:  # the index is a convenience: a bad file must not fail the sync
+            log.exception("indexing LMS materials failed")
 
     async def suggest(self) -> None:
         """Suggest merging LMS courses into same-course channels the user named

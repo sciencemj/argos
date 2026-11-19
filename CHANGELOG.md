@@ -2,6 +2,17 @@
 
 Argos의 버전별 변경 사항이에요. 업데이트한 뒤 앱에서도 볼 수 있어요.
 
+## 0.2.0-dev (Unreleased)
+
+- **SFT 트래젝토리 추출기 (`sft_export.py`)**: 완료된 에이전트 실행과 `agent_run_step`을 OpenAI `messages + tools` JSONL로 내보내는 CLI(`uv run --project backend python -m argos.sft_export`)와 로컬 전용 API(`GET /api/v1/sft/export`)를 추가했어요. API 키·토큰·개인키 등을 기본 마스킹하고 `run_id` 해시 기준으로 `train`/`eval`을 일관되게 분할해요.
+- **Unsloth QLoRA SFT + W&B 학습 파이프라인 (`training/`)**: 실제 툴 스키마 기반 합성 시드 생성기(`training/generate_seed_data.py`)와 Unsloth `FastLanguageModel` + TRL `SFTTrainer` + Weights & Biases 로깅·아티팩트 업로드(merged 16-bit / GGUF 내보내기 포함)를 지원하는 `training/train_sft.py`를 추가했어요.
+- **하네스 툴콜 평가 스크립트 (`training/eval_harness.py`)**: Ollama·vLLM 등 OpenAI 호환 엔드포인트에서 `json_validity_rate`, `tool_selection_accuracy`, `schema_compliance_rate`, `exact_argument_match_rate`를 측정하고 W&B 테이블로 기록해요(`--offline-replay` 스모크 테스트 지원).
+- **네이티브 에이전트 하네스와 Anthropic 연결**: 자체 툴 호출 루프(`harness.py`)를 갖춘 네이티브 에이전트 하네스를 추가했어요. 설정 → 모델 연결에서 **Anthropic** 프로바이더를 등록할 수 있고, OpenAI 호환 서버·Ollama·Claude Code·Codex·Hermes와 함께 쓸 수 있어요.
+- **내장 툴과 플러그인 로더**: Argos 도메인 툴 18종(`search_knowledge` 포함)과 워크스페이스 파일·셸 툴 8종(`read_file`, `list_dir`, `glob_files`, `grep_files`, `write_file`, `edit_file`, `delete_file`, `run_command`)을 네이티브 하네스에서 바로 써요. `data_dir/plugins/*.py`의 `register(registry)`로 커스텀 툴 플러그인을 불러와 `GET /api/v1/plugins`로 상태를 확인할 수 있어요.
+- **권한 모드(`auto_edit` / `ask`)와 인라인 승인**: 앱 기본 설정과 채널 헤더 토글로 권한 모드를 고를 수 있어요. 삭제·명령 실행·워크스페이스 밖 경로 접근처럼 확인이 필요한 툴 호출은 승인 카드로 일시 대기했다가 승인 후 이어서 실행해요.
+- **채널 워크스페이스 파일 업로드와 LMS FTS 지식 검색**: 채널마다 파일을 올려 워크스페이스(`argos_workspace/channels/<id>/uploads`)에 보관하고, 업로드 파일과 LMS 자료를 SQLite FTS5(trigram)로 색인해 `search_knowledge` 툴과 워크스페이스 패널에서 바로 찾아요.
+- **채팅 우선(Chat-first) UI와 사이드바 세션 트리**: 과목·프로젝트 채널의 기본 화면을 채팅 탭(`/c/:id`, 피드는 `/c/:id/feed`)으로 바꾸고, 사이드바 채널 아래에 스레드 세션 트리, 툴 실행 단계 카드, 워크스페이스 패널을 추가했어요.
+
 ## 0.1.21 · 2026-11-16
 
 - 칸반 보드 상단에서 전체 카드를 수동(생성순), 마감일(임박순·늦은순), 우선순위(높은순·낮은순) 기준으로 한 번에 정렬할 수 있어요. 정렬한 순서는 서버에 저장되고, 마지막으로 고른 정렬 기준은 브라우저에 기억돼요.

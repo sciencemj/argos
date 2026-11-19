@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from argos import attachments, providers
+from argos.approval_waits import approval_waits
 from argos.course_names import clean_course_name
 from argos.hub import hub
 from argos.models import (
@@ -28,6 +29,7 @@ from argos.models import (
     Agent,
     AgentBackend,
     AgentRun,
+    AgentRunStep,
     AgentSession,
     Approval,
     ApprovalStatus,
@@ -50,6 +52,7 @@ from argos.models import (
     ModelProvider,
     NoteRef,
     Notification,
+    PermissionMode,
     Record,
     Routine,
     RoutineCheck,
@@ -1141,6 +1144,84 @@ async def update_channel(
     if changes.get("area_id") is not None:
         await _get(session, Area, changes["area_id"])
     return await _update(session, channel, changes, actor)
+
+
+async def channel_sessions(
+    session: AsyncSession, channel_id: str, limit: int = 30
+) -> list[dict[str, Any]]:
+    """Conversations in a channel for the sidebar's session tree (v0.2): top-level
+    messages stuck to an agent or with replies, most recently active first."""
+    await get_channel(session, channel_id)
+    replies = (
+        select(
+            Message.thread_root_id.label("root_id"),
+            func.count().label("reply_count"),
+            func.max(Message.created_at).label("last_at"),
+        )
+        .where(Message.channel_id == channel_id, Message.thread_root_id.is_not(None))
+        .group_by(Message.thread_root_id)
+        .subquery()
+    )
+    rows = (
+        await session.execute(
+            select(Message, replies.c.reply_count, replies.c.last_at)
+            .outerjoin(replies, replies.c.root_id == Message.id)
+            .where(
+                Message.channel_id == channel_id,
+                Message.thread_root_id.is_(None),
+                Message.sticky_agent_id.is_not(None) | replies.c.root_id.is_not(None),
+            )
+            .order_by(func.coalesce(replies.c.last_at, Message.created_at).desc())
+            .limit(limit)
+        )
+    ).all()
+    roots = [r[0].id for r in rows]
+    active = set(
+        (
+            await session.scalars(
+                select(AgentRun.thread_root_id).where(
+                    AgentRun.thread_root_id.in_(roots),
+                    AgentRun.status.in_([RunStatus.RUNNING, RunStatus.QUEUED]),
+                )
+            )
+        ).all()
+    )
+    last_bodies: dict[str, str] = {}
+    if roots:
+        newest = (
+            select(Message.thread_root_id, func.max(Message.created_at).label("at"))
+            .where(Message.thread_root_id.in_(roots), Message.body != "")
+            .group_by(Message.thread_root_id)
+            .subquery()
+        )
+        for root_id, body in (
+            await session.execute(
+                select(Message.thread_root_id, Message.body).join(
+                    newest,
+                    (newest.c.thread_root_id == Message.thread_root_id)
+                    & (newest.c.at == Message.created_at),
+                )
+            )
+        ).all():
+            if root_id is not None:
+                last_bodies[root_id] = body
+    out: list[dict[str, Any]] = []
+    for root, count, last_at in rows:
+        first_line = next((line for line in root.body.splitlines() if line.strip()), "")
+        last: str = last_bodies.get(root.id) or root.body or ""
+        out.append(
+            {
+                "root_message_id": root.id,
+                "title": first_line.strip()[:80] or "(첨부)",
+                "preview": " ".join(last.split())[:120],
+                "agent_id": root.sticky_agent_id,
+                "coding": root.coding,
+                "reply_count": count or 0,
+                "updated_at": last_at.replace(tzinfo=UTC) if last_at else root.created_at,
+                "active": root.id in active,
+            }
+        )
+    return out
 
 
 async def unread_counts(session: AsyncSession) -> dict[str, int]:
@@ -2268,6 +2349,11 @@ async def _tasks_finished(session: AsyncSession, start: datetime, end: datetime)
 APPROVAL_ACTIONS = ("delete_task", "delete_event")
 
 
+# A native harness tool call waiting for the user (v0.2): approving only lets the paused
+# run go on; the run itself executes the tool.
+TOOL_APPROVAL = "tool"
+
+
 async def request_approval(
     session: AsyncSession,
     *,
@@ -2275,8 +2361,40 @@ async def request_approval(
     payload: dict[str, Any],
     actor: str,
     reason: str | None = None,
+    run_id: str | None = None,
+    channel_id: str | None = None,
+    summary: str | None = None,
+    thread_root_id: str | None = None,
 ) -> Approval:
-    """Records the request and posts it as a card in the object's channel feed."""
+    """Records the request and posts it as a card in the object's channel feed (a tool
+    approval: in `channel_id`, in the run's thread)."""
+    if action == TOOL_APPROVAL:
+        if channel_id is None or not summary:
+            raise InvalidError("a tool approval needs its channel and summary")
+        approval = await _create(
+            session,
+            Approval(
+                requested_by=actor,
+                run_id=run_id,
+                channel_id=channel_id,
+                action=action,
+                payload_json=json.loads(json.dumps(payload, default=str)),
+                summary=summary[:500],
+                reason=reason,
+            ),
+            actor,
+        )
+        await create_message(
+            session,
+            channel_id=channel_id,
+            body=reason or approval.summary,
+            author_type=AuthorType.AGENT,
+            author_id=actor.removeprefix("agent:"),
+            thread_root_id=thread_root_id,
+            ref=approval,
+            actor=actor,
+        )
+        return approval
     if action == "delete_task":
         target: Task | Event = await get_task(session, payload["task_id"])
         summary = f"할 일 삭제: {target.title}"
@@ -2293,6 +2411,7 @@ async def request_approval(
         session,
         Approval(
             requested_by=actor,
+            run_id=run_id,
             channel_id=target.channel_id,
             action=action,
             payload_json=payload,
@@ -2332,9 +2451,18 @@ async def resolve_approval(
         raise ConflictError(f"approval is already {approval.status}")
     now = datetime.now(UTC)
     if not approve:
-        return await _update(
+        approval = await _update(
             session, approval, {"status": ApprovalStatus.REJECTED, "resolved_at": now}, actor
         )
+        if approval.action == TOOL_APPROVAL:
+            approval_waits.settle(approval.id, False)
+        return approval
+    if approval.action == TOOL_APPROVAL:
+        approval = await _update(
+            session, approval, {"status": ApprovalStatus.APPROVED, "resolved_at": now}, actor
+        )
+        approval_waits.settle(approval.id, True)
+        return approval
     try:
         if approval.action == "delete_task":
             await delete_task(session, approval.payload_json["task_id"], approval.requested_by)
@@ -2360,6 +2488,48 @@ async def resolve_approval(
     return await _update(
         session, approval, {"status": ApprovalStatus.APPROVED, "resolved_at": now}, actor
     )
+
+
+async def approval_decision(session: AsyncSession, approval_id: str) -> bool | None:
+    """A tool approval's saved decision: None while pending (or gone: rejected)."""
+    approval = await session.get(Approval, approval_id, populate_existing=True)
+    if approval is None:
+        return False
+    if approval.status == ApprovalStatus.PENDING:
+        return None
+    return approval.status == ApprovalStatus.APPROVED
+
+
+async def expire_run_approvals(
+    session: AsyncSession,
+    run_id: str | None = None,
+    reason: str = "실행이 끝나 취소됐어요",
+    *,
+    approval_id: str | None = None,
+) -> None:
+    """Tool approvals nobody can act on any more: their run ended (`run_id`), or, with
+    no run id, every pending one (at startup no run is waiting)."""
+    query = select(Approval).where(
+        Approval.status == ApprovalStatus.PENDING, Approval.action == TOOL_APPROVAL
+    )
+    if run_id is not None:
+        query = query.where(Approval.run_id == run_id)
+    if approval_id is not None:
+        query = query.where(Approval.id == approval_id)
+    now = datetime.now(UTC)
+    for approval in (await session.scalars(query)).all():
+        await _update(
+            session,
+            approval,
+            {"status": ApprovalStatus.FAILED, "error": reason, "resolved_at": now},
+            "system",
+        )
+        approval_waits.settle(approval.id, False)
+
+
+async def abandon_run_approvals(session: AsyncSession) -> None:
+    """At startup: no run survives a restart, so their tool approvals cannot be used."""
+    await expire_run_approvals(session, reason="서버가 다시 시작되어 중단됐어요")
 
 
 # --- agents (PLAN Phase 5) -----------------------------------------------------------
@@ -2390,7 +2560,12 @@ async def find_agent(session: AsyncSession, handle: str) -> Agent | None:
 
 
 AGENT_NAME = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
-CUSTOM_BACKENDS = (AgentBackend.CLAUDE_CODE, AgentBackend.CODEX, AgentBackend.OLLAMA)
+CUSTOM_BACKENDS = (
+    AgentBackend.CLAUDE_CODE,
+    AgentBackend.CODEX,
+    AgentBackend.OLLAMA,
+    AgentBackend.NATIVE,
+)
 
 
 async def _check_agent_fields(
@@ -2411,7 +2586,9 @@ async def _check_agent_fields(
         if not fields["display_name"]:
             raise InvalidError("표시 이름을 적어 주세요")
     if "backend" in fields and fields["backend"] not in CUSTOM_BACKENDS:
-        raise InvalidError("커스텀 에이전트는 Claude, Codex, 로컬 모델 위에서만 만들 수 있어요")
+        raise InvalidError(
+            "커스텀 에이전트는 Claude, Codex, 로컬 모델, Argos 하네스 위에서만 만들 수 있어요"
+        )
     if "tools_json" in fields:
         tools = list(dict.fromkeys(fields["tools_json"] or []))
         unknown = [t for t in tools if t not in known_tools]
@@ -2430,7 +2607,7 @@ async def _check_agent_fields(
 
 # --- model providers (PLAN Phase 20) ---------------------------------------------------
 
-PROVIDER_KINDS = ("ollama", "openai")
+PROVIDER_KINDS = ("ollama", "openai", "anthropic")
 STRICT_LOCALITIES = ("network", "cloud")  # the user may only mark a provider stricter
 
 
@@ -2460,7 +2637,7 @@ async def _check_provider_fields(
         fields["name"] = name
     kind = fields.get("kind", current.kind if current else None)
     if kind not in PROVIDER_KINDS:
-        raise InvalidError("연결 종류는 Ollama나 OpenAI 호환이에요")
+        raise InvalidError("연결 종류는 Ollama, OpenAI 호환, Anthropic 중 하나예요")
     if "base_url" in fields or "kind" in fields:
         url = fields.get("base_url", current.base_url if current else "")
         try:
@@ -2690,6 +2867,7 @@ async def start_run(
     actor: str,
     job: tuple[Task, str, Path] | None = None,
     kind: str = "chat",
+    parent: tuple[str, int] | None = None,
 ) -> tuple[AgentRun, Message]:
     """Creates the run and its (still empty) reply message, filled in when the run ends.
     `job` = (card, instructions, workspace) makes it a queued coding job."""
@@ -2700,6 +2878,8 @@ async def start_run(
         trigger_message_id=trigger.id,
         kind=kind,
     )
+    if parent is not None:  # ask_agent: (parent run id, depth)
+        run.parent_run_id, run.depth = parent
     if job is not None:
         task, instructions, workspace = job
         run.kind, run.status = "job", RunStatus.QUEUED
@@ -2739,12 +2919,125 @@ async def finish_run(
     await _update(session, run, changes, "system")
 
 
+async def add_run_step(
+    session: AsyncSession,
+    run_id: str,
+    *,
+    kind: str,
+    call_id: str | None = None,
+    tool_name: str | None = None,
+    args: dict[str, Any] | None = None,
+    output: str | None = None,
+    is_error: bool = False,
+    approval_id: str | None = None,
+) -> AgentRunStep:
+    """One structured step of a native harness run (bookkeeping: no activity log; the
+    runner streams it as agent.tool_call / tool_result / approval)."""
+    seq = await session.scalar(
+        select(func.coalesce(func.max(AgentRunStep.seq), 0)).where(AgentRunStep.run_id == run_id)
+    )
+    step = AgentRunStep(
+        run_id=run_id,
+        seq=(seq or 0) + 1,
+        kind=kind,
+        call_id=call_id,
+        tool_name=tool_name,
+        args_json=json.loads(json.dumps(args, default=str)) if args is not None else None,
+        output=output,
+        is_error=is_error,
+        approval_id=approval_id,
+    )
+    session.add(step)
+    await session.commit()
+    return step
+
+
+async def list_run_steps(session: AsyncSession, run_id: str) -> Sequence[AgentRunStep]:
+    query = select(AgentRunStep).where(AgentRunStep.run_id == run_id).order_by(AgentRunStep.seq)
+    return (await session.scalars(query)).all()
+
+
+def effective_permission_mode(channel: Channel, default: str) -> PermissionMode:
+    """The channel's choice, else the app-wide one (unknown values: the safer "ask")."""
+    value = channel.permission_mode or default
+    try:
+        return PermissionMode(value)
+    except ValueError:
+        return PermissionMode.ASK
+
+
+async def set_run_permission_mode(
+    session: AsyncSession, run_id: str, mode: PermissionMode
+) -> AgentRun:
+    run = await _get(session, AgentRun, run_id)
+    return await _update(session, run, {"permission_mode": mode.value}, "system")
+
+
 async def mark_run_started(session: AsyncSession, run_id: str) -> AgentRun:
     """A queued job got its slot."""
     run = await _get(session, AgentRun, run_id)
     return await _update(
         session, run, {"status": RunStatus.RUNNING, "started_at": datetime.now(UTC)}, "system"
     )
+
+
+LINKED_FOLDERS_MAX = 10
+
+
+def check_linked_folder(raw: str, data_dir: Path, db_path: Path) -> str:
+    """A local folder the user links to a channel (v0.2): an existing folder under the
+    home folder (or an external volume), never the home folder itself, a hidden folder
+    (~/.ssh, ~/.aws…), ~/Library, or anything holding Argos's own data. Returns it
+    resolved (symlinks followed, so a link cannot smuggle in a refused place)."""
+    text = raw.strip()
+    if not text:
+        raise InvalidError("폴더 경로를 적어 주세요")
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        raise InvalidError(f"절대 경로나 ~로 시작하는 경로를 적어 주세요: {text}")
+    path = path.resolve()
+    if not path.is_dir():
+        raise InvalidError(f"없는 폴더예요: {text}")
+    home = Path.home().resolve()
+    volumes = Path("/Volumes")
+    if path.is_relative_to(home):
+        inner = path.relative_to(home).parts
+    elif path.is_relative_to(volumes) and len(path.relative_to(volumes).parts) >= 1:
+        inner = path.relative_to(volumes).parts[1:]
+    else:
+        raise InvalidError(f"홈 폴더나 외장 볼륨 안의 폴더만 연결할 수 있어요: {text}")
+    if path in (home, volumes) or (path.parent == volumes):
+        raise InvalidError(f"너무 넓은 범위예요. 하위 폴더를 골라 주세요: {text}")
+    if any(part.startswith(".") for part in inner) or (inner and inner[0] == "Library"):
+        raise InvalidError(f"시스템·숨김 폴더는 연결할 수 없어요: {text}")
+    for own in (data_dir.expanduser().resolve(), db_path.expanduser().resolve().parent):
+        if own.is_relative_to(path) or path.is_relative_to(own):
+            raise InvalidError(f"Argos 데이터가 들어 있는 폴더는 연결할 수 없어요: {text}")
+    return str(path)
+
+
+async def link_folder(
+    session: AsyncSession, channel_id: str, raw: str, data_dir: Path, db_path: Path, actor: str
+) -> Channel:
+    channel = await get_channel(session, channel_id)
+    if channel.kind not in (ChannelKind.COURSE, ChannelKind.PROJECT):
+        raise InvalidError("과목·프로젝트 채널에만 폴더를 연결할 수 있어요")
+    folder = await asyncio.to_thread(check_linked_folder, raw, data_dir, db_path)
+    current = list(channel.linked_folders or [])
+    if folder in current:
+        return channel
+    if len(current) >= LINKED_FOLDERS_MAX:
+        raise InvalidError(f"폴더는 {LINKED_FOLDERS_MAX}개까지 연결할 수 있어요")
+    return await _update(session, channel, {"linked_folders": [*current, folder]}, actor)
+
+
+async def unlink_folder(session: AsyncSession, channel_id: str, folder: str, actor: str) -> Channel:
+    channel = await get_channel(session, channel_id)
+    current = list(channel.linked_folders or [])
+    if folder not in current:
+        raise NotFoundError("linked folder", folder)
+    rest = [f for f in current if f != folder]
+    return await _update(session, channel, {"linked_folders": rest or None}, actor)
 
 
 def check_job_roots(

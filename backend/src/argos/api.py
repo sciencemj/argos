@@ -20,6 +20,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     FastAPI,
+    Form,
     Query,
     Request,
     UploadFile,
@@ -41,6 +42,7 @@ from argos import (
     chat,
     classifier,
     ics,
+    knowledge,
     lms_canvas,
     mcp_server,
     notify,
@@ -49,6 +51,7 @@ from argos import (
     providers,
     remote,
     services,
+    sft_export,
     summarizer,
     usage,
     vault,
@@ -57,6 +60,7 @@ from argos import debate as debate_module
 from argos.classifier import Classifier
 from argos.config import Settings
 from argos.db import session_scope
+from argos.harness import core_tools
 from argos.hub import hub
 from argos.models import (
     Agent,
@@ -134,6 +138,8 @@ class ChannelOut(Out):
     vault_path: str | None
     sort_order: int
     workspace_path: str | None
+    permission_mode: Literal["auto_edit", "ask"] | None = None  # None: the app-wide one
+    linked_folders: list[str] | None = None  # local folders agents may work in
 
 
 class AreaCreate(BaseModel):
@@ -162,6 +168,8 @@ class ChannelUpdate(BaseModel):
     sort_order: int | None = None
     default_agent_id: str | None = None  # null = use the app-wide default agent
     workspace_path: str | None = None  # coding mode's project folder; "" or null clears
+    # Native harness approvals here; null: the app-wide setting.
+    permission_mode: Literal["auto_edit", "ask"] | None = None
 
 
 class RoutineOut(BaseModel):
@@ -483,6 +491,20 @@ class RunOut(Out):
     task_id: str | None
     workspace: str | None
     log: str | None
+    permission_mode: Literal["auto_edit", "ask"] | None = None
+
+
+class RunStepOut(Out):
+    id: str
+    seq: int
+    kind: Literal["tool_call", "tool_result", "approval"]
+    call_id: str | None
+    tool_name: str | None
+    args_json: dict[str, Any] | None
+    output: str | None
+    is_error: bool
+    approval_id: str | None
+    created_at: datetime
 
 
 class AgentOut(Out):
@@ -530,6 +552,8 @@ class ToolOut(BaseModel):
     name: str
     kind: Literal["read", "write", "approval"]  # approval: always asks the user first
     description: str
+    native_only: bool = False  # only Argos-harness (native) agents can use it
+    source: str = "core"  # "core" or "plugin:<name>"
 
 
 class AgentSettingsIn(BaseModel):
@@ -566,6 +590,11 @@ class MessageCreate(BaseModel):
     # conversation it starts one; in a thread it switches the thread; null keeps it.
     coding: bool | None = None
     attachment_ids: list[str] = Field(default_factory=list[str], max_length=10)
+    # A new top-level message that starts a conversation with the channel's agent (the
+    # chat-first channel view, v0.2) instead of going to the inbox.
+    agent_session: bool | None = None
+    # The agent that answers (its @name), from the chat view's picker; null: as before.
+    agent: str | None = Field(default=None, max_length=40)
 
 
 class SkillOut(BaseModel):
@@ -924,6 +953,8 @@ async def post_message(
         now=datetime.now(UTC),
         settings=config,
         attachment_ids=body.attachment_ids,
+        agent_session=bool(body.agent_session),
+        agent=body.agent,
     )
     _classify_later(request, background, config, posted.classify_item_id)
     runner: Runner = request.app.state.runner
@@ -1005,6 +1036,178 @@ async def attachment_content(session: Session, config: Config, attachment_id: st
         content_disposition_type="inline" if inline else "attachment",
         headers=ATTACHMENT_HEADERS,
     )
+
+
+class ChannelSessionOut(BaseModel):
+    root_message_id: str
+    title: str
+    preview: str
+    agent_id: str | None
+    coding: bool
+    reply_count: int
+    updated_at: datetime
+    active: bool  # an agent run is streaming or queued in it
+
+
+@router.get("/channels/{channel_id}/threads")
+async def channel_sessions(
+    session: Session, channel_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 30
+) -> list[ChannelSessionOut]:
+    """Conversations (threads) in a channel, most recently active first (the sidebar's
+    session tree). Not /sessions: that path lists a DM's conversations."""
+    rows = await services.channel_sessions(session, channel_id, limit)
+    return [ChannelSessionOut(**r) for r in rows]
+
+
+class LinkFolderIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
+
+
+def from_this_mac(request: Request) -> bool:
+    """A request from this computer itself: a loopback client, and not relayed by
+    Tailscale serve (identity headers or the remote path prefix)."""
+    headers = dict(request.scope.get("headers") or [])
+    client = (request.client.host if request.client else "").strip().lower()
+    return (
+        client in ("", "127.0.0.1", "::1", "localhost", "testclient")
+        and b"tailscale-user-login" not in headers
+        and b"tailscale-headers-info" not in headers
+        and not request.scope.get("state", {}).get("remote_base")
+    )
+
+
+def _this_mac_only(request: Request, message: str) -> None:
+    if not from_this_mac(request):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+
+
+@router.post("/channels/{channel_id}/folders")
+async def link_channel_folder(
+    request: Request, session: Session, config: Config, channel_id: str, body: LinkFolderIn
+) -> ChannelOut:
+    """Links a local folder to the channel: its agents' file tools may then read and
+    edit there like in the channel's own workspace."""
+    _this_mac_only(request, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
+    channel = await services.link_folder(
+        session, channel_id, body.path, config.data_dir, config.db_path, USER
+    )
+    return ChannelOut.model_validate(channel)
+
+
+@router.delete("/channels/{channel_id}/folders")
+async def unlink_channel_folder(
+    request: Request,
+    session: Session,
+    channel_id: str,
+    path: Annotated[str, Query(max_length=1000)],
+) -> ChannelOut:
+    _this_mac_only(request, "로컬 폴더 연결은 이 Mac의 Argos에서만 할 수 있어요")
+    channel = await services.unlink_folder(session, channel_id, path, USER)
+    return ChannelOut.model_validate(channel)
+
+
+# --- channel files (v0.2 Stage 1.2): uploads agents can read and search -------------------
+
+
+class ChannelFileOut(BaseModel):
+    path: str  # inside the channel's uploads folder, "/"-separated
+    name: str
+    size: int
+    modified_at: datetime
+    indexed: bool  # its text is in the knowledge index (search_knowledge)
+
+
+def _uploads(config: Settings, channel_id: str) -> Path:
+    return knowledge.uploads_dir(config.argos_workspace, channel_id)
+
+
+def _upload_path(root: Path, relative: str) -> Path:
+    try:
+        return knowledge.resolve_upload(root, relative)
+    except knowledge.PathError as exc:
+        raise services.InvalidError(str(exc)) from exc
+
+
+@router.get("/channels/{channel_id}/files")
+async def list_channel_files(
+    session: Session, config: Config, channel_id: str
+) -> list[ChannelFileOut]:
+    await services.get_channel(session, channel_id)
+    indexed = await knowledge.indexed_uploads(session, channel_id)
+    files = await asyncio.to_thread(knowledge.list_files, _uploads(config, channel_id), indexed)
+    return [ChannelFileOut(**asdict(f)) for f in files]
+
+
+@router.post("/channels/{channel_id}/files", status_code=status.HTTP_201_CREATED)
+async def upload_channel_file(
+    session: Session,
+    config: Config,
+    channel_id: str,
+    file: UploadFile,
+    folder: Annotated[str, Form(max_length=300)] = "",
+) -> ChannelFileOut:
+    """Stores a file in the channel's uploads folder (an existing name gets a number)
+    and indexes its text for search_knowledge."""
+    channel = await services.get_channel(session, channel_id)
+    if channel.kind == ChannelKind.SYSTEM:
+        raise services.InvalidError("이 채널에는 파일을 올릴 수 없어요")
+    root = _uploads(config, channel_id)
+    try:
+        path = await asyncio.to_thread(
+            knowledge.save_file,
+            root,
+            folder,
+            file.filename or "file",
+            file.file,
+            config.attachment_max_mb * 1024 * 1024,
+        )
+    except knowledge.PathError as exc:
+        raise services.InvalidError(str(exc)) from exc
+    except attachments.TooLarge as exc:
+        raise services.TooLargeError(f"{exc.limit // (1024 * 1024)}MB까지 올릴 수 있어요") from exc
+    doc = await knowledge.index_upload(session, config.argos_workspace, channel_id, path)
+    stat = await asyncio.to_thread(path.stat)
+    return ChannelFileOut(
+        path=path.relative_to(root.resolve()).as_posix(),
+        name=path.name,
+        size=stat.st_size,
+        modified_at=datetime.fromtimestamp(stat.st_mtime, UTC),
+        indexed=doc.chars > 0,
+    )
+
+
+class KnowledgeDocOut(Out):
+    id: str
+    source: Literal["upload", "lms"]
+    ref: str
+    title: str
+    mime: str
+    size: int
+    chars: int  # 0: no text found (scanned PDF, image, binary)
+    updated_at: datetime
+
+
+@router.get("/channels/{channel_id}/knowledge")
+async def channel_knowledge(session: Session, channel_id: str) -> list[KnowledgeDocOut]:
+    """Files of this channel in the search index (uploads and LMS materials)."""
+    await services.get_channel(session, channel_id)
+    return [
+        KnowledgeDocOut.model_validate(d) for d in await knowledge.channel_docs(session, channel_id)
+    ]
+
+
+@router.delete("/channels/{channel_id}/files", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_channel_file(
+    session: Session, config: Config, channel_id: str, path: Annotated[str, Query(max_length=500)]
+) -> None:
+    await services.get_channel(session, channel_id)
+    root = _uploads(config, channel_id)
+    target = _upload_path(root, path)
+    if not await asyncio.to_thread(target.exists):
+        raise services.NotFoundError("channel file", path)
+    relative = target.relative_to(root.resolve()).as_posix()
+    await asyncio.to_thread(knowledge.delete_path, target)
+    await knowledge.remove_upload(session, channel_id, relative)
 
 
 @router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1159,16 +1362,19 @@ YAML_BACKENDS = {
     "llm": AgentBackend.OLLAMA,
     "local": AgentBackend.OLLAMA,
     "ollama": AgentBackend.OLLAMA,
+    "native": AgentBackend.NATIVE,
 }
 YAML_NAMES = {
     AgentBackend.CLAUDE_CODE: "claude",
     AgentBackend.CODEX: "codex",
     AgentBackend.OLLAMA: "llm",
+    AgentBackend.NATIVE: "native",
 }
 
 
 def _tool_names() -> list[str]:
-    return list(mcp_server.TOOL_NAMES)
+    native = [n for n in core_tools.names() if n not in mcp_server.TOOL_NAMES]
+    return [*mcp_server.TOOL_NAMES, *native]
 
 
 async def _agent_out(session: AsyncSession, agent: Agent, config: Settings) -> AgentOut:
@@ -1216,11 +1422,25 @@ async def _custom_agent(session: AsyncSession, name: str) -> Agent:
     return agent
 
 
+class PluginOut(BaseModel):
+    name: str
+    path: str
+    tools: list[str]
+    error: str | None
+
+
+@router.get("/plugins")
+async def list_plugins(request: Request) -> list[PluginOut]:
+    """Tool plugins found in data_dir/plugins at startup, with their tools or error."""
+    return [PluginOut(**asdict(p)) for p in getattr(request.app.state, "plugins", [])]
+
+
 @router.get("/agents/tools")
 async def agent_tools(request: Request) -> list[ToolOut]:
-    """Argos tools a custom agent can be allowed (the MCP server's list)."""
+    """Tools a custom agent can be allowed: the MCP server's Argos tools, then the
+    native harness's own (workspace files, shell, plugins; `native_only`)."""
     listed = {t.name: t.description or "" for t in await request.app.state.mcp.list_tools()}
-    return [
+    out = [
         ToolOut(
             name=name,
             kind="approval"
@@ -1230,8 +1450,20 @@ async def agent_tools(request: Request) -> list[ToolOut]:
             else "write",
             description=listed.get(name, "").strip().split("\n")[0],
         )
-        for name in _tool_names()
+        for name in mcp_server.TOOL_NAMES
     ]
+    out += [
+        ToolOut(
+            name=t.name,
+            kind="approval" if t.kind == "destructive" else t.kind,
+            description=t.description.strip().split("\n")[0],
+            native_only=True,
+            source=t.source,
+        )
+        for t in core_tools.tools()
+        if t.name not in mcp_server.TOOL_NAMES
+    ]
+    return out
 
 
 class ModelOut(BaseModel):
@@ -1253,6 +1485,7 @@ LOCALITY_TEXT = {
     "cloud": "클라우드 · 입력이 외부로 전송돼요",
 }
 UNREACHABLE_TEXT = "연결할 수 없어요. 주소와 서버가 켜져 있는지 확인해 주세요."
+NO_MODEL_LIST_TEXT = "모델 목록을 주지 않는 서버예요. 에이전트의 모델 이름을 직접 적어 주세요."
 
 
 @router.get("/agents/models")
@@ -1273,7 +1506,7 @@ async def agent_models(
             found = await agents.claude_models(config)
         elif backend == AgentBackend.CODEX:
             found = await agents.codex_models(config)
-        elif backend == AgentBackend.OLLAMA:
+        elif backend in (AgentBackend.OLLAMA, AgentBackend.NATIVE):
             chosen = providers.resolve(config, provider_id)
             where = LOCALITY_TEXT[chosen.locality]
             found = [
@@ -1288,6 +1521,8 @@ async def agent_models(
             return ModelsOut(models=[], error="Hermes 모델은 게이트웨이 설정에서 정해요")
     except (agents.AgentUnavailable, classifier.ClassifierError) as exc:
         return ModelsOut(models=[], error=str(exc))
+    except providers.ProviderNoModelList:
+        return ModelsOut(models=[], error=NO_MODEL_LIST_TEXT)
     except providers.ProviderError:
         return ModelsOut(models=[], error=UNREACHABLE_TEXT)
     except Exception as exc:  # a CLI that changed its output: say so, keep the form usable
@@ -1453,9 +1688,56 @@ async def list_agent_skills(
     return [SkillOut(name=s.name, description=s.description) for s in skills]
 
 
+@router.get("/runs/{run_id}/steps")
+async def run_steps(session: Session, run_id: str) -> list[RunStepOut]:
+    """A native harness run's tool calls, results and approvals, in order."""
+    await services.get_run(session, run_id)
+    return [RunStepOut.model_validate(s) for s in await services.list_run_steps(session, run_id)]
+
+
 @router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
 async def cancel_run(request: Request, run_id: str) -> dict[str, bool]:
     return {"cancelled": request.app.state.runner.cancel(run_id)}
+
+
+@router.get(
+    "/sft/export",
+    response_class=Response,
+    responses={200: {"content": {"application/x-ndjson": {}}}},
+)
+async def export_sft(
+    request: Request,
+    session: Session,
+    split: Literal["all", "train", "eval"] = "all",
+    min_tool_steps: Annotated[int, Query(ge=0)] = 0,
+    eval_ratio: Annotated[float, Query(ge=0.0, le=1.0)] = 0.1,
+    only_success: bool = True,
+    native_only: bool = False,
+    mask: bool = True,
+    metadata: bool = True,
+    limit: Annotated[int | None, Query(ge=1, le=10000)] = None,
+) -> Response:
+    """Exports finished agent runs as OpenAI messages+tools JSONL (local only)."""
+    _this_mac_only(request, "SFT 내보내기는 이 Mac에서만 실행할 수 있어요")
+    examples = await sft_export.export(
+        session,
+        sft_export.ExportOptions(
+            only_success=only_success,
+            min_tool_steps=min_tool_steps,
+            mask=mask,
+            eval_ratio=eval_ratio,
+            native_only=native_only,
+            limit=limit,
+            split=split,
+            metadata=metadata,
+        ),
+    )
+    filename = "sft.jsonl" if split == "all" else f"{split}.jsonl"
+    return Response(
+        sft_export.to_jsonl(examples),
+        media_type="application/x-ndjson; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/settings/agents")
@@ -2707,7 +2989,7 @@ async def list_classifier_models(
 class ProviderOut(Out):
     id: str
     name: str
-    kind: Literal["ollama", "openai"]
+    kind: Literal["ollama", "openai", "anthropic"]
     base_url: str
     has_api_key: bool
     strict_locality: Literal["network", "cloud"] | None
@@ -2717,7 +2999,7 @@ class ProviderOut(Out):
 
 class ProviderIn(BaseModel):
     name: str | None = Field(default=None, max_length=60)
-    kind: Literal["ollama", "openai"] | None = None
+    kind: Literal["ollama", "openai", "anthropic"] | None = None
     base_url: str | None = Field(default=None, max_length=500)
     # Omitted or null: keep (none for a new provider); "": remove; text: store in Keychain.
     api_key: str | None = Field(default=None, max_length=1000)
@@ -2725,7 +3007,7 @@ class ProviderIn(BaseModel):
 
 
 class ProviderTestIn(BaseModel):
-    kind: Literal["ollama", "openai"]
+    kind: Literal["ollama", "openai", "anthropic"]
     base_url: str = Field(max_length=500)
     api_key: str | None = Field(default=None, max_length=1000)
     provider_id: str | None = None  # no key given: try with this provider's saved key
@@ -2773,6 +3055,8 @@ async def _keychain(request: Request, action: str, provider_id: str, key: str = 
 async def _models_out(p: providers.ProviderConfig) -> ProviderModelsOut:
     try:
         found = await providers.list_models(p)
+    except providers.ProviderNoModelList:
+        return ProviderModelsOut(reachable=True, error=NO_MODEL_LIST_TEXT, locality=p.locality)
     except providers.ProviderError:
         return ProviderModelsOut(reachable=False, error=UNREACHABLE_TEXT, locality=p.locality)
     return ProviderModelsOut(

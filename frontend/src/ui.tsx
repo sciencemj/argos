@@ -1,8 +1,12 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
+  useCallback,
   useEffect,
+  useId,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
@@ -190,5 +194,340 @@ export function useIsMobile(): boolean {
       return () => query.removeEventListener("change", onChange);
     },
     () => window.matchMedia(MOBILE_QUERY).matches,
+  );
+}
+
+// --- SelectMenu: the app's own dropdown (replaces the native select element) -----------------------
+
+export type SelectOption<V extends string = string> = {
+  value: V;
+  label: ReactNode;
+  /** One line under the label (e.g. what a mode does). */
+  description?: ReactNode;
+  icon?: ReactNode;
+  disabled?: boolean;
+  /** Plain text for type-ahead and the trigger when `label` is not a string. */
+  text?: string;
+};
+
+/** A themed popover list: rounded floating card, icon + title + one-line description,
+ * a dot on the chosen item. Rendered in a portal (into the open <dialog> when inside
+ * one, so modals do not clip or cover it) with fixed positioning that flips and
+ * clamps to stay on screen. Keyboard: ↑↓ / Home / End to move, Enter or Space to
+ * pick, Escape to close; a click outside closes it. */
+export function SelectMenu<V extends string>({
+  value,
+  onChange,
+  options,
+  id,
+  ariaLabel,
+  className = field,
+  placement = "bottom",
+  disabled = false,
+  placeholder,
+  title,
+  menuWidth,
+  renderValue,
+}: {
+  value: V;
+  onChange: (value: V) => void;
+  options: SelectOption<V>[];
+  id?: string;
+  ariaLabel?: string;
+  /** The trigger's look; defaults to the form field underline. */
+  className?: string;
+  placement?: "top" | "bottom";
+  disabled?: boolean;
+  placeholder?: string;
+  title?: string;
+  /** Minimum menu width in px (defaults to the trigger's width, at least 220). */
+  menuWidth?: number;
+  /** What the closed trigger shows (defaults to the chosen option's label). */
+  renderValue?: (option: SelectOption<V> | undefined) => ReactNode;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [box, setBox] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+  const listId = useId();
+  const chosen = options.find((o) => o.value === value);
+  const enabled = options
+    .map((o, i) => (o.disabled ? -1 : i))
+    .filter((i) => i >= 0);
+
+  const place = useCallback(() => {
+    const el = trigger.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const width = Math.min(
+      Math.max(r.width, menuWidth ?? 220),
+      window.innerWidth - margin * 2,
+    );
+    const left = Math.max(
+      margin,
+      Math.min(r.left, window.innerWidth - width - margin),
+    );
+    const below = window.innerHeight - r.bottom - margin;
+    const above = r.top - margin;
+    const up =
+      placement === "top"
+        ? above >= 160 || above > below
+        : below < 200 && above > below;
+    setBox(
+      up
+        ? {
+            left,
+            bottom: window.innerHeight - r.top + 6,
+            width,
+            maxHeight: above - 6,
+          }
+        : { left, top: r.bottom + 6, width, maxHeight: below - 6 },
+    );
+  }, [placement, menuWidth]);
+
+  const show = () => {
+    if (disabled) return;
+    const at = options.findIndex((o) => o.value === value);
+    setActive(at >= 0 ? at : (enabled[0] ?? 0));
+    place();
+    setOpen(true);
+  };
+  const close = (refocus = true) => {
+    setOpen(false);
+    if (refocus) trigger.current?.focus();
+  };
+  const pick = (i: number) => {
+    const option = options[i];
+    if (!option || option.disabled) return;
+    if (option.value !== value) onChange(option.value);
+    close();
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listeners only follow open
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!list.current?.contains(target) && !trigger.current?.contains(target))
+        close(false);
+    };
+    const reflow = () => place();
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("resize", reflow);
+    window.addEventListener("scroll", reflow, true);
+    list.current?.focus();
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("resize", reflow);
+      window.removeEventListener("scroll", reflow, true);
+    };
+  }, [open, place]);
+
+  const move = (step: number) => {
+    if (enabled.length === 0) return;
+    const at = enabled.indexOf(active);
+    const next = enabled[(at + step + enabled.length) % enabled.length];
+    setActive(next);
+  };
+  const onListKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowDown") move(1);
+    else if (e.key === "ArrowUp") move(-1);
+    else if (e.key === "Home") setActive(enabled[0] ?? 0);
+    else if (e.key === "End") setActive(enabled.at(-1) ?? 0);
+    else if (e.key === "Enter" || e.key === " ") pick(active);
+    else if (e.key === "Escape") {
+      e.stopPropagation(); // a surrounding <dialog> stays open
+      close();
+    } else if (e.key === "Tab") close(false);
+    else if (e.key.length === 1) {
+      const key = e.key.toLowerCase();
+      const hit = enabled.find((i) => {
+        const o = options[i];
+        const text = o.text ?? (typeof o.label === "string" ? o.label : "");
+        return text.toLowerCase().startsWith(key);
+      });
+      if (hit !== undefined) setActive(hit);
+      return;
+    } else return;
+    e.preventDefault();
+  };
+  const onTriggerKey = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
+      e.preventDefault();
+      show();
+    }
+  };
+
+  const host =
+    typeof document === "undefined"
+      ? null
+      : ((trigger.current?.closest("dialog[open]") as HTMLElement | null) ??
+        document.body);
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        id={id}
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        title={title}
+        disabled={disabled}
+        data-value={value}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={onTriggerKey}
+        className={`${className} inline-flex min-w-0 cursor-pointer items-center gap-2 text-left disabled:cursor-default disabled:opacity-50`}
+      >
+        {chosen?.icon && (
+          <span className="shrink-0 text-text-3">{chosen.icon}</span>
+        )}
+        <span className={`min-w-0 grow truncate ${chosen ? "" : "text-meta"}`}>
+          {renderValue
+            ? renderValue(chosen)
+            : (chosen?.label ?? placeholder ?? "")}
+        </span>
+        <svg
+          aria-hidden="true"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className={`shrink-0 text-meta transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open &&
+        box &&
+        host &&
+        createPortal(
+          <div
+            ref={list}
+            id={listId}
+            role="listbox"
+            tabIndex={-1}
+            aria-label={
+              ariaLabel ??
+              (typeof chosen?.label === "string" ? chosen.label : undefined)
+            }
+            aria-activedescendant={`${listId}-${active}`}
+            onKeyDown={onListKey}
+            style={{
+              position: "fixed",
+              left: box.left,
+              top: box.top,
+              bottom: box.bottom,
+              width: box.width,
+              maxHeight: Math.max(120, Math.min(box.maxHeight, 360)),
+            }}
+            className="z-[1000] flex flex-col gap-0.5 overflow-y-auto rounded-2xl border border-line-soft bg-card p-1.5 text-text shadow-xl outline-none"
+          >
+            {options.map((o, i) => {
+              const selected = o.value === value;
+              return (
+                <div
+                  key={o.value || `empty-${i}`}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={selected}
+                  aria-disabled={o.disabled || undefined}
+                  data-value={o.value}
+                  data-active={i === active || undefined}
+                  ref={
+                    i === active
+                      ? (el) => el?.scrollIntoView?.({ block: "nearest" })
+                      : undefined
+                  }
+                  tabIndex={-1}
+                  onPointerMove={() => !o.disabled && setActive(i)}
+                  onClick={() => pick(i)}
+                  onKeyDown={onListKey}
+                  className={`flex items-start gap-2.5 rounded-xl px-2.5 py-2 ${o.disabled ? "cursor-default opacity-45" : "cursor-pointer"} data-active:bg-inset`}
+                >
+                  {o.icon && (
+                    <span className="mt-0.5 shrink-0 text-text-2">
+                      {o.icon}
+                    </span>
+                  )}
+                  <span className="flex min-w-0 grow flex-col">
+                    <span
+                      className={`truncate text-[13.5px] ${selected ? "font-medium text-ink" : "text-text"}`}
+                    >
+                      {o.label}
+                    </span>
+                    {o.description && (
+                      <span className="text-[12px] leading-snug text-meta">
+                        {o.description}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`mt-1.5 size-2 shrink-0 rounded-full ${selected ? "bg-ink" : "bg-transparent"}`}
+                  />
+                </div>
+              );
+            })}
+          </div>,
+          host,
+        )}
+    </>
+  );
+}
+
+/** Asks before something irreversible, in the app's own dialog (never the browser's own confirm box). */
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  danger = false,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} title={title}>
+      <div className="flex flex-col gap-5">
+        <p className="m-0 text-[13.5px] leading-relaxed text-text-2">
+          {message}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button type="button" className={btn.ghost} onClick={onClose}>
+            {tr("취소")}
+          </button>
+          <button
+            type="button"
+            className={danger ? btn.danger : btn.cta}
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }

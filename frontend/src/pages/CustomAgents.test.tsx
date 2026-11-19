@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { selectValue } from "../test-select";
 import { CustomAgentsSection } from "./CustomAgents";
 
 const mocks = vi.hoisted(() => ({
@@ -91,20 +92,14 @@ function openNewAgent(provider: string) {
   fireEvent.change(screen.getByLabelText("표시 이름"), {
     target: { value: "Gemma" },
   });
-  fireEvent.change(screen.getByLabelText("기반 에이전트"), {
-    target: { value: "ollama" },
-  });
-  fireEvent.change(screen.getByLabelText("모델 연결"), {
-    target: { value: provider },
-  });
+  selectValue(screen.getByLabelText("기반 에이전트"), "ollama");
+  selectValue(screen.getByLabelText("모델 연결"), provider);
 }
 
 test("picks provider then model", () => {
   openNewAgent("gpu");
   expect(mocks.modelsFor).toHaveBeenLastCalledWith("ollama", "gpu");
-  fireEvent.change(screen.getByLabelText("모델"), {
-    target: { value: "gemma4:e4b" },
-  });
+  selectValue(screen.getByLabelText("모델"), "gemma4:e4b");
   fireEvent.click(screen.getByRole("button", { name: "만들기" }));
   expect(mocks.save.mutate).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -120,9 +115,7 @@ test("picks provider then model", () => {
 test("send images toggle only for openai providers", () => {
   openNewAgent("gpu");
   expect(screen.queryByLabelText("이미지 보내기")).toBeNull();
-  fireEvent.change(screen.getByLabelText("모델 연결"), {
-    target: { value: "lm" },
-  });
+  selectValue(screen.getByLabelText("모델 연결"), "lm");
   fireEvent.click(screen.getByLabelText("이미지 보내기"));
   fireEvent.click(screen.getByRole("button", { name: "만들기" }));
   expect(mocks.save.mutate).toHaveBeenCalledWith(
@@ -133,13 +126,9 @@ test("send images toggle only for openai providers", () => {
 
 test("changing provider clears model", () => {
   openNewAgent("gpu");
-  fireEvent.change(screen.getByLabelText("모델"), {
-    target: { value: "gemma4:e4b" },
-  });
-  fireEvent.change(screen.getByLabelText("모델 연결"), {
-    target: { value: "home" },
-  });
-  expect((screen.getByLabelText("모델") as HTMLSelectElement).value).toBe("");
+  selectValue(screen.getByLabelText("모델"), "gemma4:e4b");
+  selectValue(screen.getByLabelText("모델 연결"), "home");
+  expect(screen.getByLabelText("모델").dataset.value).toBe("");
 });
 
 test("default provider is sent as null", () => {

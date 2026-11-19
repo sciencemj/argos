@@ -270,6 +270,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels/{channel_id}/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Channel Sessions
+         * @description Conversations (threads) in a channel, most recently active first (the sidebar's
+         *     session tree). Not /sessions: that path lists a DM's conversations.
+         */
+        get: operations["channel_sessions_api_v1_channels__channel_id__threads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Channel Folder
+         * @description Links a local folder to the channel: its agents' file tools may then read and
+         *     edit there like in the channel's own workspace.
+         */
+        post: operations["link_channel_folder_api_v1_channels__channel_id__folders_post"];
+        /** Unlink Channel Folder */
+        delete: operations["unlink_channel_folder_api_v1_channels__channel_id__folders_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channel Files */
+        get: operations["list_channel_files_api_v1_channels__channel_id__files_get"];
+        put?: never;
+        /**
+         * Upload Channel File
+         * @description Stores a file in the channel's uploads folder (an existing name gets a number)
+         *     and indexes its text for search_knowledge.
+         */
+        post: operations["upload_channel_file_api_v1_channels__channel_id__files_post"];
+        /** Delete Channel File */
+        delete: operations["delete_channel_file_api_v1_channels__channel_id__files_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/{channel_id}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Channel Knowledge
+         * @description Files of this channel in the search index (uploads and LMS materials).
+         */
+        get: operations["channel_knowledge_api_v1_channels__channel_id__knowledge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attachments/{attachment_id}": {
         parameters: {
             query?: never;
@@ -393,6 +479,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plugins
+         * @description Tool plugins found in data_dir/plugins at startup, with their tools or error.
+         */
+        get: operations["list_plugins_api_v1_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents/tools": {
         parameters: {
             query?: never;
@@ -402,7 +508,8 @@ export interface paths {
         };
         /**
          * Agent Tools
-         * @description Argos tools a custom agent can be allowed (the MCP server's list).
+         * @description Tools a custom agent can be allowed: the MCP server's Argos tools, then the
+         *     native harness's own (workspace files, shell, plugins; `native_only`).
          */
         get: operations["agent_tools_api_v1_agents_tools_get"];
         put?: never;
@@ -546,6 +653,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Steps
+         * @description A native harness run's tool calls, results and approvals, in order.
+         */
+        get: operations["run_steps_api_v1_runs__run_id__steps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{run_id}/cancel": {
         parameters: {
             query?: never;
@@ -557,6 +684,26 @@ export interface paths {
         put?: never;
         /** Cancel Run */
         post: operations["cancel_run_api_v1_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sft/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Sft
+         * @description Exports finished agent runs as OpenAI messages+tools JSONL (local only).
+         */
+        get: operations["export_sft_api_v1_sft_export_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2167,7 +2314,7 @@ export interface components {
          * AgentBackend
          * @enum {string}
          */
-        AgentBackend: "hermes" | "ollama" | "claude_code" | "codex";
+        AgentBackend: "native" | "hermes" | "ollama" | "claude_code" | "codex";
         /** AgentImportOut */
         AgentImportOut: {
             /** Id */
@@ -2413,6 +2560,16 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_upload_channel_file_api_v1_channels__channel_id__files_post */
+        Body_upload_channel_file_api_v1_channels__channel_id__files_post: {
+            /** File */
+            file: string;
+            /**
+             * Folder
+             * @default
+             */
+            folder: string;
+        };
         /** CalendarChannelIn */
         CalendarChannelIn: {
             /** Calendar Url */
@@ -2457,6 +2614,22 @@ export interface components {
             /** Vault Path */
             vault_path?: string | null;
         };
+        /** ChannelFileOut */
+        ChannelFileOut: {
+            /** Path */
+            path: string;
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+            /**
+             * Modified At
+             * Format: date-time
+             */
+            modified_at: string;
+            /** Indexed */
+            indexed: boolean;
+        };
         /**
          * ChannelKind
          * @enum {string}
@@ -2484,6 +2657,32 @@ export interface components {
             sort_order: number;
             /** Workspace Path */
             workspace_path: string | null;
+            /** Permission Mode */
+            permission_mode?: ("auto_edit" | "ask") | null;
+            /** Linked Folders */
+            linked_folders?: string[] | null;
+        };
+        /** ChannelSessionOut */
+        ChannelSessionOut: {
+            /** Root Message Id */
+            root_message_id: string;
+            /** Title */
+            title: string;
+            /** Preview */
+            preview: string;
+            /** Agent Id */
+            agent_id: string | null;
+            /** Coding */
+            coding: boolean;
+            /** Reply Count */
+            reply_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Active */
+            active: boolean;
         };
         /** ChannelUpdate */
         ChannelUpdate: {
@@ -2500,6 +2699,8 @@ export interface components {
             default_agent_id?: string | null;
             /** Workspace Path */
             workspace_path?: string | null;
+            /** Permission Mode */
+            permission_mode?: ("auto_edit" | "ask") | null;
         };
         /** ChannelsOut */
         ChannelsOut: {
@@ -2918,6 +3119,31 @@ export interface components {
             /** Roots */
             roots: string[];
         };
+        /** KnowledgeDocOut */
+        KnowledgeDocOut: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "upload" | "lms";
+            /** Ref */
+            ref: string;
+            /** Title */
+            title: string;
+            /** Mime */
+            mime: string;
+            /** Size */
+            size: number;
+            /** Chars */
+            chars: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** LanguageIn */
         LanguageIn: {
             /**
@@ -2925,6 +3151,11 @@ export interface components {
              * @enum {string}
              */
             language: "ko" | "en";
+        };
+        /** LinkFolderIn */
+        LinkFolderIn: {
+            /** Path */
+            path: string;
         };
         /** LmsChannel */
         LmsChannel: {
@@ -3240,6 +3471,10 @@ export interface components {
             coding?: boolean | null;
             /** Attachment Ids */
             attachment_ids?: string[];
+            /** Agent Session */
+            agent_session?: boolean | null;
+            /** Agent */
+            agent?: string | null;
         };
         /** MessageOut */
         MessageOut: {
@@ -3473,6 +3708,17 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PluginOut */
+        PluginOut: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /** Tools */
+            tools: string[];
+            /** Error */
+            error: string | null;
+        };
         /** PrivatePart */
         PrivatePart: {
             /**
@@ -3510,7 +3756,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Kind */
-            kind?: ("ollama" | "openai") | null;
+            kind?: ("ollama" | "openai" | "anthropic") | null;
             /** Base Url */
             base_url?: string | null;
             /** Api Key */
@@ -3542,7 +3788,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "ollama" | "openai";
+            kind: "ollama" | "openai" | "anthropic";
             /** Base Url */
             base_url: string;
             /** Has Api Key */
@@ -3564,7 +3810,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "ollama" | "openai";
+            kind: "ollama" | "openai" | "anthropic";
             /** Base Url */
             base_url: string;
             /** Api Key */
@@ -3716,12 +3962,45 @@ export interface components {
             workspace: string | null;
             /** Log */
             log: string | null;
+            /** Permission Mode */
+            permission_mode?: ("auto_edit" | "ask") | null;
         };
         /**
          * RunStatus
          * @enum {string}
          */
         RunStatus: "queued" | "running" | "done" | "error" | "cancelled";
+        /** RunStepOut */
+        RunStepOut: {
+            /** Id */
+            id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "tool_call" | "tool_result" | "approval";
+            /** Call Id */
+            call_id: string | null;
+            /** Tool Name */
+            tool_name: string | null;
+            /** Args Json */
+            args_json: {
+                [key: string]: unknown;
+            } | null;
+            /** Output */
+            output: string | null;
+            /** Is Error */
+            is_error: boolean;
+            /** Approval Id */
+            approval_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** ServiceIn */
         ServiceIn: {
             /**
@@ -3903,6 +4182,16 @@ export interface components {
             kind: "read" | "write" | "approval";
             /** Description */
             description: string;
+            /**
+             * Native Only
+             * @default false
+             */
+            native_only: boolean;
+            /**
+             * Source
+             * @default core
+             */
+            source: string;
         };
         /** UninstallOut */
         UninstallOut: {
@@ -4613,6 +4902,235 @@ export interface operations {
             };
         };
     };
+    channel_sessions_api_v1_channels__channel_id__threads_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelSessionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_channel_folder_api_v1_channels__channel_id__folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkFolderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_channel_folder_api_v1_channels__channel_id__folders_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_channel_files_api_v1_channels__channel_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelFileOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_channel_file_api_v1_channels__channel_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_channel_file_api_v1_channels__channel_id__files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelFileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_channel_file_api_v1_channels__channel_id__files_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    channel_knowledge_api_v1_channels__channel_id__knowledge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeDocOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_attachment_api_v1_attachments__attachment_id__delete: {
         parameters: {
             query?: never;
@@ -4850,6 +5368,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plugins_api_v1_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginOut"][];
                 };
             };
         };
@@ -5129,6 +5667,37 @@ export interface operations {
             };
         };
     };
+    run_steps_api_v1_runs__run_id__steps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStepOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_run_api_v1_runs__run_id__cancel_post: {
         parameters: {
             query?: never;
@@ -5149,6 +5718,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_sft_api_v1_sft_export_get: {
+        parameters: {
+            query?: {
+                split?: "all" | "train" | "eval";
+                min_tool_steps?: number;
+                eval_ratio?: number;
+                only_success?: boolean;
+                native_only?: boolean;
+                mask?: boolean;
+                metadata?: boolean;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
                 };
             };
             /** @description Validation Error */

@@ -56,9 +56,11 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   ([setup](docs/lms-extension.md)).
 - **Notices and weekly review**: deadline and stale-inbox notices in the app, as macOS notifications
   or through Hermes to your messenger; weekly reviews are available on the Review page.
-- **Model providers**: register several model servers (Ollama or any OpenAI-compatible server) — keep a
+- **Model providers**: register Anthropic, OpenAI-compatible servers, or Ollama — keep a
   small classifier on this Mac and run bigger models on a GPU box in your network or a cloud service. Custom
   agents and the inbox classifier each pick one; settings label each as this device, your network or cloud.
+- **Channel workspace & knowledge search**: upload files into a channel's workspace (`uploads/`) and search
+  both uploaded files and synced LMS course materials through full-text indexing (`search_knowledge`).
 - **Private chat**: a ghost button in a local model's DM switches to a conversation Argos never stores —
   no database rows, no files, no logs — for work you must not leak. Text and files go only to models on this
   device or your network, and the chat lasts while the app is open.
@@ -66,7 +68,12 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   LMS posts into a briefing in a #today thread and sends the same text to your messenger. Reply to keep talking.
 
 **Work with agents**
-- **Hermes, Claude Code, Codex and local models** in threads and 1:1 chats; `@mention` any of them.
+- **Native harness + external agents**: run Argos' built-in agent harness (Anthropic, OpenAI, OpenAI-compatible,
+  Ollama) alongside **Hermes, Claude Code, and Codex** in chat-first channels, sidebar session trees, and 1:1 chats;
+  `@mention` any of them.
+- **Tools, permissions & plugins**: native agents use Argos domain tools and workspace file/shell tools with
+  per-channel `auto_edit` / `ask` permission modes and inline approval cards, plus custom Python tool plugins from
+  `data_dir/plugins/*.py`.
 - **Attachments**: paste, drop or pick images, PDFs and text files, and agents read them.
 - **Coding jobs**: `/job` on a card runs Claude Code or Codex in an allowed folder and reports back on
   the card (todo → in progress → review).
@@ -164,17 +171,26 @@ uses 8100/5273 and both can run at once. Development data lives in `backend/data
 
 ```
 backend/    FastAPI + async SQLAlchemy (SQLite WAL), Alembic migrations
-  argos/services.py    the single write path: activity log + WebSocket events
-  argos/chat.py        routing a message: thread, @mention, slash command or inbox
-  argos/runner.py      agent runs and coding jobs, streamed over WebSocket
-  argos/agents.py      adapters: Hermes, Claude Agent SDK, Codex app-server, Ollama
-  argos/mcp_server.py  the MCP server agents use
-  argos/desktop.py     entry point of the server inside the desktop app
+  argos/services.py       the single write path: activity log + WebSocket events
+  argos/chat.py           routing a message: thread, @mention, slash command or inbox
+  argos/runner.py         agent runs and coding jobs, streamed over WebSocket
+  argos/harness.py        native agent harness: tool loop, permissions, OpenAI/Anthropic
+  argos/argos_tools.py    Argos domain tools shared by native harness and MCP
+  argos/file_tools.py     workspace file and shell tools with path guards and backups
+  argos/plugins.py        custom tool plugin loader (data_dir/plugins/*.py)
+  argos/knowledge.py      channel workspace uploads and FTS5 trigram knowledge index
+  argos/approval_waits.py inline tool-approval wait registry
+  argos/agents.py         adapters: native harness, Hermes, Claude Agent SDK, Codex, Ollama
+  argos/mcp_server.py     the MCP server external agents use
+  argos/sft_export.py     SFT trajectory exporter (CLI & local /api/v1/sft/export)
+  argos/desktop.py        entry point of the server inside the desktop app
 frontend/   React 19 + Vite + Tailwind v4 + TanStack Query
 desktop/    Tauri 2 shell: sidecar server, menu bar, quick capture, updater
 integrations/  the argos skills installed into agent tools
+training/   synthetic seed generator, Unsloth QLoRA + W&B training, tool-calling eval
 ```
 
 More in [docs/PLAN.md](docs/PLAN.md) (design and phases), [docs/desktop.md](docs/desktop.md) (the
-app, updates and releases), [docs/mcp-setup.md](docs/mcp-setup.md) (MCP tools) and
+app, updates and releases), [docs/mcp-setup.md](docs/mcp-setup.md) (MCP tools),
+[docs/sft-training.md](docs/sft-training.md) (SFT export, training and eval), and
 [docs/decisions.md](docs/decisions.md) (decisions made along the way).

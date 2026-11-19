@@ -23,7 +23,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -41,6 +41,9 @@ from argos import providers
 from argos.attachments import AttachmentRef, ImagePart, PdfPart, TextPart, data_url, parts_for
 from argos.config import Settings
 from argos.models import Agent, AgentBackend
+
+if TYPE_CHECKING:
+    from argos.harness import HarnessRun
 
 # --- events ---------------------------------------------------------------------------
 
@@ -60,7 +63,34 @@ class Failure:
     message: str
 
 
-AgentEvent = Token | Status | Failure
+@dataclass(frozen=True)
+class ToolCall:
+    """The native harness is about to run a tool (args as parsed, maybe repaired)."""
+
+    id: str
+    name: str
+    args: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    id: str
+    name: str
+    output: str
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class ApprovalNeeded:
+    """The run is paused until the user decides on `approval_id`."""
+
+    approval_id: str
+    tool_name: str
+    args: dict[str, Any]
+    summary: str
+
+
+AgentEvent = Token | Status | Failure | ToolCall | ToolResult | ApprovalNeeded
 
 
 @dataclass(frozen=True)
@@ -1101,6 +1131,71 @@ def private_allowed(agent: Agent, settings: Settings) -> bool:
     return p.locality != "cloud" and not cloud_model_name(model)
 
 
+def _native_adapter(
+    agent: Agent,
+    settings: Settings,
+    workspace: Path | None,
+    no_tools: bool,
+    run: "HarnessRun | None",
+) -> AgentAdapter:
+    """Argos's own harness on the agent's provider (v0.2)."""
+    from argos.harness import (
+        AnthropicLLM,
+        HarnessLLM,
+        HarnessRun,
+        NativeHarnessAdapter,
+        OpenAIChatLLM,
+        ToolContext,
+        ToolRegistry,
+        registry_for,
+    )
+
+    run = run or HarnessRun()
+    p, model = local_target(agent, settings)
+    unreachable = providers.unreachable_text(p)
+    vision: Callable[[], Awaitable[bool]] | None = None
+    llm: HarnessLLM
+    if p.kind == "anthropic":
+        if not p.api_key:
+            raise AgentUnavailable(f"{p.name}에 API 키가 없어요 (설정 → 모델 연결)")
+        client = providers.anthropic_client(p, timeout=settings.agent_timeout, max_retries=0)
+        llm = AnthropicLLM(client, model, unreachable=unreachable)
+    else:
+        extra = {"reasoning_effort": "none"} if p.kind == "ollama" else None
+        openai_client = providers.chat_client(p, timeout=settings.agent_timeout, max_retries=0)
+        llm = OpenAIChatLLM(openai_client, model, extra=extra, unreachable=unreachable)
+        if p.kind == "ollama":
+
+            async def ollama_sees() -> bool:
+                return await providers.vision(p, model)
+
+            vision = ollama_sees
+        elif not agent.send_images:
+
+            async def no_images() -> bool:
+                return False
+
+            vision = no_images
+    registry = ToolRegistry() if no_tools else registry_for(agent.tools_json)
+    folder = (workspace or run.workspace or settings.argos_workspace).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    context = ToolContext(
+        workspace=folder,
+        agent=agent.name,
+        run_id=run.run_id,
+        channel_id=run.channel_id,
+        permission_mode=run.permission_mode,
+        roots=(settings.argos_workspace, *settings.job_roots, *run.roots),
+        backup_dir=settings.data_dir / "file-backups",
+        sessionmaker=run.sessionmaker,
+        settings=settings,
+        classifier=run.classifier,
+        trusted=run.trusted,
+        delegate=run.delegate,
+    )
+    return NativeHarnessAdapter(llm, agent.name, registry, context, run.gate, vision=vision)
+
+
 def build_adapter(
     agent: Agent,
     settings: Settings,
@@ -1108,11 +1203,15 @@ def build_adapter(
     job_workspace: Path | None = None,
     no_tools: bool = False,
     coding: bool = False,
+    harness: "HarnessRun | None" = None,
 ) -> AgentAdapter:
     """`job_workspace` set: a coding job (PLAN Phase 6) with write access there only;
     with `coding`, a coding-mode thread in that project folder (network, user settings).
     `no_tools`: plain conversation without Argos tools (debate turns, PLAN Phase 10).
-    Custom agents get only the Argos tools on their list."""
+    Custom agents get only the Argos tools on their list. `harness`: the run a native
+    agent works for (its approvals); without it, calls needing approval are refused."""
+    if agent.backend == AgentBackend.NATIVE:
+        return _native_adapter(agent, settings, job_workspace, no_tools, harness)
     if job_workspace is not None and agent.backend not in (
         AgentBackend.CLAUDE_CODE,
         AgentBackend.CODEX,
@@ -1137,6 +1236,8 @@ def build_adapter(
             return HermesResponsesAdapter(client, agent.model or settings.hermes_model, agent.name)
         case AgentBackend.OLLAMA:
             p, model = local_target(agent, settings)
+            if p.kind == "anthropic":  # its Messages API, through the harness loop
+                return _native_adapter(agent, settings, None, not tools, harness)
             extra: dict[str, Any] | None = None
             sees: Callable[[], Awaitable[bool]] | None = None  # None: the server decides
             if p.kind == "ollama":

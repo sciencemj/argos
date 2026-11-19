@@ -15,7 +15,15 @@ import { dday, fmt, isoToLocalInput, localInputToIso } from "../dates";
 import { tr, tt } from "../i18n";
 import { CloseIcon } from "../icons";
 import { JobSection } from "../jobs";
-import { btn, Chip, DdayBadge, ErrorText, field, label } from "../ui";
+import {
+  btn,
+  Chip,
+  DdayBadge,
+  ErrorText,
+  field,
+  label,
+  SelectMenu,
+} from "../ui";
 
 export const PRIORITIES = [
   { value: 0, label: tr("낮음") },
@@ -117,36 +125,28 @@ function TaskDetail({
       <div className="flex flex-col gap-4 rounded-xl bg-page p-3.5">
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("상태")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={task.status}
-            onChange={(e) =>
-              save({ id: task.id, status: e.target.value as Task["status"] })
-            }
-          >
-            {STATUSES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => save({ id: task.id, status: value })}
+            options={[
+              ...STATUSES.map((s) => ({ value: s.id, label: s.label })),
+            ]}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("채널")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={task.channel_id}
-            onChange={(e) => save({ id: task.id, channel_id: e.target.value })}
-          >
-            {channel && !pickable.includes(channel) && (
-              <option value={channel.id}>{channelLabel(channel)}</option>
-            )}
-            {pickable.map((c) => (
-              <option key={c.id} value={c.id}>
-                {channelLabel(c)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => save({ id: task.id, channel_id: value })}
+            options={[
+              ...(channel && !pickable.includes(channel)
+                ? [{ value: channel.id, label: channelLabel(channel) }]
+                : []),
+              ...pickable.map((c) => ({ value: c.id, label: channelLabel(c) })),
+            ]}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("마감")}</span>
@@ -164,23 +164,23 @@ function TaskDetail({
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("우선순위")}</span>
-          <select
+          <SelectMenu
             className={field}
-            value={task.priority ?? ""}
-            onChange={(e) =>
+            value={task.priority == null ? "" : String(task.priority)}
+            onChange={(value) =>
               save({
                 id: task.id,
-                priority: e.target.value === "" ? null : Number(e.target.value),
+                priority: value === "" ? null : Number(value),
               })
             }
-          >
-            <option value="">{tr("없음")}</option>
-            {PRIORITIES.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: tr("없음") },
+              ...PRIORITIES.map((p) => ({
+                value: String(p.value),
+                label: p.label,
+              })),
+            ]}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("메모")}</span>

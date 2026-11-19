@@ -1,22 +1,25 @@
 import { language, setLanguage, tr } from "./i18n";
 import { setThemePref, type ThemePref, useThemePref } from "./theme";
+import { SelectMenu } from "./ui";
+
+const small = "rounded-lg border border-line bg-card px-2 py-1 text-ink";
 
 export function LanguagePicker() {
   return (
-    <label className="flex items-center gap-2 text-[13px] text-text-3">
+    <div className="flex items-center gap-2 text-[13px] text-text-3">
       <span>{language() === "ko" ? "언어" : "Language"}</span>
-      <select
-        aria-label="Language / 언어"
+      <SelectMenu
+        ariaLabel="Language / 언어"
         value={language()}
-        onChange={(event) =>
-          void setLanguage(event.target.value as "ko" | "en")
-        }
-        className="rounded-lg border border-line bg-card px-2 py-1 text-ink"
-      >
-        <option value="ko">한국어</option>
-        <option value="en">English</option>
-      </select>
-    </label>
+        onChange={(value) => void setLanguage(value)}
+        className={small}
+        menuWidth={160}
+        options={[
+          { value: "ko", label: "한국어" },
+          { value: "en", label: "English" },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -25,18 +28,20 @@ export function LanguagePicker() {
 export function ThemePicker() {
   const pref = useThemePref();
   return (
-    <label className="flex items-center gap-2 text-[13px] text-text-3">
+    <div className="flex items-center gap-2 text-[13px] text-text-3">
       <span>{tr("화면")}</span>
-      <select
-        aria-label={tr("화면 테마")}
+      <SelectMenu<ThemePref>
+        ariaLabel={tr("화면 테마")}
         value={pref}
-        onChange={(event) => setThemePref(event.target.value as ThemePref)}
-        className="rounded-lg border border-line bg-card px-2 py-1 text-ink"
-      >
-        <option value="system">{tr("시스템")}</option>
-        <option value="light">{tr("라이트")}</option>
-        <option value="dark">{tr("다크")}</option>
-      </select>
-    </label>
+        onChange={setThemePref}
+        className={small}
+        menuWidth={160}
+        options={[
+          { value: "system", label: tr("시스템") },
+          { value: "light", label: tr("라이트") },
+          { value: "dark", label: tr("다크") },
+        ]}
+      />
+    </div>
   );
 }

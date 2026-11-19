@@ -111,6 +111,11 @@ class Channel(Record):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     # The project folder coding-mode threads work in (inside ARGOS_JOB_ROOTS).
     workspace_path: Mapped[str | None] = mapped_column(String(500))
+    # Native harness approvals (PermissionMode); None: the app-wide setting.
+    permission_mode: Mapped[str | None] = mapped_column(String(20))
+    # Local folders the user linked to this channel: agents' file tools treat them like
+    # the channel's own workspace (v0.2). Absolute, checked paths.
+    linked_folders: Mapped[list[str] | None] = mapped_column(JSON)
 
 
 class ChannelRead(Base):
@@ -348,7 +353,8 @@ class Approval(Record):
     __tablename__ = "approval"
 
     requested_by: Mapped[str] = mapped_column(String(100))  # actor, e.g. "agent:claude"
-    run_id: Mapped[str | None] = mapped_column(String(36))  # agent_run from Phase 5
+    # The agent_run waiting on it (native harness tool calls), else None.
+    run_id: Mapped[str | None] = mapped_column(String(36), index=True)
     channel_id: Mapped[str | None] = mapped_column(
         ForeignKey("channel.id", ondelete="SET NULL"), index=True
     )
@@ -363,7 +369,17 @@ class Approval(Record):
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
+class PermissionMode(StrEnum):
+    """When the native harness asks the user before running a tool (v0.2)."""
+
+    # Reads and edits inside the workspace run on their own; deleting, shell commands
+    # and anything outside the workspace wait for approval.
+    AUTO_EDIT = "auto_edit"
+    ASK = "ask"  # every write and shell command waits for approval
+
+
 class AgentBackend(StrEnum):
+    NATIVE = "native"  # Argos's own harness: provider model + Argos tool loop (v0.2)
     HERMES = "hermes"  # Hermes gateway, OpenAI-compatible API
     OLLAMA = "ollama"  # local model through Ollama's OpenAI-compatible API
     CLAUDE_CODE = "claude_code"  # `claude -p` headless
@@ -431,6 +447,29 @@ class AgentRun(Record):
     instructions: Mapped[str | None] = mapped_column(Text)
     workspace: Mapped[str | None] = mapped_column(String(500))
     log: Mapped[str | None] = mapped_column(Text)  # tool-use trace, one line per step
+    permission_mode: Mapped[str | None] = mapped_column(String(20))  # native runs: in effect
+    # ask_agent (v0.2): the run that delegated this one, and how deep the chain is.
+    parent_run_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    depth: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class AgentRunStep(Base):
+    """One structured step of a native harness run: a tool call, its result, or an
+    approval it waited for. Bookkeeping like the run log: no activity log."""
+
+    __tablename__ = "agent_run_step"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_run.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)  # order within the run
+    kind: Mapped[str] = mapped_column(String(20))  # tool_call | tool_result | approval
+    call_id: Mapped[str | None] = mapped_column(String(100))  # pairs call and result
+    tool_name: Mapped[str | None] = mapped_column(String(100))
+    args_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    output: Mapped[str | None] = mapped_column(Text)
+    is_error: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    approval_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
 class DebateMode(StrEnum):
@@ -485,6 +524,26 @@ class Notification(Record):
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)  # to the messenger
     send_error: Mapped[str | None] = mapped_column(Text)
+
+
+class KnowledgeDoc(Record):
+    """A file whose text agents can search (v0.2 Stage 1.2): an upload in a channel's
+    files, or an LMS course material. The text lives in the knowledge_fts index."""
+
+    __tablename__ = "knowledge_doc"
+    __table_args__ = (UniqueConstraint("source", "ref", name="uq_knowledge_doc_ref"),)
+
+    channel_id: Mapped[str | None] = mapped_column(
+        ForeignKey("channel.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(20))  # upload | lms
+    # upload: the path inside the channel's uploads folder; lms: the attachment id
+    ref: Mapped[str] = mapped_column(String(500))
+    title: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    chars: Mapped[int] = mapped_column(Integer, default=0)  # 0: no text found
 
 
 class AgentSession(Record):

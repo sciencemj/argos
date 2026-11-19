@@ -15,12 +15,27 @@ import {
 import { fmt } from "../dates";
 import { inDesktopApp, openLmsExtension } from "../desktop";
 import { tr } from "../i18n";
-import { btn, card, ErrorText, field, label } from "../ui";
+import {
+  btn,
+  ConfirmDialog,
+  card,
+  ErrorText,
+  field,
+  label,
+  SelectMenu,
+} from "../ui";
 
 export function LmsSection() {
   const status = useLmsStatus();
   const courseNames = useLmsCourseNames();
   const merge = useMergeLmsCourse();
+  // A merge cannot be undone: it waits for a yes in the app's own dialog.
+  const [pendingMerge, setPendingMerge] = useState<{
+    channelId: string;
+    name: string;
+    targetId: string;
+    targetName: string;
+  } | null>(null);
   const targets = status.data?.merge_targets ?? [];
   const summarySetting = useLmsSummarySetting();
   return (
@@ -70,43 +85,40 @@ export function LmsSection() {
                 </span>
                 <span>{course.name}</span>
                 {course.course && targets.length > 0 && (
-                  <select
-                    aria-label={tr(
+                  <SelectMenu
+                    ariaLabel={tr(
                       `${course.name} 합칠 채널`,
                       `Merge ${course.name} into`,
                     )}
                     className="ml-auto rounded-md border border-line bg-card px-1.5 py-0.5 text-xs text-text-2"
                     value=""
                     disabled={merge.isPending}
-                    onChange={(event) => {
+                    onChange={(value) => {
                       const target = targets.find(
-                        (t) => t.channel_id === event.target.value,
+                        (t) => t.channel_id === value,
                       );
-                      if (
-                        target &&
-                        window.confirm(
-                          tr(
-                            `'${course.name}'을(를) '${target.name}'에 합칠까요? 이 채널의 내용이 그쪽으로 옮겨지고 이 채널은 사라져요. 되돌릴 수 없어요.`,
-                            `Merge '${course.name}' into '${target.name}'? Its contents move there and this channel goes away. This cannot be undone.`,
-                          ),
-                        )
-                      ) {
-                        merge.mutate({
+                      if (target)
+                        setPendingMerge({
                           channelId: course.channel_id,
+                          name: course.name,
                           targetId: target.channel_id,
+                          targetName: target.name,
                         });
-                      }
                     }}
-                  >
-                    <option value="">
-                      {tr("내 채널과 합치기…", "Merge into my channel…")}
-                    </option>
-                    {targets.map((t) => (
-                      <option key={t.channel_id} value={t.channel_id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      {
+                        value: "",
+                        label: tr(
+                          "내 채널과 합치기…",
+                          "Merge into my channel…",
+                        ),
+                      },
+                      ...targets.map((t) => ({
+                        value: t.channel_id,
+                        label: t.name,
+                      })),
+                    ]}
+                  />
                 )}
               </li>
             ))}
@@ -159,6 +171,28 @@ export function LmsSection() {
         </summary>
         <ExtensionConnection />
       </details>
+      <ConfirmDialog
+        open={pendingMerge !== null}
+        title={tr("채널 합치기", "Merge channels")}
+        danger
+        confirmLabel={tr("합치기", "Merge")}
+        message={
+          pendingMerge
+            ? tr(
+                `'${pendingMerge.name}'을(를) '${pendingMerge.targetName}'에 합칠까요? 이 채널의 내용이 그쪽으로 옮겨지고 이 채널은 사라져요. 되돌릴 수 없어요.`,
+                `Merge '${pendingMerge.name}' into '${pendingMerge.targetName}'? Its contents move there and this channel goes away. This cannot be undone.`,
+              )
+            : ""
+        }
+        onConfirm={() =>
+          pendingMerge &&
+          merge.mutate({
+            channelId: pendingMerge.channelId,
+            targetId: pendingMerge.targetId,
+          })
+        }
+        onClose={() => setPendingMerge(null)}
+      />
     </section>
   );
 }

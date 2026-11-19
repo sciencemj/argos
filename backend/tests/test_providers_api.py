@@ -243,3 +243,18 @@ def test_test_reuses_saved_key_only_for_same_host(
         json={"kind": "ollama", "base_url": "http://typo.test:11434", "provider_id": pid},
     )
     assert keys == [None]
+
+
+def test_provider_without_model_list_is_reachable(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def no_list(p: ProviderConfig, *, decision: bool = False) -> list[ProviderModel]:
+        raise providers.ProviderNoModelList("no /models")
+
+    monkeypatch.setattr(providers, "list_models", no_list)
+    body = api.post(
+        "/api/v1/providers/test",
+        json={"kind": "openai", "base_url": "https://forge.test/api/training/v1"},
+    ).json()
+    assert body["reachable"] is True and body["models"] == []
+    assert "직접 적어" in body["error"]

@@ -10,7 +10,7 @@ import {
   useTestProvider,
 } from "../api";
 import { tr, tt } from "../i18n";
-import { btn, card, Dialog, ErrorText, field, label } from "../ui";
+import { btn, card, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
 
 type Locality = Provider["locality"];
 type Strict = NonNullable<Provider["strict_locality"]>;
@@ -18,7 +18,35 @@ type Strict = NonNullable<Provider["strict_locality"]>;
 const KINDS = [
   { id: "ollama", label: "Ollama" },
   { id: "openai", label: tr("OpenAI 호환") },
+  { id: "anthropic", label: "Anthropic" },
 ] as const;
+
+/** Addresses offered per kind: one click fills the field (OpenAI-compatible servers
+ * keep a free address, e.g. LM Studio, vLLM, OpenRouter). */
+const PRESETS: Record<Provider["kind"], { label: string; url: string }[]> = {
+  ollama: [{ label: tr("이 Mac", "This Mac"), url: "http://127.0.0.1:11434" }],
+  openai: [
+    { label: "OpenAI", url: "https://api.openai.com/v1" },
+    { label: "OpenRouter", url: "https://openrouter.ai/api/v1" },
+    { label: "LM Studio", url: "http://127.0.0.1:1234/v1" },
+  ],
+  anthropic: [{ label: "Anthropic", url: "https://api.anthropic.com" }],
+};
+
+const URL_HINT: Record<Provider["kind"], string> = {
+  ollama: tr(
+    "Ollama 서버 주소예요. /v1은 Argos가 붙여요.",
+    "The Ollama server; Argos adds /v1.",
+  ),
+  openai: tr(
+    "OpenAI 또는 OpenAI 호환 서버의 /v1 주소까지 적어 주세요.",
+    "OpenAI or any OpenAI-compatible server, up to its /v1.",
+  ),
+  anthropic: tr(
+    "Anthropic API 주소예요. 보통 그대로 두면 돼요 (키 필요).",
+    "The Anthropic API; usually leave it as is (needs a key).",
+  ),
+};
 
 const LOCALITY_TEXT: Record<Locality, string> = {
   device: tr("이 기기"),
@@ -146,7 +174,9 @@ function ProviderStatus({ id }: { id: string }) {
   if (!data) return null;
   return data.reachable ? (
     <span className="text-[12px] text-meta">
-      {tt`연결됨 · 모델 ${data.models?.length ?? 0}개`}
+      {data.error
+        ? `${tr("연결됨")} · ${errorText(data.error)}`
+        : tt`연결됨 · 모델 ${data.models?.length ?? 0}개`}
     </span>
   ) : (
     <span className="text-[12px] text-danger [overflow-wrap:anywhere]">
@@ -239,35 +269,50 @@ function ProviderDialog({
           </label>
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("종류")}</span>
-            <select
+            <SelectMenu
               className={field}
               value={kind}
-              onChange={(e) =>
-                edited(setKind)(e.target.value as Provider["kind"])
-              }
-            >
-              {KINDS.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => {
+                const next = value;
+                edited(setKind)(next);
+                // A preset address of the old kind would be wrong for the new one.
+                const presets = Object.values(PRESETS)
+                  .flat()
+                  .map((p) => p.url);
+                if (!baseUrl.trim() || presets.includes(baseUrl.trim()))
+                  setBaseUrl(PRESETS[next][0]?.url ?? "");
+              }}
+              options={[...KINDS.map((k) => ({ value: k.id, label: k.label }))]}
+            />
           </label>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className={label}>{tr("주소")}</span>
-          <input
-            className={`${field} font-mono text-[13px]`}
-            value={baseUrl}
-            onChange={(e) => edited(setBaseUrl)(e.target.value)}
-            placeholder={
-              kind === "ollama"
-                ? "http://127.0.0.1:11434"
-                : "https://api.example.com/v1"
-            }
-            required
-          />
-        </label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
+            <span className={label}>{tr("주소")}</span>
+            <input
+              className={`${field} font-mono text-[13px]`}
+              value={baseUrl}
+              onChange={(e) => edited(setBaseUrl)(e.target.value)}
+              placeholder={
+                PRESETS[kind][0]?.url ?? "https://api.example.com/v1"
+              }
+              required
+            />
+          </label>
+          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-meta">
+            <span className="grow">{URL_HINT[kind]}</span>
+            {PRESETS[kind].map((p) => (
+              <button
+                key={p.url}
+                type="button"
+                className="h-6 cursor-pointer rounded-full border border-line-soft bg-card px-2.5 text-[11.5px] text-text-2 hover:text-ink"
+                onClick={() => edited(setBaseUrl)(p.url)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </span>
+        </div>
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("API 키 (선택)")}</span>
           <input
@@ -306,17 +351,18 @@ function ProviderDialog({
         )}
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("더 엄격하게 표시")}</span>
-          <select
+          <SelectMenu
             className={field}
             value={strict ?? ""}
-            onChange={(e) => setStrict((e.target.value || null) as Strict)}
-          >
-            <option value="">{tr("자동")}</option>
-            {(known === "device" || strict === "network") && (
-              <option value="network">{tr("내 네트워크로")}</option>
-            )}
-            <option value="cloud">{tr("클라우드로")}</option>
-          </select>
+            onChange={(value) => setStrict((value || null) as Strict)}
+            options={[
+              { value: "", label: tr("자동") },
+              ...(known === "device" || strict === "network"
+                ? [{ value: "network", label: tr("내 네트워크로") }]
+                : []),
+              { value: "cloud", label: tr("클라우드로") },
+            ]}
+          />
         </label>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -331,7 +377,9 @@ function ProviderDialog({
           {result &&
             (result.reachable ? (
               <span className="text-[12.5px] text-text-2">
-                {tt`모델 ${result.models?.length ?? 0}개`}
+                {result.error
+                  ? errorText(result.error)
+                  : tt`모델 ${result.models?.length ?? 0}개`}
               </span>
             ) : (
               <span className="text-[12.5px] text-danger [overflow-wrap:anywhere]">

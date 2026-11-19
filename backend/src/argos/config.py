@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.
     agent_workspace: Path = Path("agent-workspace")
     agent_timeout: float = 300.0  # seconds before a chat run is stopped
+    # Native harness (v0.2): the folder its file tools work in unless a coding thread
+    # names a project, and when it asks before running a tool (a channel may override).
+    argos_workspace: Path = Path("workspace")
+    permission_mode: Literal["auto_edit", "ask"] = "auto_edit"
+    # Longest a run waits for a tool approval before treating it as rejected (0: forever).
+    approval_timeout: float = 86400.0
+    # ask_agent: how deep agents may delegate to each other (1: no nested asks).
+    max_agent_depth: int = 2
     # Coding jobs (PLAN Phase 6, §9: allowed directories are the user's choice). A job
     # may only write inside one of these roots; without --dir it gets a fresh folder in
     # the first one.
@@ -153,7 +161,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _inside_data_dir(self) -> "Settings":
         """Relative data paths are inside data_dir, whatever the working directory."""
-        for name in ("db_path", "codex_home", "agent_workspace", "vault_backup_dir", "backup_dir"):
+        for name in (
+            "db_path",
+            "codex_home",
+            "agent_workspace",
+            "argos_workspace",
+            "vault_backup_dir",
+            "backup_dir",
+        ):
             path: Path = getattr(self, name)
             if not path.is_absolute():
                 setattr(self, name, self.data_dir / path)
