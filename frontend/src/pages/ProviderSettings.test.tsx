@@ -186,6 +186,7 @@ test("google kind fills the Gemini address and explains API keys only", () => {
   render(<ProviderSection />);
   fireEvent.click(screen.getByRole("button", { name: "연결 추가" }));
   expect(screen.queryByText(/Google AI 구독/)).toBeNull();
+  expect(screen.getByText("API 키 (선택)")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("이름"), {
     target: { value: "Gemini" },
   });
@@ -194,6 +195,9 @@ test("google kind fills the Gemini address and explains API keys only", () => {
     "https://generativelanguage.googleapis.com",
   );
   expect(screen.getByText(/Google AI 구독/)).toBeInTheDocument();
+  // Gemini needs a key: the label drops "(선택)".
+  expect(screen.getByText("API 키")).toBeInTheDocument();
+  expect(screen.queryByText("API 키 (선택)")).toBeNull();
   fireEvent.change(screen.getByLabelText(/API 키/), {
     target: { value: "AIza-1" },
   });

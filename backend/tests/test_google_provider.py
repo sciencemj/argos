@@ -234,6 +234,7 @@ class FakeModels:
         self.turns = turns
         self.requests: list[dict[str, Any]] = []
         self.stream_error: Exception | None = None
+        self.whole_error: Exception | None = None
 
     async def generate_content_stream(
         self, *, model: str, contents: Any, config: Any
@@ -254,6 +255,9 @@ class FakeModels:
         self, *, model: str, contents: Any, config: Any
     ) -> gt.GenerateContentResponse:
         self.requests.append({"model": model, "contents": contents, "config": config})
+        if self.whole_error is not None:
+            error, self.whole_error = self.whole_error, None
+            raise error
         parts = [p for c in self.turns.pop(0) for p in (c.candidates or [])[0].content.parts]  # type: ignore[union-attr]
         return chunk(*parts)
 
@@ -310,6 +314,38 @@ async def test_gemini_retries_without_thinking_and_falls_back_to_whole() -> None
     models.stream_error = genai_errors.ServerError(500, {"error": {"message": "boom"}})
     events = await _collect(llm.turn("", [HMsg("user", "hi")], []))
     assert events == [Token("b"), LLMDone("b", [])]
+
+
+async def test_gemini_whole_answer_retries_without_thinking() -> None:
+    models = FakeModels([[chunk(gt.Part(text="c"))]])
+    models.stream_error = genai_errors.ServerError(503, {"error": {"message": "busy"}})
+    models.whole_error = genai_errors.ClientError(
+        400, {"error": {"message": "Thinking is not supported by this model."}}
+    )
+    llm = GeminiLLM(fake_client(models), "gemini-old")
+    events = await _collect(llm.turn("", [HMsg("user", "hi")], []))
+    assert events == [Token("c"), LLMDone("c", [])]
+    assert models.requests[1]["config"].thinking_config is not None  # the refused one
+    assert models.requests[2]["config"].thinking_config is None
+
+
+async def test_gemini_whole_answer_other_client_error_is_unavailable() -> None:
+    models = FakeModels([])
+    models.stream_error = genai_errors.ServerError(500, {"error": {"message": "boom"}})
+    models.whole_error = genai_errors.ClientError(400, {"error": {"message": "bad request"}})
+    llm = GeminiLLM(fake_client(models), "gemini-x")
+    with pytest.raises(AgentUnavailable, match="ClientError"):
+        await _collect(llm.turn("", [HMsg("user", "hi")], []))
+    assert len(models.requests) == 2  # no retry for an unrelated 400
+
+
+def test_gemini_client_refuses_a_keyless_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The SDK would otherwise pick these up from the environment.
+    monkeypatch.setenv("GEMINI_API_KEY", "env-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "env-key")
+    for key in (None, ""):
+        with pytest.raises(ValueError, match="requires an API key"):
+            providers.gemini_client(google(api_key=key), timeout=30, max_retries=0)
 
 
 async def test_gemini_client_error_is_unavailable() -> None:

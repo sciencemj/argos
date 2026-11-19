@@ -874,12 +874,7 @@ class GeminiLLM:
         self, system: str, contents: list[genai_types.Content], tools: list[ToolDef]
     ) -> AsyncIterator[Token | Status | LLMDone]:
         """The same turn without streaming: the text arrives as one Token."""
-        try:
-            response = await self._client.aio.models.generate_content(
-                model=self._model, contents=cast(Any, contents), config=self._config(system, tools)
-            )
-        except Exception as exc:
-            raise _unavailable(exc, self._unreachable) from exc
+        response = await self._generate(system, contents, tools)
         text: list[str] = []
         calls: list[PendingCall] = []
         statuses = list(self._parts(response, text, calls))
@@ -889,6 +884,22 @@ class GeminiLLM:
         if text:
             yield Token("".join(text))
         yield LLMDone("".join(text), calls)
+
+    async def _generate(
+        self, system: str, contents: list[genai_types.Content], tools: list[ToolDef]
+    ) -> genai_types.GenerateContentResponse:
+        """One whole answer; like `_start`, a model without thinking gets it again without."""
+        try:
+            return await self._client.aio.models.generate_content(
+                model=self._model, contents=cast(Any, contents), config=self._config(system, tools)
+            )
+        except genai_errors.ClientError as exc:
+            if not (self._thoughts and exc.code == 400 and "think" in str(exc).lower()):
+                raise _unavailable(exc, self._unreachable) from exc
+            self._thoughts = False
+            return await self._generate(system, contents, tools)
+        except Exception as exc:
+            raise _unavailable(exc, self._unreachable) from exc
 
     def _parts(
         self,

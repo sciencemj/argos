@@ -157,7 +157,10 @@ def anthropic_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> 
 def gemini_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> genai.Client:
     """Google's own Gemini API (google-genai SDK), with an AI Studio API key from the
     Keychain. Explicit key and `vertexai=False` keep the SDK from reading GOOGLE_API_KEY /
-    GOOGLE_GENAI_USE_VERTEXAI out of the environment."""
+    GOOGLE_GENAI_USE_VERTEXAI out of the environment; without a key the SDK would fall back
+    to GEMINI_API_KEY / GOOGLE_API_KEY, so a keyless provider is refused here."""
+    if not p.api_key:
+        raise ValueError("Google provider requires an API key")
     retry = genai_types.HttpRetryOptions(attempts=max_retries + 1)
     options = genai_types.HttpOptions(
         base_url=f"{p.base_url}/",
@@ -165,7 +168,7 @@ def gemini_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> gen
         timeout=int(timeout * 1000),  # milliseconds
         retry_options=retry,
     )
-    return genai.Client(vertexai=False, api_key=p.api_key or "", http_options=options)
+    return genai.Client(vertexai=False, api_key=p.api_key, http_options=options)
 
 
 def private_client(p: ProviderConfig, *, timeout: float) -> AsyncOpenAI:

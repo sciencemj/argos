@@ -335,7 +335,11 @@ function ProviderDialog({
           </span>
         </div>
         <label className="flex flex-col gap-1">
-          <span className={label}>{tr("API 키 (선택)")}</span>
+          <span className={label}>
+            {kind === "anthropic" || kind === "google"
+              ? tr("API 키", "API key")
+              : tr("API 키 (선택)")}
+          </span>
           <input
             type="password"
             autoComplete="off"
