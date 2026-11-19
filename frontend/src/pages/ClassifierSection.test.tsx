@@ -5,6 +5,7 @@ import {
   ClassifierQuickPick,
   ClassifierSection,
   settingsTab,
+  tabAfterKey,
 } from "./SettingsPage";
 
 const mocks = vi.hoisted(() => ({
@@ -135,4 +136,13 @@ test("settings tab from ?tab= or an old #anchor", () => {
   expect(settingsTab("tab=bogus", "#calendar-conflicts")).toBe("integrations");
   expect(settingsTab("", "#work")).toBe("system");
   expect(settingsTab("", "#usage")).toBe("agents");
+});
+
+test("arrow keys move between settings tabs, wrapping", () => {
+  expect(tabAfterKey("agents", "ArrowRight")).toBe("integrations");
+  expect(tabAfterKey("system", "ArrowRight")).toBe("agents");
+  expect(tabAfterKey("agents", "ArrowLeft")).toBe("system");
+  expect(tabAfterKey("integrations", "End")).toBe("system");
+  expect(tabAfterKey("system", "Home")).toBe("agents");
+  expect(tabAfterKey("agents", "Enter")).toBeNull();
 });

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { selectValue } from "../test-select";
-import { AgentsSection } from "./CustomAgents";
+import { AgentsSection, windowName } from "./CustomAgents";
 
 const mocks = vi.hoisted(() => ({
   save: { mutate: vi.fn(), isPending: false, error: null as unknown },
@@ -42,7 +42,7 @@ vi.mock("../api", () => ({
           message: "",
           windows: [
             { name: "5h", used_percent: 72.4 },
-            { name: "7d", used_percent: 11 },
+            { name: "10080m", used_percent: 11 },
           ],
         },
       ],
@@ -299,4 +299,12 @@ test("deleting a bot asks in a dialog first", () => {
     ) as HTMLButtonElement,
   );
   expect(mocks.remove).toHaveBeenCalledWith("gemma");
+});
+
+test("usage windows in minutes read as hours or days", () => {
+  expect(windowName("300m")).toBe("5h");
+  expect(windowName("43200m")).toBe("30d");
+  expect(windowName("10080m")).toBe("7d");
+  expect(windowName("90m")).toBe("90m");
+  expect(windowName("5h")).toBe("5h");
 });

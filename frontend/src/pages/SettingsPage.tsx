@@ -91,6 +91,26 @@ export function settingsTab(search: string, hash: string): SettingsTab {
   return HASH_TAB[hash.replace(/^#/, "")] ?? "agents";
 }
 
+/** The tab ArrowLeft/ArrowRight (wrapping), Home or End moves to; null for other keys. */
+export function tabAfterKey(
+  current: SettingsTab,
+  key: string,
+): SettingsTab | null {
+  const at = TABS.findIndex((t) => t.id === current);
+  const n = TABS.length;
+  const index =
+    key === "ArrowRight"
+      ? (at + 1) % n
+      : key === "ArrowLeft"
+        ? (at - 1 + n) % n
+        : key === "Home"
+          ? 0
+          : key === "End"
+            ? n - 1
+            : null;
+  return index === null ? null : TABS[index].id;
+}
+
 /** Settings in three tabs (v0.2): agents & models, integrations, workspace & system. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
@@ -138,6 +158,13 @@ export function SettingsPage() {
           role="tablist"
           aria-label={tr("설정 탭", "Settings tabs")}
           className="grid grid-cols-3 gap-1 rounded-2xl bg-inset p-1"
+          onKeyDown={(e) => {
+            const next = tabAfterKey(current, e.key);
+            if (!next) return;
+            e.preventDefault();
+            choose(next);
+            document.getElementById(`settings-tab-${next}`)?.focus();
+          }}
         >
           {TABS.map((tab) => (
             <button
@@ -145,6 +172,7 @@ export function SettingsPage() {
               type="button"
               role="tab"
               id={`settings-tab-${tab.id}`}
+              tabIndex={current === tab.id ? 0 : -1}
               aria-selected={current === tab.id}
               aria-controls={`settings-panel-${tab.id}`}
               title={tab.hint}
@@ -268,13 +296,14 @@ export function ClassifierQuickPick() {
             options={[
               ...list.map((m) => ({
                 value: m.name,
-                label: (
-                  <>
-                    {m.name}
-                    {m.decision ? ` · ${tr("판단 모델")}` : ""}
-                    {m.remote ? ` · ${tr("클라우드")}` : ""}
-                  </>
-                ),
+                // A plain string label: the menu's type-ahead searches it.
+                label: [
+                  m.name,
+                  m.decision ? tr("판단 모델") : null,
+                  m.remote ? tr("클라우드") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
               })),
               ...(active && !list.some((m) => m.name === active)
                 ? [{ value: active, label: active }]

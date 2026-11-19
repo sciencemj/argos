@@ -73,6 +73,17 @@ const USAGE_PROVIDER: Record<string, string> = {
   codex: "codex",
 };
 
+/** A usage window's name for people: raw minute counts ("300m", "43200m") become
+ * days or hours ("5h", "30d"); anything else is shown as it came. */
+export function windowName(name: string): string {
+  const raw = /^(\d+)m$/.exec(name);
+  if (!raw) return name;
+  const minutes = Number(raw[1]);
+  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
+  return name;
+}
+
 /** The model a built-in agent answers with (Hermes picks its own in its gateway). */
 function BuiltinModelPicker({ agent }: { agent: Agent }) {
   // The built-in local agent runs where the inbox classifier runs (Phase 20).
@@ -104,12 +115,8 @@ function BuiltinModelPicker({ agent }: { agent: Agent }) {
           { value: "", label: fallback },
           ...known.map((m) => ({
             value: m.id,
-            label: (
-              <>
-                {m.label}
-                {m.description ? ` · ${m.description}` : ""}
-              </>
-            ),
+            // A plain string label: the menu's type-ahead searches it.
+            label: m.description ? `${m.label} · ${m.description}` : m.label,
           })),
           ...(current && !known.some((m) => m.id === current)
             ? [{ value: current, label: current }]
@@ -148,7 +155,7 @@ export function AgentsSection() {
     if (!p) return null;
     return p.windows.length
       ? p.windows
-          .map((w) => `${w.name} ${Math.round(w.used_percent)}%`)
+          .map((w) => `${windowName(w.name)} ${Math.round(w.used_percent)}%`)
           .join(" · ")
       : p.message;
   };
