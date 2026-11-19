@@ -1,7 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { selectValue } from "../test-select";
-import { ClassifierSection } from "./SettingsPage";
+import {
+  ClassifierQuickPick,
+  ClassifierSection,
+  settingsTab,
+  tabAfterKey,
+} from "./SettingsPage";
 
 const mocks = vi.hoisted(() => ({
   save: {
@@ -106,4 +111,38 @@ test("hermes hides provider select", () => {
   mocks.provider = "hermes";
   render(<ClassifierSection />);
   expect(screen.queryByLabelText("모델 연결")).toBeNull();
+});
+
+test("one-line pick saves the model on the classifier's connection", () => {
+  render(<ClassifierQuickPick />);
+  const pick = screen.getByLabelText("자동 분류·요약 모델");
+  expect(pick.dataset.value).toBe("small:1b");
+  selectValue(pick, "");
+  expect(mocks.save.mutate).toHaveBeenCalledWith({
+    model: null,
+    provider_id: "home",
+  });
+});
+
+test("one-line pick is hidden while Hermes classifies", () => {
+  mocks.provider = "hermes";
+  render(<ClassifierQuickPick />);
+  expect(screen.queryByLabelText("자동 분류·요약 모델")).toBeNull();
+});
+
+test("settings tab from ?tab= or an old #anchor", () => {
+  expect(settingsTab("", "")).toBe("agents");
+  expect(settingsTab("tab=system", "")).toBe("system");
+  expect(settingsTab("tab=bogus", "#calendar-conflicts")).toBe("integrations");
+  expect(settingsTab("", "#work")).toBe("system");
+  expect(settingsTab("", "#usage")).toBe("agents");
+});
+
+test("arrow keys move between settings tabs, wrapping", () => {
+  expect(tabAfterKey("agents", "ArrowRight")).toBe("integrations");
+  expect(tabAfterKey("system", "ArrowRight")).toBe("agents");
+  expect(tabAfterKey("agents", "ArrowLeft")).toBe("system");
+  expect(tabAfterKey("integrations", "End")).toBe("system");
+  expect(tabAfterKey("system", "Home")).toBe("agents");
+  expect(tabAfterKey("agents", "Enter")).toBeNull();
 });

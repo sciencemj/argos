@@ -134,7 +134,7 @@ export function CalendarTab() {
             )}
           </span>
           <Link
-            to="/settings#calendar-conflicts"
+            to="/settings?tab=integrations#calendar-conflicts"
             className="font-medium underline"
           >
             {tr("고르러 가기")}

@@ -13,8 +13,9 @@ import { language, t, tr } from "../i18n";
 import { DogIcon } from "../icons";
 import { LanguagePicker } from "../LanguagePicker";
 import { btn, card, ErrorText } from "../ui";
+import { AgentsSection } from "./CustomAgents";
 import { LmsSection } from "./LmsSettings";
-import { AgentSection, ClassifierSection, VaultSection } from "./SettingsPage";
+import { ClassifierSection, VaultSection } from "./SettingsPage";
 
 // Why each tool matters to Argos, in the words of the setup screen.
 const USE: Record<string, string> = {
@@ -322,7 +323,7 @@ export function WelcomePage() {
         )}
         {step === 2 && (
           <div className="flex flex-col gap-4">
-            <AgentSection />
+            <AgentsSection />
             <ClassifierSection />
             <VaultSection />
             <LmsSection />

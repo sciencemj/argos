@@ -215,7 +215,7 @@ function SyncSlot({ now }: { now: number }) {
     .join("\n");
   return (
     <Link
-      to="/settings"
+      to="/settings?tab=integrations"
       title={detail}
       className={`flex items-center gap-1.5 hover:underline ${failed ? "text-danger" : ""}`}
     >
