@@ -31,7 +31,7 @@ export function Shell() {
   const setup = useSetup();
   // Custom agents' names and avatars for every place that shows an agent.
   if (agents.data) registerAgents(agents.data);
-  const { channelId } = useParams();
+  const { channelId, areaId: areaParam } = useParams();
   const [params] = useSearchParams();
   const taskId = params.get("task");
   const threadId = taskId ? null : params.get("thread");
@@ -50,7 +50,7 @@ export function Shell() {
   const channelArea = channels.data?.channels.find(
     (c) => c.id === channelId,
   )?.area_id;
-  const areaId = channelArea ?? (channelId ? null : pickedArea);
+  const areaId = channelArea ?? (channelId ? null : (areaParam ?? pickedArea));
 
   // The page eases in when the area changes (the feed stays mounted).
   const main = useRef<HTMLElement>(null);

@@ -131,3 +131,16 @@ test("the user's open/close wins over the waiting state", () => {
   rerender(<ToolStepCard step={{ ...step }} />);
   expect(details.open).toBe(false); // closed by the user, stays closed
 });
+
+test("a call id reused in a later turn pairs with its own result", () => {
+  const steps = stepsFromRun([
+    row({ seq: 1, kind: "tool_call", call_id: "call_1", tool_name: "a" }),
+    row({ seq: 2, kind: "tool_result", call_id: "call_1", output: "first" }),
+    row({ seq: 3, kind: "tool_call", call_id: "call_1", tool_name: "b" }),
+    row({ seq: 4, kind: "tool_result", call_id: "call_1", output: "second" }),
+  ] as never);
+  expect(steps.map((s) => [s.name, s.output])).toEqual([
+    ["a", "first"],
+    ["b", "second"],
+  ]);
+});

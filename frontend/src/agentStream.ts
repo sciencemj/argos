@@ -58,18 +58,21 @@ export function onAgentEvent(type: string, data: Record<string, unknown>) {
       ],
     });
   } else if (type === "agent.tool_result") {
-    live.set(messageId, {
-      ...current,
-      steps: current.steps.map((s) =>
-        s.id === String(data.id ?? "")
-          ? {
-              ...s,
-              output: String(data.output ?? ""),
-              isError: Boolean(data.is_error),
-            }
-          : s,
-      ),
-    });
+    // Some models reuse call ids ("call_1") across turns: only the newest call with
+    // that id still waiting for its result gets it.
+    const id = String(data.id ?? "");
+    const steps = [...current.steps];
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].id === id && steps[i].output === undefined) {
+        steps[i] = {
+          ...steps[i],
+          output: String(data.output ?? ""),
+          isError: Boolean(data.is_error),
+        };
+        break;
+      }
+    }
+    live.set(messageId, { ...current, steps });
   } else if (type === "agent.approval") {
     // The approval belongs to the newest call of that tool still waiting for a result.
     const steps = [...current.steps];

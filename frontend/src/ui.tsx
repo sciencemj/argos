@@ -105,12 +105,15 @@ export function ContextMenu({
   label,
   onClose,
   onAction,
+  items = [],
 }: {
   x: number;
   y: number;
   label: string;
   onClose: () => void;
   onAction: () => void;
+  /** Plain actions listed before the (destructive) `label` one. */
+  items?: { label: string; onAction: () => void }[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -137,10 +140,28 @@ export function ContextMenu({
       className="fixed z-50 min-w-40 rounded-xl border border-line bg-card p-1 shadow-lift"
       style={{
         left: Math.max(8, Math.min(x, window.innerWidth - 168)),
-        top: Math.max(8, Math.min(y, window.innerHeight - 52)),
+        // One ~40px row per item plus the destructive action, and the menu's padding.
+        top: Math.max(
+          8,
+          Math.min(y, window.innerHeight - (items.length + 1) * 40 - 12),
+        ),
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="menuitem"
+          className="w-full cursor-pointer rounded-lg px-3 py-2 text-left text-[13px] text-ink hover:bg-inset"
+          onClick={() => {
+            item.onAction();
+            onClose();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
       <button
         type="button"
         role="menuitem"

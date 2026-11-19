@@ -24,7 +24,10 @@ export function stepsFromRun(rows: RunStep[]): LiveStep[] {
         args: row.args_json ?? {},
       });
     } else if (row.kind === "tool_result") {
-      const step = steps.find((s) => s.id === row.call_id);
+      // Some models reuse call ids ("call_1") across turns: the open one is the latest.
+      const step = [...steps]
+        .reverse()
+        .find((s) => s.id === row.call_id && s.output === undefined);
       if (step) {
         step.output = row.output ?? "";
         step.isError = row.is_error;
@@ -56,12 +59,14 @@ export function ToolSteps({ message }: { message: Message }) {
       className="flex flex-col gap-1.5"
       aria-label={tr("도구 사용", "Tool calls")}
     >
-      {steps.map((step) => {
+      {steps.map((step, index) => {
         const artifact = artifactOf(step);
+        // Call ids can repeat within a run, so the position keeps keys unique.
+        const key = `${index}:${step.id}`;
         return artifact ? (
-          <ArtifactView key={step.id} {...artifact} />
+          <ArtifactView key={key} {...artifact} />
         ) : (
-          <ToolStepCard key={step.id} step={step} />
+          <ToolStepCard key={key} step={step} />
         );
       })}
     </section>

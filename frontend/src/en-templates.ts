@@ -13,7 +13,7 @@ export const enTemplates: Record<string, string> = {
   " · {0}분": " · {0} min",
   "잡 완료{0}": "Job completed{0}",
   "잡 실패{0}": "Job failed{0}",
-  "{0} · 우클릭하여 삭제": "{0} · right-click to delete",
+  "{0} · 우클릭하여 편집·삭제": "{0} · right-click to edit or delete",
   "{0} 영역 삭제": "Delete {0} space",
   "{0} 추가": "Add {0}",
   "{0} 채널 추가": "Add {0} channel",

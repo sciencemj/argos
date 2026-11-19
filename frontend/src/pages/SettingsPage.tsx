@@ -65,8 +65,8 @@ const TABS = [
     id: "system",
     title: tr("워크스페이스 · 시스템", "Workspace · System"),
     hint: tr(
-      "코딩 잡 폴더, 백업, 자동 실행, 업데이트",
-      "Job folders, backups, start at login, updates",
+      "화면·언어, 코딩 잡 폴더, 백업, 자동 실행, 업데이트",
+      "Display, language, job folders, backups, start at login, updates",
     ),
   },
 ] as const;
@@ -149,10 +149,6 @@ export function SettingsPage() {
           <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {tr("설정")}
           </h1>
-          <div className="flex flex-wrap justify-end gap-x-5 gap-y-2">
-            <ThemePicker />
-            <LanguagePicker />
-          </div>
         </div>
         <div
           role="tablist"
@@ -234,6 +230,7 @@ export function SettingsPage() {
           )}
           {current === "system" && (
             <>
+              <DisplaySection />
               <JobRootsSection />
               <OpsSection />
               <AppUpdateSection />
@@ -243,6 +240,24 @@ export function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Theme and language (they used to sit in the page header). */
+function DisplaySection() {
+  return (
+    <section
+      aria-label={tr("화면 · 언어", "Display · Language")}
+      className={`${card} flex w-full flex-col gap-4 p-6`}
+    >
+      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
+        {tr("화면 · 언어", "Display · Language")}
+      </h2>
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+        <ThemePicker />
+        <LanguagePicker />
+      </div>
+    </section>
   );
 }
 

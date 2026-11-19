@@ -18,9 +18,11 @@ import {
   useCreateArea,
   useDeleteArea,
   useUnread,
+  useUpdateArea,
 } from "../api";
+import { AreaIconPicker } from "../areaIcons";
 import { tr, tt } from "../i18n";
-import { DogIcon, PlusIcon, SettingsIcon } from "../icons";
+import { AreaIcon, DogIcon, HomeIcon, PlusIcon, SettingsIcon } from "../icons";
 import { btn, ContextMenu, Dialog, ErrorText, field, label } from "../ui";
 
 // The active look (card, border, shadow) is one pill that slides between buttons.
@@ -55,6 +57,7 @@ export function Rail({
     null,
   );
   const [deleting, setDeleting] = useState<Area | null>(null);
+  const [editing, setEditing] = useState<Area | null>(null);
   const onSettings = useMatch("/settings") !== null;
   const location = useLocation();
   // The last page outside settings, however settings were opened (rail, status bar, links).
@@ -85,7 +88,8 @@ export function Rail({
   const openArea = (id: string) => {
     onPickArea(id);
     const first = data?.channels.find((c) => c.area_id === id);
-    navigate(first ? `/c/${first.id}` : "/");
+    // An empty area has its own page: "/" would bounce to the last channel (v0.2).
+    navigate(first ? `/c/${first.id}` : `/area/${id}`);
   };
 
   return (
@@ -124,14 +128,14 @@ export function Rail({
           navigate("/today");
         }}
       >
-        {tr("홈")}
+        <HomeIcon size={19} />
       </button>
       {data?.areas.map((area) => (
         <button
           key={area.id}
           type="button"
           aria-label={area.name}
-          title={tt`${area.name} · 우클릭하여 삭제`}
+          title={tt`${area.name} · 우클릭하여 편집·삭제`}
           data-active={activeKey === area.id || undefined}
           aria-current={activeKey === area.id ? "page" : undefined}
           className={`${railButton} ${activeKey === area.id ? active : idle}`}
@@ -141,7 +145,11 @@ export function Rail({
             setMenu({ x: event.clientX, y: event.clientY, area });
           }}
         >
-          {area.icon || area.name.slice(0, 1)}
+          <AreaIcon
+            icon={area.icon}
+            fallback={area.icon || area.name.slice(0, 1)}
+            size={18}
+          />
           {activeKey !== area.id && unreadAreas.has(area.id) && (
             <span
               role="img"
@@ -178,12 +186,30 @@ export function Rail({
       >
         <SettingsIcon size={18} />
       </NavLink>
-      <AddAreaDialog open={adding} onClose={() => setAdding(false)} />
+      <AreaDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={(area) => openArea(area.id)}
+      />
+      {editing && (
+        <AreaDialog
+          key={editing.id}
+          open
+          area={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}
           y={menu.y}
           label={tr("영역 삭제…")}
+          items={[
+            {
+              label: tr("이름·아이콘 바꾸기…", "Rename or change icon…"),
+              onAction: () => setEditing(menu.area),
+            },
+          ]}
           onClose={() => setMenu(null)}
           onAction={() => {
             remove.reset();
@@ -238,33 +264,47 @@ export function Rail({
   );
 }
 
-function AddAreaDialog({
+/** Add an area, or (with `area`) change its name and rail mark: letters or an icon. */
+function AreaDialog({
   open,
+  area,
   onClose,
+  onCreated,
 }: {
   open: boolean;
+  area?: Area | null;
   onClose: () => void;
+  onCreated?: (area: Area) => void;
 }) {
   const create = useCreateArea();
-  const [name, setName] = useState("");
-  const [icon, setIcon] = useState("");
+  const update = useUpdateArea();
+  const [name, setName] = useState(area?.name ?? "");
+  const [icon, setIcon] = useState(area?.icon ?? "");
+  const write = area ? update : create;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    create.mutate(
-      { name: name.trim(), icon: icon.trim() || null },
-      {
-        onSuccess: () => {
-          setName("");
-          setIcon("");
-          onClose();
-        },
+    const body = { name: name.trim(), icon: icon.trim() || null };
+    if (area) {
+      update.mutate({ id: area.id, ...body }, { onSuccess: onClose });
+      return;
+    }
+    create.mutate(body, {
+      onSuccess: (created) => {
+        setName("");
+        setIcon("");
+        onClose();
+        onCreated?.(created);
       },
-    );
+    });
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={tr("영역 추가")}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={area ? tr("영역 편집", "Edit area") : tr("영역 추가")}
+    >
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
           <span className={label}>{tr("이름")}</span>
@@ -276,24 +316,14 @@ function AddAreaDialog({
             required
           />
         </label>
-        <label className="flex flex-col gap-1">
-          <span className={label}>
-            {tr("레일 표시 (1~2글자, 비우면 이름 첫 글자)")}
-          </span>
-          <input
-            className={field}
-            value={icon}
-            maxLength={2}
-            onChange={(e) => setIcon(e.target.value)}
-          />
-        </label>
-        <ErrorText error={create.error} />
+        <AreaIconPicker value={icon} name={name} onChange={setIcon} />
+        <ErrorText error={write.error} />
         <div className="flex justify-end gap-2">
           <button type="button" className={btn.ghost} onClick={onClose}>
             {tr("취소")}
           </button>
-          <button type="submit" className={btn.cta} disabled={create.isPending}>
-            {tr("추가하기")}
+          <button type="submit" className={btn.cta} disabled={write.isPending}>
+            {area ? tr("저장") : tr("추가하기")}
           </button>
         </div>
       </form>

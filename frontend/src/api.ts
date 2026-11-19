@@ -513,6 +513,16 @@ export const useCreateArea = () =>
     call(client.POST("/api/v1/areas", { body })),
   );
 
+export const useUpdateArea = () =>
+  useWrite("area", ({ id, ...body }: Schemas["AreaUpdate"] & { id: string }) =>
+    call(
+      client.PATCH("/api/v1/areas/{area_id}", {
+        params: { path: { area_id: id } },
+        body,
+      }),
+    ),
+  );
+
 export const useDeleteArea = () =>
   useWrite("area", (id: string) =>
     call(

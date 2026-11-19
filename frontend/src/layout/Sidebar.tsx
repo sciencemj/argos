@@ -110,7 +110,7 @@ export function Sidebar({
   const { data } = useChannels();
   const tasks = useTasks();
   const today = useToday();
-  const [adding, setAdding] = useState<Kind | null>(null);
+  const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -213,19 +213,26 @@ export function Sidebar({
         </Section>
 
         <div ref={scoped} className="flex flex-col gap-5">
-          {SECTIONS.map(({ kind, title }) => (
+          {SECTIONS.filter(
+            // Courses only come from the LMS: no empty 과목 header without any.
+            ({ kind }) =>
+              kind !== "course" || inScope.some((c) => c.kind === "course"),
+          ).map(({ kind, title }) => (
             <Section
               key={kind}
               title={title}
               action={
-                <button
-                  type="button"
-                  aria-label={tt`${title} 추가`}
-                  className="flex size-6 cursor-pointer items-center justify-center rounded-full text-meta hover:bg-inset hover:text-ink"
-                  onClick={() => setAdding(kind)}
-                >
-                  <PlusIcon size={14} />
-                </button>
+                // Courses come from the LMS; only projects are made by hand.
+                kind === "project" ? (
+                  <button
+                    type="button"
+                    aria-label={tt`${title} 추가`}
+                    className="flex size-6 cursor-pointer items-center justify-center rounded-full text-meta hover:bg-inset hover:text-ink"
+                    onClick={() => setAdding(true)}
+                  >
+                    <PlusIcon size={14} />
+                  </button>
+                ) : undefined
               }
             >
               <SortableChannels
@@ -244,9 +251,9 @@ export function Sidebar({
       </div>
 
       <AddChannelDialog
-        kind={adding}
+        open={adding}
         defaultAreaId={areaId ?? data?.areas[0]?.id ?? ""}
-        onClose={() => setAdding(null)}
+        onClose={() => setAdding(false)}
       />
       {menu && (
         <ContextMenu
@@ -478,12 +485,13 @@ function UnreadDot({ count }: { count: number }) {
   );
 }
 
-function AddChannelDialog({
-  kind,
+/** A channel made by hand is always a project; course channels come from the LMS. */
+export function AddChannelDialog({
+  open,
   defaultAreaId,
   onClose,
 }: {
-  kind: Kind | null;
+  open: boolean;
   defaultAreaId: string;
   onClose: () => void;
 }) {
@@ -491,16 +499,13 @@ function AddChannelDialog({
   const create = useCreateChannel();
   const [name, setName] = useState("");
   const [areaId, setAreaId] = useState("");
-  const noun =
-    kind === "project" ? t("프로젝트", "project") : t("과목", "course");
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!kind) return;
     create.mutate(
       {
         name: name.trim().replace(/^#/, ""),
-        kind,
+        kind: "project",
         area_id: areaId || defaultAreaId,
       },
       {
@@ -514,9 +519,9 @@ function AddChannelDialog({
 
   return (
     <Dialog
-      open={kind !== null}
+      open={open}
       onClose={onClose}
-      title={tt`${noun} 채널 추가`}
+      title={tr("프로젝트 채널 추가", "Add project channel")}
     >
       <form onSubmit={submit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
@@ -525,9 +530,7 @@ function AddChannelDialog({
             className={field}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={
-              kind === "project" ? tr("예: argos") : tr("예: 자료구조")
-            }
+            placeholder={tr("예: argos")}
             required
           />
         </label>

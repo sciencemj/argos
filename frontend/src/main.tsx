@@ -8,6 +8,7 @@ import { syncCurrentLanguage } from "./i18n";
 import "./index.css";
 import { Shell } from "./layout/Shell";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { AreaPage } from "./pages/AreaPage";
 import { CalendarTab } from "./pages/CalendarTab";
 import { ChannelPage, FeedTab } from "./pages/ChannelPage";
 import { ChatTab } from "./pages/ChatTab";
@@ -38,6 +39,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <HomeRedirect /> },
         { path: "today", element: <TodayPage /> },
+        { path: "area/:areaId", element: <AreaPage /> }, // an area with no channels yet
         { path: "settings", element: <SettingsPage /> },
         { path: "approvals", element: <ApprovalsPage /> },
         { path: "notifications", element: <NotificationsPage /> },
