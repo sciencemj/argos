@@ -31,6 +31,25 @@ esac
 exit 0
 """
 
+# A fake Antigravity CLI (`agy`): `mcp list` prints a table like the real one, `mcp add`
+# takes flags before the name, `mcp remove` fails for a server it does not have.
+FAKE_AGY = """#!/bin/sh
+echo "$0 $*" >> "{log}"
+state="{state}/agy"
+case "$*" in
+  --version) echo "1.5.12" ;;
+  "mcp list")
+    echo "NAME               TYPE   STATUS   COMMAND/URL"
+    echo "notion             http   enabled  https://mcp.notion.com/mcp"
+    [ -f "$state" ] && echo "argos              http   enabled  $(cat "$state")" ;;
+  "mcp add --type http argos "*) echo "$6" > "$state" ;;
+  "mcp remove argos")
+    [ -f "$state" ] || {{ echo 'Error: MCP server "argos" not found' >&2; exit 1; }}
+    rm -f "$state" ;;
+esac
+exit 0
+"""
+
 
 @pytest.fixture
 def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -42,6 +61,9 @@ def tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         script = bin_dir / name
         script.write_text(FAKE.format(log=log, state=state))
         script.chmod(0o755)
+    agy = bin_dir / "agy"
+    agy.write_text(FAKE_AGY.format(log=log, state=state))
+    agy.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
     return log
 
@@ -52,6 +74,7 @@ def config(settings: Settings, tmp_path: Path) -> Settings:
         update={
             "claude_dir": tmp_path / "home" / ".claude",
             "codex_auth": tmp_path / "home" / ".codex" / "auth.json",
+            "antigravity_dir": tmp_path / "home" / ".gemini" / "config",
         }
     )
 
@@ -162,15 +185,72 @@ def test_desktop_seed_has_areas_but_no_channels() -> None:
 
 def test_uninstall_takes_argos_out_of_every_tool(config: Settings, tools: Path) -> None:
     with TestClient(create_app(config)) as client:
-        for name in ("claude", "codex", "hermes"):
+        for name in ("claude", "codex", "hermes", "antigravity"):
             client.post(f"/api/v1/setup/tools/{name}/connect")
         removed = client.post("/api/v1/setup/uninstall").json()["removed"]
         assert removed == [
             "Claude Code: MCP + 스킬 제거",
             "Codex: MCP + 스킬 제거",
             "Hermes Agent: MCP + 스킬 제거",
+            "Antigravity: MCP + 스킬 제거",
         ]
         tools_now = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}
         assert not any(t["connected"] or t["skill"] for t in tools_now.values())
         assert not (config.claude_dir / "skills" / "argos").exists()
+        assert not (config.antigravity_dir / "skills" / "argos").exists()
         assert client.post("/api/v1/setup/uninstall").json()["removed"] == []  # nothing left
+
+
+def test_antigravity_connect_status_and_disconnect(config: Settings, tools: Path) -> None:
+    url = f"http://127.0.0.1:{config.port}/mcp?agent=antigravity"
+    skill = config.antigravity_dir / "skills" / "argos"
+    with TestClient(create_app(config)) as client:
+        by_name = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}
+        agy = by_name["antigravity"]
+        assert agy["label"] == "Antigravity" and agy["installed"] and agy["connectable"]
+        assert agy["version"] == "1.5.12" and agy["path"].endswith("/agy")
+        assert not agy["connected"] and not agy["skill"]
+        assert agy["skill_path"] == str(skill)
+
+        connected = client.post("/api/v1/setup/tools/antigravity/connect").json()
+        assert connected["connected"] and connected["skill"]
+        assert f"mcp add --type http argos {url}" in calls(tools)
+        assert "name: argos" in (skill / "SKILL.md").read_text()
+        assert (skill / onboarding.MARKER).exists()
+
+        only_mcp = client.post(
+            "/api/v1/setup/tools/antigravity/disconnect", json={"mcp": True, "skill": False}
+        ).json()
+        assert not only_mcp["connected"] and only_mcp["skill"] and skill.exists()
+        assert "mcp remove argos" in calls(tools)
+        # Removing again: no entry left, so `agy mcp remove` (which would fail) is skipped.
+        again = client.post("/api/v1/setup/tools/antigravity/disconnect", json={}).json()
+        assert not again["connected"] and not again["skill"] and not skill.exists()
+        assert calls(tools).count("mcp remove argos") == 1
+
+
+def test_antigravity_other_entries_and_their_skill_are_left_alone(
+    config: Settings, tools: Path
+) -> None:
+    theirs = config.antigravity_dir / "skills" / "argos"
+    theirs.mkdir(parents=True)
+    (theirs / "SKILL.md").write_text("mine")
+    status = onboarding.tool_status(config, "antigravity")
+    # The notion row in `agy mcp list` is not mistaken for Argos.
+    assert not status.connected and status.skill_conflict and not status.skill
+    with pytest.raises(onboarding.ConnectError, match="덮어쓰지 않았어요"):
+        onboarding.connect(config, "antigravity")
+    onboarding.disconnect(config, "antigravity", mcp=True, skill=True)
+    assert (theirs / "SKILL.md").read_text() == "mine"
+
+
+def test_antigravity_refresh_follows_a_new_address(config: Settings, tools: Path) -> None:
+    onboarding.connect(config, "antigravity")
+    skill = config.antigravity_dir / "skills" / "argos" / "SKILL.md"
+    skill.write_text("old version")
+    moved = config.model_copy(update={"port": 8123})
+    changed = onboarding.refresh(moved)
+    assert "antigravity skill" in changed and "antigravity mcp" in changed
+    assert "name: argos" in skill.read_text()
+    assert onboarding.tool_status(moved, "antigravity").connected
+    assert onboarding.refresh(moved) == []

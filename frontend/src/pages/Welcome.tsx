@@ -28,6 +28,10 @@ const USE: Record<string, string> = {
   hermes: tr(
     "기본 대화 에이전트(메신저 알림 포함). 연결해야 Argos에 일정·할 일을 기록해요.",
   ),
+  antigravity: tr(
+    "Google Antigravity CLI(agy). 연결하면 agy도 MCP로 Argos 도구를 쓰고 argos 스킬을 읽어요.",
+    "Google's Antigravity CLI (agy). Once connected, agy uses the Argos tools over MCP and reads the argos skill.",
+  ),
   ollama: tr("인박스 분류와 비슷한 메모 묶기를 이 Mac에서 돌리는 로컬 모델."),
 };
 
