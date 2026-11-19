@@ -48,7 +48,12 @@ const TABS = [
 
 const FEED_FIRST = [{ path: "", label: tr("피드") }, ...TABS.slice(2)];
 const SYSTEM_TABS = FEED_FIRST.slice(0, 3); // #today-style channels have no vault folder
-const SPACE_TABS = [{ path: "", label: tr("수집함") }, ...TABS.slice(2)];
+// 내 공간: the capture inbox stays first; chat (with the personal channel) is next.
+const SPACE_TABS = [
+  { path: "", label: tr("수집함") },
+  { path: "chat", label: tr("채팅", "Chat") },
+  ...TABS.slice(2),
+];
 const PANEL = "argos-workspace-panel";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -164,7 +169,8 @@ export function ChannelPage() {
   // The feed reads in a centered column; kanban, calendar and notes get more room.
   const onIndex = useMatch("/c/:channelId") !== null;
   const onFeedTab = useMatch("/c/:channelId/feed") !== null;
-  const onFeed = onIndex || onFeedTab;
+  const onChatTab = useMatch("/c/:channelId/chat") !== null; // 내 공간's chat
+  const onFeed = onIndex || onFeedTab || onChatTab;
   const [panel, setPanel] = useState(() => {
     try {
       return localStorage.getItem(PANEL) === "1";
@@ -222,7 +228,10 @@ export function ChannelPage() {
   if (channel.kind === "dm") {
     return <DMPage channel={channel} />;
   }
-  const chatFirst = channel.kind === "course" || channel.kind === "project";
+  const chatFirst =
+    space || channel.kind === "course" || channel.kind === "project";
+  // 내 공간's files and sessions belong to the personal channel, not the system inbox.
+  const workChannel = space && personal ? personal : channel;
 
   return (
     <>
@@ -288,7 +297,7 @@ export function ChannelPage() {
         </div>
         {chatFirst && panel && (
           <WorkspacePanel
-            channel={channel}
+            channel={workChannel}
             onClose={() => togglePanel(false)}
           />
         )}

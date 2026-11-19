@@ -50,6 +50,7 @@ const router = createBrowserRouter(
           children: [
             { index: true, element: <ChatTab /> },
             { path: "feed", element: <FeedTab /> },
+            { path: "chat", element: <ChatTab /> }, // 내 공간's chat (its index is the inbox)
             { path: "kanban", element: <KanbanTab /> },
             { path: "calendar", element: <CalendarTab /> },
             { path: "notes", element: <NotesTab /> },
