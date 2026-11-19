@@ -1,19 +1,53 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { selectValue } from "../test-select";
-import { CustomAgentsSection } from "./CustomAgents";
+import { AgentsSection } from "./CustomAgents";
 
 const mocks = vi.hoisted(() => ({
   save: { mutate: vi.fn(), isPending: false, error: null as unknown },
   modelsFor: vi.fn(),
   agents: [] as Record<string, unknown>[],
+  saveDefault: vi.fn(),
+  setModel: vi.fn(),
+  remove: vi.fn(),
 }));
 vi.mock("../api", () => ({
   agentExportUrl: (name: string) => `/export/${name}`,
   useAgents: () => ({ data: mocks.agents }),
   useAgentTools: () => ({ data: [] }),
   useChannels: () => ({ data: { channels: [] } }),
-  useDeleteAgent: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+  useDeleteAgent: () => ({
+    mutate: mocks.remove,
+    isPending: false,
+    error: null,
+  }),
+  useAgentSettings: () => ({ data: { default_agent: "claude" } }),
+  useSaveDefaultAgent: () => ({
+    mutate: mocks.saveDefault,
+    isPending: false,
+    error: null,
+  }),
+  useSetAgentModel: () => ({
+    mutate: mocks.setModel,
+    isPending: false,
+    error: null,
+  }),
+  useClassifierSettings: () => ({ data: { provider_id: "home" } }),
+  useUsage: () => ({
+    data: {
+      providers: [
+        {
+          provider: "claude",
+          state: "ok",
+          message: "",
+          windows: [
+            { name: "5h", used_percent: 72.4 },
+            { name: "7d", used_percent: 11 },
+          ],
+        },
+      ],
+    },
+  }),
   useImportAgent: () => ({ mutate: vi.fn(), isPending: false, error: null }),
   useSaveAgent: () => mocks.save,
   useProviders: () => ({
@@ -80,11 +114,14 @@ beforeEach(() => {
   mocks.save.mutate.mockReset();
   mocks.modelsFor.mockReset();
   mocks.agents = [];
+  mocks.saveDefault.mockReset();
+  mocks.setModel.mockReset();
+  mocks.remove.mockReset();
 });
 afterEach(cleanup);
 
 function openNewAgent(provider: string) {
-  render(<CustomAgentsSection />);
+  render(<AgentsSection />);
   fireEvent.click(screen.getByRole("button", { name: "봇 만들기" }));
   fireEvent.change(screen.getByLabelText("@이름"), {
     target: { value: "gemma" },
@@ -159,7 +196,7 @@ test("renames an existing agent", () => {
       send_images: false,
     },
   ];
-  render(<CustomAgentsSection />);
+  render(<AgentsSection />);
   fireEvent.click(screen.getByRole("button", { name: "수정" }));
   const handle = screen.getByLabelText("@이름") as HTMLInputElement;
   expect(handle.disabled).toBe(false);
@@ -190,11 +227,76 @@ test("unchanged handle is not sent when editing", () => {
       send_images: false,
     },
   ];
-  render(<CustomAgentsSection />);
+  render(<AgentsSection />);
   fireEvent.click(screen.getByRole("button", { name: "수정" }));
   fireEvent.click(screen.getByRole("button", { name: "저장" }));
   expect(mocks.save.mutate).toHaveBeenCalledWith(
     expect.objectContaining({ editing: "gemma", name: undefined }),
     expect.anything(),
   );
+});
+
+const BUILTIN = {
+  id: "b1",
+  name: "claude",
+  display_name: "Claude",
+  avatar: null,
+  backend: "claude_code",
+  model: null,
+  is_builtin: true,
+  system_prompt: null,
+  tools: null,
+  channel_ids: [],
+  available: true,
+  problem: null,
+  provider_id: null,
+  send_images: false,
+};
+
+test("one list: built-in with model, usage and default; custom with actions", () => {
+  mocks.agents = [
+    BUILTIN,
+    {
+      ...BUILTIN,
+      id: "a1",
+      name: "gemma",
+      display_name: "Gemma",
+      backend: "ollama",
+      is_builtin: false,
+      tools: [],
+      provider_id: "gpu",
+      model: "gemma4:e4b",
+    },
+  ];
+  render(<AgentsSection />);
+  // Built-in: usage summary, model picker, and it is the default
+  expect(screen.getByText(/5h 72% · 7d 11%/)).toBeTruthy();
+  selectValue(screen.getByLabelText("Claude 모델"), "gemma4:e4b");
+  expect(mocks.setModel).toHaveBeenCalledWith({
+    name: "claude",
+    model: "gemma4:e4b",
+  });
+  expect(screen.getByText("기본")).toBeTruthy();
+  // Custom: make it the default right from its row
+  fireEvent.click(
+    screen.getByRole("button", { name: "@gemma을(를) 기본 에이전트로" }),
+  );
+  expect(mocks.saveDefault).toHaveBeenCalledWith("gemma");
+  expect(screen.getByText(/GPU · gemma4:e4b/)).toBeTruthy();
+});
+
+test("deleting a bot asks in a dialog first", () => {
+  mocks.agents = [
+    { ...BUILTIN, id: "a1", name: "gemma", is_builtin: false, tools: [] },
+  ];
+  render(<AgentsSection />);
+  fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+  expect(mocks.remove).not.toHaveBeenCalled();
+  const dialog = screen.getByRole("dialog");
+  fireEvent.click(
+    [...dialog.querySelectorAll("button")].find(
+      (b) => b.textContent === "삭제",
+    ) as HTMLButtonElement,
+  );
+  expect(mocks.remove).toHaveBeenCalledWith("gemma");
 });

@@ -4,16 +4,30 @@ import {
   type Agent,
   agentExportUrl,
   useAgentModels,
+  useAgentSettings,
   useAgents,
   useAgentTools,
   useChannels,
+  useClassifierSettings,
   useDeleteAgent,
   useImportAgent,
   useProviders,
   useSaveAgent,
+  useSaveDefaultAgent,
+  useSetAgentModel,
+  useUsage,
 } from "../api";
 import { t, tr, tt } from "../i18n";
-import { btn, card, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
+import {
+  btn,
+  ConfirmDialog,
+  card,
+  Dialog,
+  ErrorText,
+  field,
+  label,
+  SelectMenu,
+} from "../ui";
 
 const BACKENDS = [
   {
@@ -46,23 +60,131 @@ const KIND_TEXT = {
   approval: tr("삭제 (허용해도 항상 사용자 승인)"),
 } as const;
 
-/** Custom agents (PLAN Phase 10): "봇 만들기", YAML import/export. */
-export function CustomAgentsSection() {
+const BACKEND_TEXT: Record<string, string> = {
+  hermes: tr("Hermes 게이트웨이 · 자체 도구와 메모리를 가진 에이전트"),
+  claude_code: tr("Claude Code CLI · Argos 도구만 사용 · Claude 사용량을 씀"),
+  codex: tr("Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀"),
+  ollama: tr("모델 연결 · 인박스 분류와 같은 연결과 모델 사용"),
+};
+
+/** Plan usage the status bar reads, per built-in backend (PLAN Phase 9). */
+const USAGE_PROVIDER: Record<string, string> = {
+  claude_code: "claude",
+  codex: "codex",
+};
+
+/** The model a built-in agent answers with (Hermes picks its own in its gateway). */
+function BuiltinModelPicker({ agent }: { agent: Agent }) {
+  // The built-in local agent runs where the inbox classifier runs (Phase 20).
+  const classifierSettings = useClassifierSettings();
+  const models = useAgentModels(
+    agent.backend,
+    agent.backend === "ollama"
+      ? classifierSettings.data?.provider_id || undefined
+      : undefined,
+  );
+  const save = useSetAgentModel();
+  const current = agent.model ?? "";
+  const known = models.data?.models ?? [];
+  const fallback =
+    agent.backend === "ollama"
+      ? tr("인박스 분류 모델과 같게")
+      : tr("도구 기본값");
+  return (
+    <div className="flex flex-col gap-1">
+      <SelectMenu
+        ariaLabel={tt`${agent.display_name} 모델`}
+        className={`${field} w-full`}
+        value={current}
+        disabled={save.isPending}
+        onChange={(value) =>
+          save.mutate({ name: agent.name, model: value || null })
+        }
+        options={[
+          { value: "", label: fallback },
+          ...known.map((m) => ({
+            value: m.id,
+            label: (
+              <>
+                {m.label}
+                {m.description ? ` · ${m.description}` : ""}
+              </>
+            ),
+          })),
+          ...(current && !known.some((m) => m.id === current)
+            ? [{ value: current, label: current }]
+            : []),
+        ]}
+      />
+      {models.data?.error && (
+        <span className="text-[12px] text-meta">{models.data.error}</span>
+      )}
+      <ErrorText error={save.error} />
+    </div>
+  );
+}
+
+/** Every agent in one list (v0.2 settings): built-in and custom, with the app-wide
+ * default (/ask), each built-in's model and plan usage, and "봇 만들기", edit,
+ * export and delete for custom ones. */
+export function AgentsSection() {
   const agents = useAgents();
   const providers = useProviders();
+  const settings = useAgentSettings();
+  const saveDefault = useSaveDefaultAgent();
+  const usage = useUsage();
   const remove = useDeleteAgent();
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [importing, setImporting] = useState(false);
-  const custom = (agents.data ?? []).filter((a) => !a.is_builtin);
+  const [deleting, setDeleting] = useState<Agent | null>(null);
+  const all = agents.data ?? [];
+  const builtin = all.filter((a) => a.is_builtin);
+  const custom = all.filter((a) => !a.is_builtin);
+  const active = settings.data?.default_agent;
+
+  const usageText = (a: Agent) => {
+    const id = USAGE_PROVIDER[a.backend];
+    const p = id ? usage.data?.providers.find((x) => x.provider === id) : null;
+    if (!p) return null;
+    return p.windows.length
+      ? p.windows
+          .map((w) => `${w.name} ${Math.round(w.used_percent)}%`)
+          .join(" · ")
+      : p.message;
+  };
+
+  const defaultControl = (a: Agent) =>
+    a.name === active ? (
+      <span className="shrink-0 rounded-full bg-inset px-2.5 py-0.5 text-[11.5px] font-medium whitespace-nowrap text-text-2">
+        {tr("기본")}
+      </span>
+    ) : (
+      <button
+        type="button"
+        className={`${btn.ghost} shrink-0 whitespace-nowrap`}
+        disabled={saveDefault.isPending || !a.available}
+        aria-label={tt`@${a.name}을(를) 기본 에이전트로`}
+        onClick={() => saveDefault.mutate(a.name)}
+      >
+        {tr("기본으로", "Make default")}
+      </button>
+    );
+
+  const heading = (a: Agent) => (
+    <span className="text-[13.5px] text-ink">
+      {a.display_name}{" "}
+      <span className="font-mono text-[12px] text-meta">@{a.name}</span>
+    </span>
+  );
 
   return (
     <section
-      aria-label={tr("커스텀 에이전트")}
+      aria-label={tr("에이전트")}
       className={`${card} flex w-full flex-col gap-4 p-6`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h2 className="m-0 grow text-[20px] font-light tracking-[-0.02em] text-ink">
-          {tr("커스텀 에이전트")}
+          {tr("에이전트")}
         </h2>
         <button
           type="button"
@@ -81,72 +203,107 @@ export function CustomAgentsSection() {
       </div>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
         {tr(
-          "역할과 말투(시스템 프롬프트)와 쓸 수 있는 Argos 도구를 정해 나만의 에이전트를 만들어요. 허용하지 않은 도구는 Argos가 막아요. 메시지에 @이름으로 부르거나 채널의 /ask 담당으로 정할 수 있어요.",
+          "기본 에이전트가 /ask를 받아요(채널마다 따로 정할 수도 있어요). 다른 에이전트는 메시지에 @이름으로 불러요. 내장 에이전트의 모델은 코딩 잡에도 같이 써요.",
+          "The default agent answers /ask (channels can pick their own). Call any other agent with @name. A built-in agent's model is also used for its coding jobs.",
         )}
       </p>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {builtin.map((a) => {
+          const used = usageText(a);
+          return (
+            <li
+              key={a.id}
+              className="flex flex-col gap-2.5 rounded-2xl border border-line-soft px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                <AgentAvatar id={a.name} size={28} />
+                <span className="flex min-w-0 grow flex-col gap-0.5">
+                  {heading(a)}
+                  <span className="text-[12px] text-text-3">
+                    {BACKEND_TEXT[a.backend]}
+                  </span>
+                  {used && (
+                    <span className="text-[12px] text-meta">
+                      {tr("사용량", "Usage")} · {used}
+                    </span>
+                  )}
+                  {!a.available && (
+                    <span className="text-[12px] text-danger">{a.problem}</span>
+                  )}
+                </span>
+                {defaultControl(a)}
+              </div>
+              {a.backend !== "hermes" && (
+                <div className="pl-10 max-md:pl-0">
+                  <BuiltinModelPicker agent={a} />
+                </div>
+              )}
+            </li>
+          );
+        })}
+        {custom.map((a) => (
+          <li
+            key={a.id}
+            className="flex flex-wrap items-center gap-3 rounded-2xl border border-line-soft px-4 py-3"
+          >
+            <AgentAvatar id={a.name} size={28} />
+            <span className="flex min-w-0 grow basis-48 flex-col gap-0.5">
+              {heading(a)}
+              <span className="truncate text-[12px] text-text-3">
+                {BACKENDS.find((b) => b.id === a.backend)?.label}
+                {a.provider_id
+                  ? ` · ${providers.data?.find((p) => p.id === a.provider_id)?.name ?? ""}`
+                  : ""}
+                {a.model ? ` · ${a.model}` : ""}{" "}
+                {t(
+                  `· 도구 ${a.tools?.length ?? 0}개`,
+                  `· ${a.tools?.length ?? 0} tools`,
+                )}{" "}
+                {a.channel_ids.length
+                  ? tt` · /ask 채널 ${a.channel_ids.length}개`
+                  : ""}
+              </span>
+              {!a.available && (
+                <span className="text-[12px] text-danger">{a.problem}</span>
+              )}
+            </span>
+            <span className="flex shrink-0 flex-wrap items-center gap-1">
+              {defaultControl(a)}
+              <button
+                type="button"
+                className={`${btn.ghost} whitespace-nowrap`}
+                onClick={() => setEditing(a)}
+              >
+                {tr("수정")}
+              </button>
+              <a
+                className={`${btn.ghost} whitespace-nowrap`}
+                href={agentExportUrl(a.name)}
+                download
+              >
+                {tr("내보내기")}
+              </a>
+              <button
+                type="button"
+                className={`${btn.ghost} whitespace-nowrap`}
+                disabled={remove.isPending}
+                onClick={() => setDeleting(a)}
+              >
+                {tr("삭제")}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
       {custom.length === 0 && (
-        <p className="m-0 rounded-2xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-text-3">
-          {tr("아직 만든 에이전트가 없어요")}
+        <p className="m-0 rounded-2xl border border-dashed border-line px-4 py-4 text-center text-[13px] text-text-3">
+          {tr(
+            "아직 만든 봇이 없어요. 역할·말투와 쓸 도구를 정해 나만의 에이전트를 만들어 보세요.",
+            "No bots yet. Pick a role, a voice and the tools it may use to make your own agent.",
+          )}
         </p>
       )}
-      {custom.map((a) => (
-        <div
-          key={a.id}
-          className="flex items-center gap-3 rounded-2xl border border-line-soft px-4 py-3"
-        >
-          <AgentAvatar id={a.name} size={28} />
-          <span className="flex min-w-0 grow flex-col gap-0.5">
-            <span className="text-[13.5px] text-ink">
-              {a.display_name}{" "}
-              <span className="font-mono text-[12px] text-meta">@{a.name}</span>
-            </span>
-            <span className="truncate text-[12px] text-text-3">
-              {BACKENDS.find((b) => b.id === a.backend)?.label}
-              {a.provider_id
-                ? ` · ${providers.data?.find((p) => p.id === a.provider_id)?.name ?? ""}`
-                : ""}
-              {a.model ? ` · ${a.model}` : ""}{" "}
-              {t(
-                `· 도구 ${a.tools?.length ?? 0}개`,
-                `· ${a.tools?.length ?? 0} tools`,
-              )}{" "}
-              {a.channel_ids.length
-                ? tt` · /ask 채널 ${a.channel_ids.length}개`
-                : ""}
-            </span>
-            {!a.available && (
-              <span className="text-[12px] text-danger">{a.problem}</span>
-            )}
-          </span>
-          <button
-            type="button"
-            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
-            onClick={() => setEditing(a)}
-          >
-            {tr("수정")}
-          </button>
-          <a
-            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
-            href={agentExportUrl(a.name)}
-            download
-          >
-            {tr("내보내기")}
-          </a>
-          <button
-            type="button"
-            className={`${btn.ghost} shrink-0 whitespace-nowrap`}
-            disabled={remove.isPending}
-            onClick={() =>
-              confirm(
-                tt`@${a.name} 에이전트를 지울까요? 1:1 대화도 함께 지워져요.`,
-              ) && remove.mutate(a.name)
-            }
-          >
-            {tr("삭제")}
-          </button>
-        </div>
-      ))}
-      <ErrorText error={remove.error} />
+      <ErrorText error={saveDefault.error ?? remove.error} />
       {editing && (
         <AgentDialog
           agent={editing === "new" ? null : editing}
@@ -154,6 +311,22 @@ export function CustomAgentsSection() {
         />
       )}
       <ImportDialog open={importing} onClose={() => setImporting(false)} />
+      <ConfirmDialog
+        open={deleting !== null}
+        title={tr("에이전트 삭제", "Delete agent")}
+        message={
+          deleting
+            ? tt`@${deleting.name} 에이전트를 지울까요? 1:1 대화도 함께 지워져요.`
+            : ""
+        }
+        confirmLabel={tr("삭제")}
+        danger
+        onConfirm={() => {
+          if (deleting) remove.mutate(deleting.name);
+          setDeleting(null);
+        }}
+        onClose={() => setDeleting(null)}
+      />
     </section>
   );
 }

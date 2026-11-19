@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import {
   errorText,
   type Provider,
@@ -105,7 +105,9 @@ function CloudWarning() {
 /** Phase 20: named model providers (Ollama, OpenAI compatible, Anthropic or Google
  * Gemini) that custom agents
  * and the inbox classifier pick from. */
-export function ProviderSection() {
+/** `children`: shown at the bottom of the card (the settings page puts the inbox
+ * classifier's one-line model pick there). */
+export function ProviderSection({ children }: { children?: ReactNode } = {}) {
   const providers = useProviders();
   const remove = useDeleteProvider();
   const [editing, setEditing] = useState<Provider | "new" | null>(null);
@@ -129,7 +131,8 @@ export function ProviderSection() {
       </div>
       <p className="m-0 text-[13px] leading-relaxed text-text-3">
         {tr(
-          "로컬 모델을 돌리는 서버(Ollama, OpenAI 호환 API)를 이름 붙여 등록해요. 커스텀 에이전트와 인박스 분류가 여기서 연결을 골라 써요.",
+          "모델 서버(Ollama, OpenAI 호환, Anthropic, Google)를 이름 붙여 등록해요. 봇과 인박스 분류가 여기서 연결을 골라 써요.",
+          "Register model servers (Ollama, OpenAI-compatible, Anthropic, Google) by name. Bots and the inbox classifier pick a connection from here.",
         )}
       </p>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -179,6 +182,7 @@ export function ProviderSection() {
         ))}
       </ul>
       <ErrorText error={providers.error ?? remove.error} />
+      {children}
       {editing && (
         <ProviderDialog
           provider={editing === "new" ? null : editing}

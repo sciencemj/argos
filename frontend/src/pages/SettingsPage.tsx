@@ -1,11 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { AgentAvatar } from "../agents";
+import { useEffect, useState } from "react";
+import { useLocation, useSearchParams } from "react-router";
 import {
-  type Agent,
   type Conflict,
-  useAgentModels,
-  useAgentSettings,
-  useAgents,
   useCalendarChannel,
   useCalendarConflicts,
   useCalendarFeed,
@@ -22,10 +18,8 @@ import {
   useResolveConflict,
   useRotateCalendarFeed,
   useSaveClassifier,
-  useSaveDefaultAgent,
   useSaveJobRoots,
   useSaveVault,
-  useSetAgentModel,
   useSyncCalendars,
   useSyncVault,
   useUsage,
@@ -36,7 +30,7 @@ import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
 import { LanguagePicker, ThemePicker } from "../LanguagePicker";
 import { btn, card, ErrorText, field, label, SelectMenu } from "../ui";
-import { CustomAgentsSection } from "./CustomAgents";
+import { AgentsSection } from "./CustomAgents";
 import { LmsSection } from "./LmsSettings";
 import {
   AppUpdateSection,
@@ -50,160 +44,250 @@ import { ToolsSection } from "./Welcome";
 
 const OFF = "";
 
-const GROUPS = [
+const TABS = [
   {
     id: "agents",
-    title: tr("에이전트"),
-    hint: tr("누가 답하고, MCP·스킬, 사용량"),
+    title: tr("에이전트 · 모델", "Agents · Models"),
+    hint: tr(
+      "누가 답하고 어떤 모델에 연결하는지",
+      "Who answers and which models they use",
+    ),
   },
   {
-    id: "capture",
-    title: tr("입력과 알림"),
-    hint: tr("정리 모델, 알림, 주간 리뷰"),
+    id: "integrations",
+    title: tr("일정 · 자료 · LMS", "Calendar · Notes · LMS"),
+    hint: tr(
+      "알림, 옵시디언, 애플 캘린더, LMS, 폰",
+      "Alerts, Obsidian, Apple Calendar, LMS, phone",
+    ),
   },
   {
-    id: "links",
-    title: tr("연결"),
-    hint: tr("옵시디언, 애플 캘린더, LMS, 폰"),
-  },
-  {
-    id: "work",
-    title: tr("작업과 운영"),
-    hint: tr("코딩 잡 폴더, 백업, 자동 실행"),
+    id: "system",
+    title: tr("워크스페이스 · 시스템", "Workspace · System"),
+    hint: tr(
+      "코딩 잡 폴더, 백업, 자동 실행, 업데이트",
+      "Job folders, backups, start at login, updates",
+    ),
   },
 ] as const;
 
-/** Settings, grouped (agents, capture, links, work) with a table of contents that
- * follows the scroll on wide screens; one centred column on narrow ones. */
+export type SettingsTab = (typeof TABS)[number]["id"];
+
+/** Old in-page anchors (the four section groups, deep links) → the tab holding them. */
+const HASH_TAB: Record<string, SettingsTab> = {
+  agents: "agents",
+  capture: "agents",
+  usage: "agents",
+  links: "integrations",
+  "calendar-conflicts": "integrations",
+  work: "system",
+};
+
+/** `?tab=` wins; else an old `#anchor` picks its tab; else agents. */
+export function settingsTab(search: string, hash: string): SettingsTab {
+  const asked = new URLSearchParams(search).get("tab");
+  const tab = TABS.find((t) => t.id === asked);
+  if (tab) return tab.id;
+  return HASH_TAB[hash.replace(/^#/, "")] ?? "agents";
+}
+
+/** Settings in three tabs (v0.2): agents & models, integrations, workspace & system. */
 export function SettingsPage() {
-  const [current, setCurrent] = useState<string>(GROUPS[0].id);
-  const scroller = useRef<HTMLDivElement>(null);
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const current = settingsTab(params.toString(), location.hash);
+  const anchor = location.hash.replace(/^#/, "");
 
+  // A deep link's anchor lives in a tab that only now rendered: scroll to it then.
   useEffect(() => {
-    const root = scroller.current;
-    if (!root) return;
-    const seen = new IntersectionObserver(
-      (entries) => {
-        const top = entries
-          .filter((e) => e.isIntersecting)
-          .sort(
-            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-          )[0];
-        if (top) setCurrent(top.target.id);
-      },
-      { root, rootMargin: "0px 0px -65% 0px" },
+    if (!anchor) return;
+    const id = window.setTimeout(
+      () => document.getElementById(anchor)?.scrollIntoView({ block: "start" }),
+      50,
     );
-    for (const g of GROUPS) {
-      const el = document.getElementById(g.id);
-      if (el) seen.observe(el);
-    }
-    return () => seen.disconnect();
-  }, []);
+    return () => window.clearTimeout(id);
+  }, [anchor]);
 
-  const section = (
-    id: (typeof GROUPS)[number]["id"],
-    children: React.ReactNode,
-  ) => {
-    const group = GROUPS.find((g) => g.id === id);
-    return (
-      <section
-        id={id}
-        aria-labelledby={`${id}-title`}
-        className="flex scroll-mt-8 flex-col gap-4"
-      >
-        <div className="flex items-baseline gap-3 px-1">
-          <h2
-            id={`${id}-title`}
-            className="m-0 text-[13px] font-semibold tracking-[0.02em] text-text-2"
-          >
-            {group?.title}
-          </h2>
-          <span className="text-[12px] text-meta">{group?.hint}</span>
-        </div>
-        {children}
-      </section>
+  const choose = (tab: SettingsTab) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (tab === "agents") next.delete("tab");
+        else next.set("tab", tab);
+        return next;
+      },
+      { replace: true },
     );
-  };
 
   return (
-    <div ref={scroller} className="min-h-0 grow overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1120px] gap-12 px-9 max-md:px-4 pt-8 pb-16">
-        <nav
-          aria-label={tr("설정 목차")}
-          className="sticky top-8 hidden h-fit w-48 shrink-0 flex-col gap-1 lg:flex"
+    <div className="min-h-0 grow overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-6 px-9 max-md:px-4 pt-8 pb-16">
+        <div
+          data-tauri-drag-region="deep"
+          className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3"
         >
-          <h1 className="m-0 mb-4 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
+          <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink">
             {tr("설정")}
           </h1>
-          {GROUPS.map((g) => (
-            <a
-              key={g.id}
-              href={`#${g.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                document
-                  .getElementById(g.id)
-                  ?.scrollIntoView({ behavior: "smooth" });
-                setCurrent(g.id);
-              }}
-              aria-current={current === g.id ? "true" : undefined}
-              className="flex flex-col rounded-xl px-3 py-2 text-[13.5px] text-text-3 hover:text-ink aria-[current=true]:bg-card aria-[current=true]:text-ink aria-[current=true]:shadow-sm"
-            >
-              {g.title}
-              <span className="text-[11.5px] text-meta">{g.hint}</span>
-            </a>
-          ))}
-        </nav>
-        <div className="mx-auto flex w-full max-w-[760px] min-w-0 flex-col gap-10">
-          <div
-            data-tauri-drag-region="deep"
-            className="flex flex-wrap justify-end gap-x-5 gap-y-2"
-          >
+          <div className="flex flex-wrap justify-end gap-x-5 gap-y-2">
             <ThemePicker />
             <LanguagePicker />
           </div>
-          <h1 className="m-0 text-[28px] leading-tight font-light tracking-[-0.02em] text-ink lg:hidden">
-            {tr("설정")}
-          </h1>
-          {section(
-            "agents",
+        </div>
+        <div
+          role="tablist"
+          aria-label={tr("설정 탭", "Settings tabs")}
+          className="grid grid-cols-3 gap-1 rounded-2xl bg-inset p-1"
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`settings-tab-${tab.id}`}
+              aria-selected={current === tab.id}
+              aria-controls={`settings-panel-${tab.id}`}
+              title={tab.hint}
+              onClick={() => choose(tab.id)}
+              className="min-w-0 rounded-xl px-3 py-2 text-center text-[13.5px] leading-tight break-keep text-text-3 max-md:px-1.5 max-md:text-[12.5px] md:whitespace-nowrap hover:text-ink aria-selected:bg-card aria-selected:font-medium aria-selected:text-ink aria-selected:shadow-sm"
+            >
+              {tab.title}
+            </button>
+          ))}
+        </div>
+        <p className="m-0 -mt-2 px-1 text-[12.5px] text-meta">
+          {TABS.find((t) => t.id === current)?.hint}
+        </p>
+        <div
+          role="tabpanel"
+          id={`settings-panel-${current}`}
+          aria-labelledby={`settings-tab-${current}`}
+          className="flex flex-col gap-6"
+        >
+          {current === "agents" && (
             <>
-              <AgentSection />
-              <ModelSection />
-              <ToolsSection />
-              <ProviderSection />
-              <CustomAgentsSection />
-              <UsageSection />
-            </>,
+              <AgentsSection />
+              <ProviderSection>
+                <ClassifierQuickPick />
+              </ProviderSection>
+              <details
+                className="group flex flex-col"
+                open={anchor === "usage" || undefined}
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-2xl px-1 py-2 text-[13px] font-semibold tracking-[0.02em] text-text-2 hover:text-ink [&::-webkit-details-marker]:hidden">
+                  <span className="inline-block transition-transform group-open:rotate-90">
+                    ›
+                  </span>
+                  {tr("고급 설정", "Advanced")}
+                  <span className="font-normal text-[12px] text-meta">
+                    {tr(
+                      "CLI 도구 진단, 인박스 분류 세부, 사용량",
+                      "CLI tool check, inbox classifier details, usage",
+                    )}
+                  </span>
+                </summary>
+                <div className="mt-3 flex flex-col gap-6">
+                  <ToolsSection />
+                  <ClassifierSection />
+                  <UsageSection />
+                </div>
+              </details>
+            </>
           )}
-          {section(
-            "capture",
+          {current === "integrations" && (
             <>
-              <ClassifierSection />
               <NotifySection />
-            </>,
-          )}
-          {section(
-            "links",
-            <>
               <VaultSection />
               <ICloudSection />
               <CalendarFeedSection />
               <LmsSection />
               <RemoteSection />
-            </>,
+            </>
           )}
-          {section(
-            "work",
+          {current === "system" && (
             <>
               <JobRootsSection />
               <OpsSection />
               <AppUpdateSection />
               <UninstallSection />
-            </>,
+            </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The inbox classifier's model in one line, under the model connections (the full
+ * options stay in 고급 설정 → 인박스 분류). */
+export function ClassifierQuickPick() {
+  const current = useClassifierSettings();
+  const providerId = current.data?.provider_id ?? "";
+  const models = useOllamaModels(providerId || undefined);
+  const providers = useProviders();
+  const save = useSaveClassifier();
+  const active = current.data?.enabled ? (current.data.model ?? OFF) : OFF;
+  const list = models.data?.models ?? [];
+  const where = providers.data?.find((p) => p.id === providerId);
+  const hermes = current.data?.provider === "hermes";
+  return (
+    <div className="flex flex-col gap-1.5 rounded-2xl bg-inset px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="flex min-w-0 grow basis-40 flex-col gap-0.5">
+          <span className="text-[13.5px] text-ink">
+            {tr("자동 분류·요약 모델", "Auto classify & summarize model")}
+          </span>
+          <span className="text-[12px] text-text-3">
+            {hermes
+              ? tr(
+                  "Hermes를 쓰는 동안에는 .env의 ARGOS_CLASSIFIER_MODEL로 모델을 정해요.",
+                )
+              : where
+                ? tt`${where.name} · 인박스 정리와 LMS 알림 요약에 써요`
+                : tr(
+                    "인박스 정리와 LMS 알림 요약에 써요",
+                    "Sorts the inbox and summarizes LMS notices",
+                  )}
+          </span>
+        </span>
+        {!hermes && (
+          <SelectMenu
+            ariaLabel={tr(
+              "자동 분류·요약 모델",
+              "Auto classify & summarize model",
+            )}
+            className={`${field} min-w-0 grow basis-56 font-mono text-[13px]`}
+            value={active}
+            disabled={save.isPending || current.isLoading}
+            onChange={(value) =>
+              save.mutate({
+                model: value || null,
+                provider_id: providerId || undefined,
+              })
+            }
+            options={[
+              ...list.map((m) => ({
+                value: m.name,
+                label: (
+                  <>
+                    {m.name}
+                    {m.decision ? ` · ${tr("판단 모델")}` : ""}
+                    {m.remote ? ` · ${tr("클라우드")}` : ""}
+                  </>
+                ),
+              })),
+              ...(active && !list.some((m) => m.name === active)
+                ? [{ value: active, label: active }]
+                : []),
+              { value: OFF, label: tr("분류 끄기") },
+            ]}
+          />
+        )}
+      </div>
+      {models.data && !models.data.reachable && (
+        <span className="text-[12px] text-meta">{models.data.error}</span>
+      )}
+      <ErrorText error={save.error} />
     </div>
   );
 }
@@ -547,174 +631,6 @@ const RUNS_AT = {
   network: tr("내 네트워크의 서버에서 실행돼요"),
   cloud: tr("입력한 내용이 외부 서버로 전송돼요"),
 } as const;
-
-const BACKEND_TEXT: Record<string, string> = {
-  hermes: tr("Hermes 게이트웨이 · 자체 도구와 메모리를 가진 에이전트"),
-  claude_code: tr("Claude Code CLI · Argos 도구만 사용 · Claude 사용량을 씀"),
-  codex: tr("Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀"),
-  ollama: tr("모델 연결 · 인박스 분류와 같은 연결과 모델 사용"),
-};
-
-/** App-wide default agent: answers /ask where the channel sets none (user decision). */
-function ModelRow({ agent }: { agent: Agent }) {
-  // The built-in local agent runs where the inbox classifier runs (Phase 20).
-  const classifierSettings = useClassifierSettings();
-  const models = useAgentModels(
-    agent.backend,
-    agent.backend === "ollama"
-      ? classifierSettings.data?.provider_id || undefined
-      : undefined,
-  );
-  const save = useSetAgentModel();
-  const current = agent.model ?? "";
-  const known = models.data?.models ?? [];
-  const fallback =
-    agent.backend === "ollama"
-      ? tr("인박스 분류 모델과 같게")
-      : tr("도구 기본값");
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-3">
-        <AgentAvatar id={agent.name} size={24} />
-        <span className="w-28 shrink-0 text-[13.5px] text-ink">
-          {agent.display_name}
-        </span>
-        <SelectMenu
-          ariaLabel={tt`${agent.display_name} 모델`}
-          className={`${field} grow`}
-          value={current}
-          disabled={save.isPending}
-          onChange={(value) =>
-            save.mutate({ name: agent.name, model: value || null })
-          }
-          options={[
-            { value: "", label: fallback },
-            ...known.map((m) => ({
-              value: m.id,
-              label: (
-                <>
-                  {m.label}
-                  {m.description ? ` · ${m.description}` : ""}
-                </>
-              ),
-            })),
-            ...(current && !known.some((m) => m.id === current)
-              ? [{ value: current, label: current }]
-              : []),
-          ]}
-        />
-      </div>
-      {models.data?.error && (
-        <span className="pl-9 text-[12px] text-meta">{models.data.error}</span>
-      )}
-      <ErrorText error={save.error} />
-    </div>
-  );
-}
-
-/** Models for the built-in agents (Hermes picks its own in its gateway). */
-export function ModelSection() {
-  const agents = useAgents();
-  const builtin = (agents.data ?? []).filter(
-    (a) => a.is_builtin && a.backend !== "hermes",
-  );
-  return (
-    <section
-      aria-label={tr("에이전트 모델")}
-      className={`${card} flex w-full flex-col gap-4 p-6`}
-    >
-      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        {tr("에이전트 모델")}
-      </h2>
-      <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        {tr(
-          "기본 에이전트가 답할 때 쓰는 모델이에요. 목록은 각 도구가 알려 주는 것이고, 코딩 잡에도 같은 모델을 써요. Hermes 모델은 Hermes 게이트웨이 설정에서 정해요.",
-        )}
-      </p>
-      <div className="flex flex-col gap-3">
-        {builtin.map((a) => (
-          <ModelRow key={a.id} agent={a} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function AgentSection() {
-  const agents = useAgents();
-  const current = useAgentSettings();
-  const save = useSaveDefaultAgent();
-  const [choice, setChoice] = useState<string | null>(null);
-  const active = current.data?.default_agent;
-  const selected = choice ?? active;
-
-  return (
-    <section
-      aria-label={tr("기본 에이전트")}
-      className={`${card} flex w-full flex-col gap-4 p-6`}
-    >
-      <h2 className="m-0 text-[20px] font-light tracking-[-0.02em] text-ink">
-        {tr("기본 에이전트")}
-      </h2>
-      <p className="m-0 text-[13px] leading-relaxed text-text-3">
-        {tr(
-          "/ask를 받을 에이전트예요. 채널 설정에서 채널마다 따로 정할 수도 있어요. 다른 에이전트는 메시지에 @이름으로 불러요.",
-        )}
-      </p>
-      <div className="flex flex-col gap-2">
-        {agents.data?.map((a) => (
-          <label
-            key={a.id}
-            className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 ${selected === a.name ? "border-line bg-inset" : "border-line-soft bg-card"}`}
-          >
-            <input
-              type="radio"
-              name="default-agent"
-              value={a.name}
-              checked={selected === a.name}
-              onChange={() => setChoice(a.name)}
-              className="accent-[var(--ink)]"
-            />
-            <AgentAvatar id={a.name} size={28} />
-            <span className="flex grow flex-col gap-0.5">
-              <span className="text-[13.5px] text-ink">
-                {a.display_name}{" "}
-                <span className="font-mono text-[12px] text-meta">
-                  @{a.name}
-                </span>
-              </span>
-              <span className="text-[12px] text-text-3">
-                {a.is_builtin ? BACKEND_TEXT[a.backend] : tr("커스텀 에이전트")}
-              </span>
-              {!a.available && (
-                <span className="text-[12px] text-danger">{a.problem}</span>
-              )}
-            </span>
-            {a.name === active && (
-              <span className="shrink-0 text-[11.5px] whitespace-nowrap text-meta">
-                {tr("사용 중")}
-              </span>
-            )}
-          </label>
-        ))}
-      </div>
-      <ErrorText error={save.error} />
-      <div>
-        <button
-          type="button"
-          className={btn.cta}
-          disabled={!selected || selected === active || save.isPending}
-          onClick={() =>
-            selected &&
-            save.mutate(selected, { onSuccess: () => setChoice(null) })
-          }
-        >
-          {tr("저장")}
-        </button>
-      </div>
-    </section>
-  );
-}
 
 /** Folders coding jobs may write in (PLAN §8.1 allowlist), managed by the user. */
 function JobRootsSection() {
