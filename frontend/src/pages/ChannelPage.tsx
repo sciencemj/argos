@@ -59,6 +59,19 @@ const PANEL = "argos-workspace-panel";
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const ALT = isMac ? "⌥" : "Alt+";
 
+/** Where `/c/<personal>…` goes: the same tab of 내 공간 (the inbox channel). A
+ * personal session (`?session=`) lives in 내 공간's chat tab, not the inbox. */
+export function personalRedirect(
+  location: { pathname: string; search: string; hash: string },
+  personalId: string,
+  inboxId: string,
+): string {
+  let suffix = location.pathname.slice(`/c/${personalId}`.length);
+  if (!suffix && new URLSearchParams(location.search).has("session"))
+    suffix = "/chat";
+  return `/c/${inboxId}${suffix}${location.search}${location.hash}`;
+}
+
 /** Feed · kanban · calendar · notes · materials. ⌥1–5 jumps to a tab and ⌥[ / ⌥]
  * steps left/right (by key position, so it works with any keyboard layout or IME);
  * holding ⌥ shows the keys on the tabs. */
@@ -211,12 +224,8 @@ export function ChannelPage() {
     );
   }
   if (channel.kind === "personal" && inbox) {
-    const suffix = location.pathname.slice(`/c/${channel.id}`.length);
     return (
-      <Navigate
-        to={`/c/${inbox.id}${suffix}${location.search}${location.hash}`}
-        replace
-      />
+      <Navigate to={personalRedirect(location, channel.id, inbox.id)} replace />
     );
   }
   const space = channel.id === inbox?.id;

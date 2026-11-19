@@ -29,6 +29,7 @@ import {
 import {
   Link,
   NavLink,
+  useMatch,
   useNavigate,
   useParams,
   useSearchParams,
@@ -434,6 +435,8 @@ function ChannelSessions({
 }) {
   const threads = useChannelThreads(channelId);
   const [params] = useSearchParams();
+  // 내 공간's inbox tab is not its chat: "+ 새 세션" is current only on the chat view.
+  const onChat = useMatch(base) !== null;
   const [all, setAll] = useState(false);
   const current = params.get("session");
   const list = threads.data ?? [];
@@ -447,7 +450,7 @@ function ChannelSessions({
     >
       <Link
         to={base}
-        aria-current={current === null || undefined}
+        aria-current={(current === null && onChat) || undefined}
         className={item}
       >
         <PlusIcon size={12} />
