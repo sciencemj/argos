@@ -29,6 +29,7 @@ import {
 import {
   Link,
   NavLink,
+  useMatch,
   useNavigate,
   useParams,
   useSearchParams,
@@ -122,6 +123,8 @@ export function Sidebar({
   const area = data?.areas.find((a) => a.id === areaId);
   const channels = data?.channels ?? [];
   const inbox = channels.find((c) => c.kind === "system" && c.name === "inbox");
+  const personal = channels.find((c) => c.kind === "personal");
+  const { channelId: openChannel } = useParams();
   const approvals = usePendingApprovals().data?.length ?? 0;
   const unreadNotices = useNotifications().data?.unread ?? 0;
   const unread = useUnread();
@@ -183,6 +186,12 @@ export function Sidebar({
                 </span>
               )}
             </NavLink>
+          )}
+          {inbox && personal && openChannel === inbox.id && (
+            <ChannelSessions
+              channelId={personal.id}
+              base={`/c/${inbox.id}/chat`}
+            />
           )}
           <NavLink to="/notifications" className={row}>
             <BellIcon />
@@ -417,9 +426,17 @@ const SESSIONS_SHOWN = 6;
 
 /** The open channel's conversations (v0.2, Discord-style tree): a new one, then the
  * recent ones, newest activity first; a dot marks one an agent is answering in. */
-function ChannelSessions({ channelId }: { channelId: string }) {
+function ChannelSessions({
+  channelId,
+  base = `/c/${channelId}`,
+}: {
+  channelId: string; // whose conversations
+  base?: string; // where its chat lives (내 공간: the inbox's chat tab)
+}) {
   const threads = useChannelThreads(channelId);
   const [params] = useSearchParams();
+  // 내 공간's inbox tab is not its chat: "+ 새 세션" is current only on the chat view.
+  const onChat = useMatch(base) !== null;
   const [all, setAll] = useState(false);
   const current = params.get("session");
   const list = threads.data ?? [];
@@ -432,8 +449,8 @@ function ChannelSessions({ channelId }: { channelId: string }) {
       className="flex flex-col gap-px pb-1"
     >
       <Link
-        to={`/c/${channelId}`}
-        aria-current={current === null || undefined}
+        to={base}
+        aria-current={(current === null && onChat) || undefined}
         className={item}
       >
         <PlusIcon size={12} />
@@ -442,7 +459,7 @@ function ChannelSessions({ channelId }: { channelId: string }) {
       {shown.map((t) => (
         <Link
           key={t.root_message_id}
-          to={`/c/${channelId}?session=${t.root_message_id}`}
+          to={`${base}?session=${t.root_message_id}`}
           aria-current={current === t.root_message_id || undefined}
           className={item}
           title={t.preview}

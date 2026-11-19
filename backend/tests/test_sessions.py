@@ -94,3 +94,16 @@ def test_agent_picker_routes_and_resticks(settings: Settings) -> None:
         assert agents[root["sticky_agent_id"]] == "local"
         bad = app.post(url, json={"body": "x", "agent_session": True, "agent": "nobody"})
         assert bad.status_code == 422
+
+
+def test_personal_space_chat_keeps_sessions_out_of_the_inbox(app: TestClient) -> None:
+    channels = app.get("/api/v1/channels").json()["channels"]
+    personal = next(c["id"] for c in channels if c["kind"] == "personal")
+    url = f"/api/v1/channels/{personal}/messages"
+    first = app.post(url, json={"body": "오늘 뭐 하지?", "agent_session": True}).json()
+    [row] = settle(app, personal)
+    assert row["root_message_id"] == first["id"]
+    assert row["preview"] == "답이에요"
+    # A conversation, not a capture: nothing lands in the inbox.
+    inbox = app.get("/api/v1/inbox").json()
+    assert "오늘 뭐 하지?" not in str(inbox)

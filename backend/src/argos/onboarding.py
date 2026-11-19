@@ -19,7 +19,7 @@ MARKER = ".installed-by-argos"  # only skill folders with this are ours to repla
 
 @dataclass
 class ToolStatus:
-    name: str  # claude | codex | hermes | ollama
+    name: str  # claude | codex | hermes | antigravity | ollama
     label: str
     installed: bool
     path: str | None
@@ -36,8 +36,12 @@ TOOLS = {
     "claude": ("Claude Code", "npm install -g @anthropic-ai/claude-code 후 claude 로그인"),
     "codex": ("Codex", "npm install -g @openai/codex 후 codex login"),
     "hermes": ("Hermes Agent", "Hermes Agent를 설치하고 API 서버를 켜세요 (docs/hermes-setup.md)"),
+    "antigravity": ("Antigravity", "Antigravity CLI(agy)를 설치하고 agy로 로그인"),
     "ollama": ("Ollama", "https://ollama.com/download 에서 설치 (인박스 분류용 로컬 모델)"),
 }
+
+
+CONNECTABLE = ("claude", "codex", "hermes", "antigravity")
 
 
 class ConnectError(Exception):
@@ -49,6 +53,7 @@ def _binary(name: str, settings: Settings) -> str:
         "claude": settings.claude_bin,
         "codex": settings.codex_bin,
         "hermes": settings.hermes_bin,
+        "antigravity": settings.antigravity_bin,
     }.get(name, name)
 
 
@@ -89,8 +94,9 @@ def _bundled(relative: str) -> Path:
 
 
 def _skill_home(name: str, settings: Settings) -> Path:
-    """Claude Code and Codex read user skills from <home>/skills/<name>/SKILL.md."""
-    return (settings.claude_dir if name == "claude" else settings.codex_auth.parent) / "skills"
+    """Claude Code, Codex and Antigravity read user skills from <home>/skills/<name>/SKILL.md."""
+    homes = {"claude": settings.claude_dir, "antigravity": settings.antigravity_dir}
+    return homes.get(name, settings.codex_auth.parent) / "skills"
 
 
 def hermes_skills_dir(settings: Settings) -> Path:
@@ -134,17 +140,34 @@ def _version(binary: str) -> str | None:
     return lines[0].split(" · ")[0][:60] if lines else None
 
 
-def _connected(name: str, binary: str, url: str) -> bool:
-    commands = {
+def _mcp_query(name: str, binary: str) -> list[str]:
+    """The command that prints the tool's Argos MCP entry (Antigravity: its whole list)."""
+    return {
         "claude": [binary, "mcp", "get", SKILL],
         "codex": [binary, "mcp", "get", SKILL, "--json"],
         "hermes": [binary, "config", "get", "mcp_servers.argos.url"],
-    }
+        "antigravity": [binary, "mcp", "list"],
+    }[name]
+
+
+def _mcp_entry(name: str, binary: str) -> str | None:
+    """What the tool says about its `argos` MCP server, or None when it has none."""
     try:
-        done = _run(commands[name])
+        done = _run(_mcp_query(name, binary))
     except (OSError, subprocess.TimeoutExpired):
-        return False
-    return done.returncode == 0 and url in done.stdout
+        return None
+    if done.returncode != 0:
+        return None
+    if name != "antigravity":
+        return done.stdout
+    # `agy mcp list`: a table, one server per line, its name first.
+    rows = [line for line in done.stdout.splitlines() if line.split()[:1] == [SKILL]]
+    return rows[0] if rows else None
+
+
+def _connected(name: str, binary: str, url: str) -> bool:
+    entry = _mcp_entry(name, binary)
+    return entry is not None and url in entry
 
 
 def tool_status(settings: Settings, name: str) -> ToolStatus:
@@ -213,6 +236,9 @@ def _register_mcp(binary: str, name: str, url: str) -> None:
     elif name == "codex":
         _run([binary, "mcp", "remove", SKILL])
         _step([binary, "mcp", "add", SKILL, "--url", url])
+    elif name == "antigravity":
+        # `agy mcp add` adds or updates; flags must come before the name.
+        _step([binary, "mcp", "add", "--type", "http", SKILL, url])
     else:
         _step([binary, "config", "set", "mcp_servers.argos.url", url])
 
@@ -249,16 +275,8 @@ _ARGOS_URL = re.compile(r"https?://[^\s\"']+/mcp\?agent=[\w-]+")
 
 def _registered_url(name: str, binary: str) -> str | None:
     """The Argos MCP address the tool has now, if it has one."""
-    command = {
-        "claude": [binary, "mcp", "get", SKILL],
-        "codex": [binary, "mcp", "get", SKILL, "--json"],
-        "hermes": [binary, "config", "get", "mcp_servers.argos.url"],
-    }[name]
-    try:
-        done = _run(command)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    found = _ARGOS_URL.search(done.stdout) if done.returncode == 0 else None
+    entry = _mcp_entry(name, binary)
+    found = _ARGOS_URL.search(entry) if entry is not None else None
     return found.group(0) if found else None
 
 
@@ -267,7 +285,7 @@ def refresh(settings: Settings) -> list[str]:
     skill copies when the bundled skill changed, and an Argos MCP entry that points at an
     old address. Nothing is added that the user did not connect or has removed."""
     changed: list[str] = []
-    for name in ("claude", "codex", "hermes"):
+    for name in CONNECTABLE:
         binary = shutil.which(_binary(name, settings))
         if binary is None:
             continue
@@ -308,6 +326,9 @@ def disconnect(settings: Settings, name: str, mcp: bool, skill: bool) -> ToolSta
             _step([binary, "mcp", "remove", SKILL, "-s", "user"])
         elif name == "codex":
             _step([binary, "mcp", "remove", SKILL])
+        elif name == "antigravity":
+            if _mcp_entry(name, binary) is not None:  # `agy mcp remove` fails when absent
+                _step([binary, "mcp", "remove", SKILL])
         else:
             _step([binary, "config", "unset", "mcp_servers.argos"])
     if skill:
@@ -329,7 +350,7 @@ def remove_everywhere(settings: Settings) -> list[str]:
     """Uninstall: takes Argos out of every agent tool — its MCP entry (also one left at an
     old address) and the skill Argos installed. Returns what was removed or failed."""
     report: list[str] = []
-    for name in ("claude", "codex", "hermes"):
+    for name in CONNECTABLE:
         binary = shutil.which(_binary(name, settings))
         if binary is None:
             continue

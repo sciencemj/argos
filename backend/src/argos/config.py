@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     # Plan usage (PLAN Phase 9): read every few minutes (0 turns the timer off). Claude's
     # comes with the login Claude Code saved (Keychain on a Mac, else claude_dir).
     claude_dir: Path = Path.home() / ".claude"
+    # Antigravity CLI (`agy`): MCP servers through `agy mcp`, user skills in
+    # <antigravity_dir>/skills/<name>/SKILL.md (what `agy` itself reads).
+    antigravity_bin: str = "agy"
+    antigravity_dir: Path = Path.home() / ".gemini" / "config"
     usage_poll_minutes: int = 5
 
     # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.

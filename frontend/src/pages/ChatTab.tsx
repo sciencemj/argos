@@ -41,12 +41,15 @@ const QUICK_PROMPTS = [
 /** The channel's first tab (v0.2 "가안 A"): a clean new conversation with the channel's
  * agent, or (`?session=<root id>`) one conversation from the sidebar's session tree.
  * System channels and 내 공간 keep their feed. */
+/** Channels with a chat view: courses, projects and 내 공간 (its personal channel). */
+export const hasChat = (kind: string) =>
+  kind === "course" || kind === "project" || kind === "personal";
+
 export function ChatTab() {
   const channel = useChannel();
   const [params] = useSearchParams();
   const session = params.get("session");
-  if (channel.kind !== "course" && channel.kind !== "project")
-    return <FeedTab />;
+  if (!hasChat(channel.kind)) return <FeedTab />;
   return session ? (
     <SessionView key={session} channel={channel} rootId={session} />
   ) : (
@@ -75,7 +78,9 @@ function NewChat({ channel }: { channel: Channel }) {
           <AgentAvatar id={agent?.name} size={44} />
           <div className="flex flex-col items-center gap-1.5 text-center">
             <h2 className="m-0 text-[22px] font-light tracking-[-0.01em] text-ink">
-              {tt`#${channel.name}에서 새 대화`}
+              {channel.kind === "personal"
+                ? tr("내 공간에서 새 대화", "New conversation in My space")
+                : tt`#${channel.name}에서 새 대화`}
             </h2>
             <p className="m-0 max-w-[460px] text-[13px] text-text-3">
               {agent
