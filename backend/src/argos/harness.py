@@ -1,5 +1,5 @@
-"""Argos's own agent harness (v0.2 Phase 1): a provider model (OpenAI-compatible or
-Anthropic) in a streaming multi-turn tool loop, with tools from a registry and a
+"""Argos's own agent harness (v0.2 Phase 1): a provider model (OpenAI-compatible,
+Anthropic or Google Gemini) in a streaming multi-turn tool loop, with tools from a registry and a
 permission gate in front of every call.
 
 Layers, each swappable on its own:
@@ -7,8 +7,9 @@ Layers, each swappable on its own:
   through `register()`; a tool's `kind` (read | write | destructive) and the paths it
   touches decide whether it runs on its own or waits for the user, so a plugin gets the
   approval gate without doing anything itself.
-- `HarnessLLM`: one model turn, streamed. `OpenAIChatLLM` (chat.completions) and
-  `AnthropicLLM` (Messages API) turn the same neutral history into their own format.
+- `HarnessLLM`: one model turn, streamed. `OpenAIChatLLM` (chat.completions),
+  `AnthropicLLM` (Messages API) and `GeminiLLM` (google-genai generateContent) turn the
+  same neutral history into their own format.
 - `NativeHarnessAdapter`: the loop. It yields the usual `Token`s plus `ToolCall`,
   `ToolResult` and `ApprovalNeeded`; on an approval it awaits `ApprovalGate.wait`, so the
   run pauses until the user decides (the runner pauses its timeout meanwhile).
@@ -27,8 +28,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
+import httpx2
 from anthropic import APIConnectionError as AnthropicConnectionError
 from anthropic import AsyncAnthropic
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from argos.agents import (
@@ -38,6 +43,7 @@ from argos.agents import (
     ApprovalNeeded,
     Failure,
     Media,
+    Status,
     Token,
     ToolCall,
     ToolResult,
@@ -413,12 +419,14 @@ def repair_json(raw: str | None) -> dict[str, Any]:
 
 @dataclass
 class PendingCall:
-    """A tool call as the model wrote it; `args` once parsed (None: it could not be)."""
+    """A tool call as the model wrote it; `args` once parsed (None: it could not be).
+    `signature`: Gemini's thought signature, sent back with the call on the next turn."""
 
     id: str
     name: str
     raw: str = ""
     args: dict[str, Any] | None = None
+    signature: bytes | None = None
 
 
 @dataclass
@@ -443,8 +451,9 @@ class HarnessLLM(Protocol):
 
     def turn(
         self, system: str, history: list[HMsg], tools: list[ToolDef]
-    ) -> AsyncIterator[Token | LLMDone]:
-        """Streams the answer's text, then one LLMDone with the whole text and calls."""
+    ) -> AsyncIterator[Token | Status | LLMDone]:
+        """Streams the answer's text (and maybe a Status while the model thinks), then one
+        LLMDone with the whole text and calls."""
         ...
 
 
@@ -500,7 +509,9 @@ def openai_messages(system: str, history: list[HMsg]) -> list[dict[str, Any]]:
 
 
 def _unavailable(exc: Exception, unreachable: str | None) -> AgentUnavailable:
-    if unreachable is not None and isinstance(exc, APIConnectionError | AnthropicConnectionError):
+    if unreachable is not None and isinstance(
+        exc, APIConnectionError | AnthropicConnectionError | httpx2.TransportError
+    ):
         return AgentUnavailable(unreachable)
     return AgentUnavailable(f"{type(exc).__name__}: {exc}")
 
@@ -717,6 +728,195 @@ class AnthropicLLM:
         finally:
             await response.close()
         yield LLMDone("".join(text), [c for _, c in sorted(blocks.items())])
+
+
+# --- Google Gemini --------------------------------------------------------------------
+
+GEMINI_MAX_TOKENS = 8192
+THOUGHT_PREVIEW = 80  # characters of a thought summary shown as the run's status
+
+
+def gemini_contents(history: list[HMsg]) -> list[genai_types.Content]:
+    """generateContent form: roles user/model, tool results as functionResponse parts in a
+    user turn, consecutive same-role turns merged, starting with the user. Calls carry
+    their thought signature back (Gemini 3 refuses a call history without it)."""
+    out: list[genai_types.Content] = []
+
+    def add(role: str, parts: list[genai_types.Part]) -> None:
+        if not parts:
+            return
+        if out and out[-1].role == role and out[-1].parts is not None:
+            out[-1].parts.extend(parts)
+        else:
+            out.append(genai_types.Content(role=role, parts=parts))
+
+    for m in history:
+        if m.role == "tool":
+            key = "error" if m.is_error else "output"
+            part = genai_types.Part.from_function_response(name=m.name, response={key: m.text})
+            if part.function_response is not None and m.call_id:
+                part.function_response.id = m.call_id
+            add("user", [part])
+        elif m.role == "assistant":
+            parts: list[genai_types.Part] = []
+            if m.text.strip():
+                parts.append(genai_types.Part(text=m.text))
+            for c in m.calls:
+                call = genai_types.FunctionCall(id=c.id, name=c.name, args=c.args or {})
+                parts.append(genai_types.Part(function_call=call, thought_signature=c.signature))
+            add("model", parts)
+        else:
+            parts = [
+                genai_types.Part(inline_data=genai_types.Blob(mime_type=x.mime, data=x.data))
+                for x in m.media
+            ]
+            parts.append(genai_types.Part(text=m.text or "(빈 메시지)"))
+            add("user", parts)
+    if out and out[0].role != "user":
+        out.insert(
+            0, genai_types.Content(role="user", parts=[genai_types.Part(text="(이전 대화)")])
+        )
+    return out
+
+
+def gemini_tools(tools: list[ToolDef]) -> list[genai_types.Tool]:
+    """The registry as one Tool of function declarations; the JSON Schema goes as is."""
+    if not tools:
+        return []
+    declarations = [
+        genai_types.FunctionDeclaration(
+            name=t.name, description=t.description, parameters_json_schema=t.parameters
+        )
+        for t in tools
+    ]
+    return [genai_types.Tool(function_declarations=declarations)]
+
+
+class GeminiLLM:
+    """Gemini API (google-genai) streaming with function calling. Automatic function
+    calling is off: the harness runs every call itself, through the permission gate.
+    Thought summaries become a Status line, never part of the answer."""
+
+    pdf_native = True
+
+    def __init__(
+        self,
+        client: genai.Client,
+        model: str,
+        max_tokens: int = GEMINI_MAX_TOKENS,
+        unreachable: str | None = None,
+    ) -> None:
+        self._client = client
+        self._model = model
+        self._max_tokens = max_tokens
+        self._unreachable = unreachable
+        self._thoughts = True  # False once the model refused a thinking config
+        self._streams = True  # False once the server refused a streamed answer
+
+    def _config(self, system: str, tools: list[ToolDef]) -> genai_types.GenerateContentConfig:
+        config = genai_types.GenerateContentConfig(
+            system_instruction=system or None,
+            max_output_tokens=self._max_tokens,
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        if tools:
+            config.tools = cast(Any, gemini_tools(tools))
+        if self._thoughts:
+            config.thinking_config = genai_types.ThinkingConfig(include_thoughts=True)
+        return config
+
+    async def turn(
+        self, system: str, history: list[HMsg], tools: list[ToolDef]
+    ) -> AsyncIterator[Token | Status | LLMDone]:
+        contents = await asyncio.to_thread(gemini_contents, history)
+        if not self._streams:
+            async for event in self._whole(system, contents, tools):
+                yield event
+            return
+        try:
+            response = await self._start(system, contents, tools)
+        except genai_errors.ServerError:
+            self._streams = False
+            async for event in self._whole(system, contents, tools):
+                yield event
+            return
+        text: list[str] = []
+        calls: list[PendingCall] = []
+        try:
+            async for chunk in response:
+                for event in self._parts(chunk, text, calls):
+                    yield event
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise _unavailable(exc, self._unreachable) from exc
+        yield LLMDone("".join(text), calls)
+
+    async def _start(
+        self, system: str, contents: list[genai_types.Content], tools: list[ToolDef]
+    ) -> AsyncIterator[genai_types.GenerateContentResponse]:
+        """Opens the stream; a model without thinking gets the request again without it."""
+        try:
+            return await self._client.aio.models.generate_content_stream(
+                model=self._model, contents=cast(Any, contents), config=self._config(system, tools)
+            )
+        except genai_errors.ClientError as exc:
+            if not (self._thoughts and exc.code == 400 and "think" in str(exc).lower()):
+                raise _unavailable(exc, self._unreachable) from exc
+            self._thoughts = False
+            return await self._start(system, contents, tools)
+        except genai_errors.ServerError:
+            raise
+        except Exception as exc:
+            raise _unavailable(exc, self._unreachable) from exc
+
+    async def _whole(
+        self, system: str, contents: list[genai_types.Content], tools: list[ToolDef]
+    ) -> AsyncIterator[Token | Status | LLMDone]:
+        """The same turn without streaming: the text arrives as one Token."""
+        try:
+            response = await self._client.aio.models.generate_content(
+                model=self._model, contents=cast(Any, contents), config=self._config(system, tools)
+            )
+        except Exception as exc:
+            raise _unavailable(exc, self._unreachable) from exc
+        text: list[str] = []
+        calls: list[PendingCall] = []
+        statuses = list(self._parts(response, text, calls))
+        for event in statuses:
+            if isinstance(event, Status):
+                yield event
+        if text:
+            yield Token("".join(text))
+        yield LLMDone("".join(text), calls)
+
+    def _parts(
+        self,
+        chunk: genai_types.GenerateContentResponse,
+        text: list[str],
+        calls: list[PendingCall],
+    ) -> Iterator[Token | Status]:
+        for candidate in chunk.candidates or []:
+            content = candidate.content
+            for part in (content.parts if content is not None else None) or []:
+                fc = part.function_call
+                if fc is not None and fc.name:
+                    raw = json.dumps(fc.args or {}, ensure_ascii=False)
+                    calls.append(
+                        PendingCall(
+                            id=fc.id or _call_id(),
+                            name=fc.name,
+                            raw=raw,
+                            signature=part.thought_signature,
+                        )
+                    )
+                elif part.text:
+                    if part.thought:
+                        line = " ".join(part.text.split())
+                        yield Status(f"생각 중: {line[:THOUGHT_PREVIEW]}")
+                    else:
+                        text.append(part.text)
+                        yield Token(part.text)
 
 
 # --- the loop -------------------------------------------------------------------------

@@ -25,7 +25,10 @@ const BACKENDS = [
   {
     id: "ollama",
     label: tr("모델 연결"),
-    hint: tr("Ollama나 OpenAI 호환 서버의 모델"),
+    hint: tr(
+      "Ollama·OpenAI 호환·Anthropic·Google(Gemini) 연결의 모델",
+      "A model from an Ollama, OpenAI-compatible, Anthropic or Google (Gemini) connection",
+    ),
   },
   {
     id: "native",

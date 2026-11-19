@@ -2989,7 +2989,7 @@ async def list_classifier_models(
 class ProviderOut(Out):
     id: str
     name: str
-    kind: Literal["ollama", "openai", "anthropic"]
+    kind: Literal["ollama", "openai", "anthropic", "google"]
     base_url: str
     has_api_key: bool
     strict_locality: Literal["network", "cloud"] | None
@@ -2999,7 +2999,7 @@ class ProviderOut(Out):
 
 class ProviderIn(BaseModel):
     name: str | None = Field(default=None, max_length=60)
-    kind: Literal["ollama", "openai", "anthropic"] | None = None
+    kind: Literal["ollama", "openai", "anthropic", "google"] | None = None
     base_url: str | None = Field(default=None, max_length=500)
     # Omitted or null: keep (none for a new provider); "": remove; text: store in Keychain.
     api_key: str | None = Field(default=None, max_length=1000)
@@ -3007,7 +3007,7 @@ class ProviderIn(BaseModel):
 
 
 class ProviderTestIn(BaseModel):
-    kind: Literal["ollama", "openai", "anthropic"]
+    kind: Literal["ollama", "openai", "anthropic", "google"]
     base_url: str = Field(max_length=500)
     api_key: str | None = Field(default=None, max_length=1000)
     provider_id: str | None = None  # no key given: try with this provider's saved key

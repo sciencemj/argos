@@ -19,6 +19,7 @@ const KINDS = [
   { id: "ollama", label: "Ollama" },
   { id: "openai", label: tr("OpenAI 호환") },
   { id: "anthropic", label: "Anthropic" },
+  { id: "google", label: "Google (Gemini API)" },
 ] as const;
 
 /** Addresses offered per kind: one click fills the field (OpenAI-compatible servers
@@ -31,6 +32,9 @@ const PRESETS: Record<Provider["kind"], { label: string; url: string }[]> = {
     { label: "LM Studio", url: "http://127.0.0.1:1234/v1" },
   ],
   anthropic: [{ label: "Anthropic", url: "https://api.anthropic.com" }],
+  google: [
+    { label: "Gemini API", url: "https://generativelanguage.googleapis.com" },
+  ],
 };
 
 const URL_HINT: Record<Provider["kind"], string> = {
@@ -46,7 +50,23 @@ const URL_HINT: Record<Provider["kind"], string> = {
     "Anthropic API 주소예요. 보통 그대로 두면 돼요 (키 필요).",
     "The Anthropic API; usually leave it as is (needs a key).",
   ),
+  google: tr(
+    "Gemini API 주소예요. 보통 그대로 두면 돼요 (키 필요).",
+    "The Gemini API; usually leave it as is (needs a key).",
+  ),
 };
+
+/** Shown under the key field for Google: an API key only, no subscription login. */
+function GoogleKeyNote() {
+  return (
+    <p className="m-0 text-[11.5px] text-meta">
+      {tr(
+        "API 키만 써요: Google AI Studio 키, 또는 Gemini API(Generative Language API)를 켠 Google Cloud(Vertex) 프로젝트 키. Google AI 구독(Gemini 앱 로그인)으로는 연결할 수 없어요. 키는 macOS 키체인에 저장돼요.",
+        "API keys only: a Google AI Studio key, or a Google Cloud (Vertex) project key with the Gemini API (Generative Language API) enabled. A Google AI subscription (Gemini app sign-in) cannot connect. The key is stored in the macOS Keychain.",
+      )}
+    </p>
+  );
+}
 
 const LOCALITY_TEXT: Record<Locality, string> = {
   device: tr("이 기기"),
@@ -82,7 +102,8 @@ function CloudWarning() {
   );
 }
 
-/** Phase 20: named model providers (Ollama or OpenAI compatible) that custom agents
+/** Phase 20: named model providers (Ollama, OpenAI compatible, Anthropic or Google
+ * Gemini) that custom agents
  * and the inbox classifier pick from. */
 export function ProviderSection() {
   const providers = useProviders();
@@ -256,7 +277,7 @@ function ProviderDialog({
       title={provider ? tt`${provider.name} 연결 수정` : tr("연결 추가")}
     >
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <div className="grid grid-cols-[1fr_140px] gap-3">
+        <div className="grid grid-cols-[1fr_190px] gap-3">
           <label className="flex flex-col gap-1">
             <span className={label}>{tr("이름")}</span>
             <input
@@ -330,6 +351,7 @@ function ProviderDialog({
                 : ""
             }
           />
+          {kind === "google" && <GoogleKeyNote />}
         </label>
         {provider?.has_api_key && (
           <div className="flex items-center gap-2 text-[12.5px] text-text-3">

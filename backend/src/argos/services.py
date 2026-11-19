@@ -2607,7 +2607,7 @@ async def _check_agent_fields(
 
 # --- model providers (PLAN Phase 20) ---------------------------------------------------
 
-PROVIDER_KINDS = ("ollama", "openai", "anthropic")
+PROVIDER_KINDS = ("ollama", "openai", "anthropic", "google")
 STRICT_LOCALITIES = ("network", "cloud")  # the user may only mark a provider stricter
 
 
@@ -2637,7 +2637,7 @@ async def _check_provider_fields(
         fields["name"] = name
     kind = fields.get("kind", current.kind if current else None)
     if kind not in PROVIDER_KINDS:
-        raise InvalidError("연결 종류는 Ollama, OpenAI 호환, Anthropic 중 하나예요")
+        raise InvalidError("연결 종류는 Ollama, OpenAI 호환, Anthropic, Google 중 하나예요")
     if "base_url" in fields or "kind" in fields:
         url = fields.get("base_url", current.base_url if current else "")
         try:

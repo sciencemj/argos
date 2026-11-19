@@ -1427,6 +1427,7 @@ def _native_adapter(
     """Argos's own harness on the agent's provider (v0.2)."""
     from argos.harness import (
         AnthropicLLM,
+        GeminiLLM,
         HarnessLLM,
         HarnessRun,
         NativeHarnessAdapter,
@@ -1445,6 +1446,11 @@ def _native_adapter(
             raise AgentUnavailable(f"{p.name}에 API 키가 없어요 (설정 → 모델 연결)")
         client = providers.anthropic_client(p, timeout=settings.agent_timeout, max_retries=0)
         llm = AnthropicLLM(client, model, unreachable=unreachable)
+    elif p.kind == "google":
+        if not p.api_key:
+            raise AgentUnavailable(f"{p.name}에 API 키가 없어요 (설정 → 모델 연결)")
+        gemini = providers.gemini_client(p, timeout=settings.agent_timeout, max_retries=0)
+        llm = GeminiLLM(gemini, model, unreachable=unreachable)
     else:
         extra = {"reasoning_effort": "none"} if p.kind == "ollama" else None
         openai_client = providers.chat_client(p, timeout=settings.agent_timeout, max_retries=0)
@@ -1549,7 +1555,7 @@ def build_adapter(
             return HermesResponsesAdapter(client, agent.model or settings.hermes_model, agent.name)
         case AgentBackend.OLLAMA:
             p, model = local_target(agent, settings)
-            if p.kind == "anthropic":  # its Messages API, through the harness loop
+            if p.kind in ("anthropic", "google"):  # their own APIs, through the harness loop
                 return _native_adapter(agent, settings, None, not tools, harness)
             extra: dict[str, Any] | None = None
             sees: Callable[[], Awaitable[bool]] | None = None  # None: the server decides

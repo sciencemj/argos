@@ -1,5 +1,5 @@
-"""Model providers (PLAN Phase 20): named Ollama, OpenAI(-compatible) or Anthropic servers
-that agents and the inbox classifier choose between.
+"""Model providers (PLAN Phase 20): named Ollama, OpenAI(-compatible), Anthropic or Google
+(Gemini API) servers that agents and the inbox classifier choose between.
 
 Rows live in `model_provider`; API keys live in the macOS Keychain. Runtime code reads a
 `ProviderConfig` snapshot from `Settings.model_providers`, so sync builders such as
@@ -16,6 +16,8 @@ import httpx2
 import keyring
 import keyring.errors
 from anthropic import AsyncAnthropic
+from google import genai
+from google.genai import types as genai_types
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +27,7 @@ from argos.models import ModelProvider
 if TYPE_CHECKING:
     from argos.config import Settings
 
-type ProviderKind = Literal["ollama", "openai", "anthropic"]
+type ProviderKind = Literal["ollama", "openai", "anthropic", "google"]
 type Locality = Literal["device", "network", "cloud"]
 
 LOCALITY_ORDER: tuple[Locality, ...] = ("device", "network", "cloud")
@@ -42,6 +44,10 @@ log = logging.getLogger(__name__)
 DEFAULT_NAME = "이 Mac"
 DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 ANTHROPIC_VERSION = "2023-06-01"  # the Messages API version header
+GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com"
+GOOGLE_API_VERSION = "v1beta"
+# Suffixes a pasted Gemini address may carry; the stored form is the bare root.
+GOOGLE_SUFFIXES = (f"/{GOOGLE_API_VERSION}/openai", f"/{GOOGLE_API_VERSION}", "/v1")
 
 
 class ProviderError(Exception):
@@ -62,7 +68,7 @@ class ProviderConfig:
     id: str
     name: str
     kind: ProviderKind
-    base_url: str  # up to and including /v1; Anthropic: the root (the SDK adds /v1)
+    base_url: str  # up to and including /v1; Anthropic, Google: the root (SDKs add the version)
     api_key: str | None = field(repr=False)
     locality: Locality
     is_default: bool
@@ -77,8 +83,8 @@ class ProviderModel:
 
 
 def normalize_base_url(kind: ProviderKind, url: str) -> str:
-    """http(s) only, no trailing slash; Ollama addresses get their /v1 and Anthropic ones
-    lose it (its SDK adds /v1 itself)."""
+    """http(s) only, no trailing slash; Ollama addresses get their /v1, Anthropic ones lose
+    it (its SDK adds /v1 itself) and Google ones lose /v1beta(/openai) (likewise)."""
     url = url.strip().rstrip("/")
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -87,6 +93,11 @@ def normalize_base_url(kind: ProviderKind, url: str) -> str:
         url += "/v1"
     if kind == "anthropic":
         url = url.removesuffix("/v1")
+    if kind == "google":
+        for suffix in GOOGLE_SUFFIXES:
+            if url.endswith(suffix):
+                url = url.removesuffix(suffix)
+                break
     return url
 
 
@@ -116,8 +127,13 @@ def unreachable_text(p: ProviderConfig) -> str:
 
 def openai_base_url(p: ProviderConfig) -> str:
     """Where the OpenAI SDK talks to the provider: Anthropic answers OpenAI-style requests
-    at its /v1 (its compatibility layer), so the classifier and plain chat work there too."""
-    return f"{p.base_url}/v1" if p.kind == "anthropic" else p.base_url
+    at its /v1 and Gemini at /v1beta/openai (their compatibility layers), so the classifier,
+    summaries and plain chat work there too."""
+    if p.kind == "anthropic":
+        return f"{p.base_url}/v1"
+    if p.kind == "google":
+        return f"{p.base_url}/{GOOGLE_API_VERSION}/openai"
+    return p.base_url
 
 
 def chat_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> AsyncOpenAI:
@@ -136,6 +152,20 @@ def anthropic_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> 
     return AsyncAnthropic(
         base_url=p.base_url, api_key=p.api_key or "", timeout=timeout, max_retries=max_retries
     )
+
+
+def gemini_client(p: ProviderConfig, *, timeout: float, max_retries: int) -> genai.Client:
+    """Google's own Gemini API (google-genai SDK), with an AI Studio API key from the
+    Keychain. Explicit key and `vertexai=False` keep the SDK from reading GOOGLE_API_KEY /
+    GOOGLE_GENAI_USE_VERTEXAI out of the environment."""
+    retry = genai_types.HttpRetryOptions(attempts=max_retries + 1)
+    options = genai_types.HttpOptions(
+        base_url=f"{p.base_url}/",
+        api_version=GOOGLE_API_VERSION,
+        timeout=int(timeout * 1000),  # milliseconds
+        retry_options=retry,
+    )
+    return genai.Client(vertexai=False, api_key=p.api_key or "", http_options=options)
 
 
 def private_client(p: ProviderConfig, *, timeout: float) -> AsyncOpenAI:
@@ -180,6 +210,8 @@ async def list_models(p: ProviderConfig, *, decision: bool = False) -> list[Prov
         except (KeyError, TypeError) as exc:
             raise ProviderError("unexpected /v1/models answer") from exc
         return [ProviderModel(name, False, None) for name in names]
+    if p.kind == "google":
+        return await _google_models(p)
     if p.kind == "openai":
         headers = {"Authorization": f"Bearer {p.api_key}"} if p.api_key else None
         data = await _get_json(f"{p.base_url}/models", headers)
@@ -208,14 +240,38 @@ async def list_models(p: ProviderConfig, *, decision: bool = False) -> list[Prov
     return sorted(models, key=lambda m: (m.remote, m.name))
 
 
+async def _google_models(p: ProviderConfig) -> list[ProviderModel]:
+    """Gemini models that can chat (generateContent), following the page tokens. The key
+    goes in a header, never in the URL (it would land in logs)."""
+    headers = {"x-goog-api-key": p.api_key} if p.api_key else None
+    names: list[str] = []
+    token = ""
+    for _ in range(20):  # pages of 1000; far more than Google lists
+        params = {"pageSize": "1000"}
+        if token:
+            params["pageToken"] = token
+        data = await _get_json(f"{p.base_url}/{GOOGLE_API_VERSION}/models", headers, params)
+        try:
+            for m in cast(list[dict[str, Any]], data.get("models", [])):
+                methods = cast(list[str], m.get("supportedGenerationMethods") or [])
+                if "generateContent" in methods:
+                    names.append(str(m["name"]).removeprefix("models/"))
+            token = str(data.get("nextPageToken") or "")
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise ProviderError(f"unexpected /{GOOGLE_API_VERSION}/models answer") from exc
+        if not token:
+            break
+    return [ProviderModel(name, False, None) for name in sorted(set(names))]
+
+
 _VISION: dict[tuple[str, str], bool] = {}
 
 
 async def vision(p: ProviderConfig, model: str) -> bool:
     """Whether the model takes images. Ollama says so in /api/show; when that fails
     the server decides (True, not cached). OpenAI-compatible servers do not say: the
-    agent's send_images switch decides instead. Claude models all take images."""
-    if p.kind == "anthropic":
+    agent's send_images switch decides instead. Claude and Gemini models all take images."""
+    if p.kind in ("anthropic", "google"):
         return True
     if p.kind != "ollama":
         return False
