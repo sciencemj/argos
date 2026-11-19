@@ -64,6 +64,9 @@ log = logging.getLogger(__name__)
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9_\-가-힣]+)")
 TRANSCRIPT_LIMIT = 30  # messages sent back to an agent
 WS_OUTPUT_LIMIT = 4000  # characters of a tool result sent over the WebSocket
+# Backends whose runs get a HarnessRun: tool cards, Argos approvals, linked folders,
+# ask_agent (the native harness, and Claude through its SDK bridge).
+HARNESS_BACKENDS = (AgentBackend.NATIVE, AgentBackend.CLAUDE_CODE)
 WEEKDAY_KO = "월화수목금토일"
 
 
@@ -166,7 +169,7 @@ async def build_context(
                 for e in events
                 if e.starts_at
             ]
-    if channel.linked_folders and agent.backend == AgentBackend.NATIVE:
+    if channel.linked_folders and agent.backend in HARNESS_BACKENDS:
         lines.append(
             "Local folders linked to this channel (use absolute paths with the file tools):"
             if settings.language == "en"
@@ -570,7 +573,7 @@ class Runner:
                 await self._job_started(run_id, agent, job)
             await hub.publish("agent.status", ids | {"status": "thinking"})
             sessions = _AgentSessions(self._sessionmaker, agent.id)
-            if agent.backend == AgentBackend.NATIVE:
+            if agent.backend in HARNESS_BACKENDS:  # Claude: through the harness bridge
                 native = True
                 adapter = await self._native_adapter(run_id, agent, sessions, job, no_tools, coding)
             elif job is not None:
@@ -797,7 +800,8 @@ class Runner:
         no_tools: bool,
         coding: Path | None,
     ) -> AgentAdapter:
-        """The native harness with this run's approvals and permission mode."""
+        """The native harness (or Claude's bridge to it) with this run's approvals and
+        permission mode."""
         async with self._sessionmaker() as session:
             run = await services.get_run(session, run_id)
             channel = await services.get_channel(session, run.channel_id)

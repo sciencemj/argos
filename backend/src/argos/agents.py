@@ -26,12 +26,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from claude_agent_sdk import (
+    AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ClaudeSDKError,
     CLINotFoundError,
+    PermissionResult,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
+    SdkMcpTool,
     StreamEvent,
+    ToolPermissionContext,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+    create_sdk_mcp_server,
     get_session_info,
     query,
 )
@@ -43,7 +53,7 @@ from argos.config import Settings
 from argos.models import Agent, AgentBackend
 
 if TYPE_CHECKING:
-    from argos.harness import HarnessRun
+    from argos.harness import ApprovalGate, HarnessRun, ToolContext, ToolDef, ToolRegistry
 
 # --- events ---------------------------------------------------------------------------
 
@@ -638,6 +648,199 @@ def workspace_rules(tools: list[str], workspace: Path) -> list[str]:
 CLAUDE_CHAT_SETTINGS = json.dumps({"disableAllHooks": True})
 
 
+# --- Claude ↔ Argos harness bridge (v0.2) ---------------------------------------------
+
+ARGOS_MCP_PREFIX = "mcp__argos__"
+CLAUDE_TOOL_OUTPUT = 20_000  # characters of a tool result kept for the step card
+
+
+def claude_tool_name(name: str) -> str:
+    """Claude's name for an Argos tool (`mcp__argos__add_task`) → the Argos name, so tool
+    cards and render_artifact look the same as with the native harness."""
+    return name.removeprefix(ARGOS_MCP_PREFIX)
+
+
+def claude_tool_text(content: str | list[dict[str, Any]] | None) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for block in content:
+        if block.get("type") == "text":
+            parts.append(str(block.get("text", "")))
+        elif block.get("type") == "image":
+            parts.append("[이미지]")
+    return "\n".join(parts)
+
+
+class ClaudeToolSteps:
+    """Turns the SDK's typed messages into AgentEvents, tool steps included: an assistant
+    `ToolUseBlock` becomes `ToolCall`, the user-side `ToolResultBlock` `ToolResult`
+    (named after its call). Subagent messages (`parent_tool_use_id`) stay out of the
+    thread's cards."""
+
+    def __init__(self) -> None:
+        self._names: dict[str, str] = {}
+
+    def events(self, message: Any) -> list[AgentEvent]:
+        out: list[AgentEvent] = []
+        if (event := claude_sdk_event(message)) is not None:
+            out.append(event)
+        if isinstance(message, AssistantMessage) and message.parent_tool_use_id is None:
+            for block in message.content:
+                if isinstance(block, ToolUseBlock) and block.id not in self._names:
+                    name = claude_tool_name(block.name)
+                    self._names[block.id] = name
+                    out.append(ToolCall(block.id, name, dict(block.input)))
+        elif (
+            isinstance(message, UserMessage)
+            and message.parent_tool_use_id is None
+            and isinstance(message.content, list)
+        ):
+            for block in message.content:
+                if isinstance(block, ToolResultBlock) and block.tool_use_id in self._names:
+                    text = claude_tool_text(block.content)
+                    if len(text) > CLAUDE_TOOL_OUTPUT:
+                        text = text[:CLAUDE_TOOL_OUTPUT] + "\n…(잘림)"
+                    name = self._names.pop(block.tool_use_id)
+                    out.append(ToolResult(block.tool_use_id, name, text, bool(block.is_error)))
+        return out
+
+
+# Claude Code's built-in tools as the harness sees them: their risk, and which input
+# names a path. Anything not listed (other MCP servers, new tools) counts as
+# destructive, so it always waits for the user.
+CLAUDE_BUILTIN_KINDS: dict[str, str] = {
+    "Read": "read",
+    "Glob": "read",
+    "Grep": "read",
+    "LS": "read",
+    "NotebookRead": "read",
+    "WebFetch": "read",
+    "WebSearch": "read",
+    "TodoWrite": "read",
+    "Skill": "read",
+    "Agent": "read",
+    "Task": "read",
+    "ToolSearch": "read",
+    "BashOutput": "read",
+    "Write": "write",
+    "Edit": "write",
+    "MultiEdit": "write",
+    "NotebookEdit": "write",
+    "KillShell": "write",
+    "Bash": "destructive",
+}
+CLAUDE_PATH_KEYS = ("file_path", "notebook_path", "path")
+
+
+def _claude_paths(args: dict[str, Any]) -> list[str]:
+    return [v for k in CLAUDE_PATH_KEYS if isinstance(v := args.get(k), str) and v]
+
+
+def _claude_summary(name: str) -> Callable[[dict[str, Any]], str]:
+    def summarize(args: dict[str, Any]) -> str:
+        if name == "Bash":
+            return f"Bash: {str(args.get('command', ''))[:300]}"
+        if paths := _claude_paths(args):
+            return f"{name} {paths[0]}"
+        return f"{name} {json.dumps(args, ensure_ascii=False, default=str)[:300]}"
+
+    return summarize
+
+
+@dataclass(frozen=True)
+class ClaudeHarness:
+    """What a run lends Claude so it works like the native harness: the tool context
+    (workspace, linked folders, delegate, data access), the Argos tools it may call (an
+    in-process MCP server) and the approval gate behind `can_use_tool`."""
+
+    context: "ToolContext"
+    registry: "ToolRegistry"
+    gate: "ApprovalGate | None" = None
+
+    def tool_def(self, name: str) -> "tuple[ToolDef, bool]":
+        """The ToolDef deciding on `name`; True when it is one of Claude's own tools."""
+        from argos.harness import ToolDef
+
+        if name.startswith(ARGOS_MCP_PREFIX):
+            tool = self.registry.get(claude_tool_name(name))
+            if tool is not None:
+                return tool, False
+
+        async def unused(args: dict[str, Any], ctx: Any) -> str:
+            raise NotImplementedError
+
+        kind = cast(Any, CLAUDE_BUILTIN_KINDS.get(name, "destructive"))
+        return (
+            ToolDef(
+                name if name.replace("_", "").isalnum() else "external_tool",
+                f"Claude Code tool {name}",
+                {"type": "object"},
+                kind,
+                unused,
+                source="claude",
+                paths=_claude_paths,
+                summarize=_claude_summary(name),
+            ),
+            True,
+        )
+
+    def sdk_server(self) -> Any:
+        """The Argos tools as an in-process MCP server named `argos` (tool names stay
+        `mcp__argos__*`, as with the external /mcp server)."""
+        from argos.harness import MAX_OUTPUT
+
+        ctx = self.context
+
+        def wrap(tool: "ToolDef") -> SdkMcpTool[Any]:
+            async def handler(args: dict[str, Any]) -> dict[str, Any]:
+                try:
+                    output, is_error = await tool.handler(dict(args), ctx), False
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # the model handles a tool's failure
+                    output, is_error = f"오류: {type(exc).__name__}: {exc}", True
+                if len(output) > MAX_OUTPUT:
+                    output = output[:MAX_OUTPUT] + "\n…(잘림)"
+                return {"content": [{"type": "text", "text": output}], "is_error": is_error}
+
+            return SdkMcpTool(tool.name, tool.description, tool.parameters, handler)
+
+        return create_sdk_mcp_server("argos", tools=[wrap(t) for t in self.registry])
+
+    async def permit(
+        self,
+        name: str,
+        args: dict[str, Any],
+        announce: Callable[[ApprovalNeeded], Awaitable[None]],
+    ) -> PermissionResult:
+        """`can_use_tool`: the harness's `decide()`; a call that needs the user posts an
+        approval (announced to the runner as ApprovalNeeded) and waits for it."""
+        from argos.harness import decide, inside
+
+        tool, builtin = self.tool_def(name)
+        ctx = self.context
+        if builtin and any(
+            not any(inside(p, root) for root in ctx.allowed_roots()) for p in _claude_paths(args)
+        ):
+            return PermissionResultDeny(message="Argos가 허용한 폴더 밖이라 쓸 수 없어요")
+        if decide(tool, args, ctx.permission_mode, ctx.workspace, ctx.trusted) == "allow":
+            return PermissionResultAllow()
+        if self.gate is None:
+            return PermissionResultDeny(message="사용자 승인이 필요한데 승인을 받을 수 없어요")
+        summary = tool.summary(args)
+        approval_id = await self.gate.request(tool, args, summary)
+        await announce(ApprovalNeeded(approval_id, claude_tool_name(name), args, summary))
+        if await self.gate.wait(approval_id):
+            return PermissionResultAllow()
+        return PermissionResultDeny(message="사용자가 이 실행을 거절했어요. 다른 방법을 찾으세요.")
+
+
+_DONE = object()
+
+
 class ClaudeSDKAdapter:
     """Claude through the official Claude Agent SDK, one session per Argos thread/DM.
 
@@ -659,7 +862,11 @@ class ClaudeSDKAdapter:
         job_budget_usd: float | None = None,
         tools: list[str] | None = None,
         coding: bool = False,
+        harness: ClaudeHarness | None = None,
     ) -> None:
+        # With `harness` (a run from the runner): tool step cards, Argos approvals through
+        # `can_use_tool`, and the Argos tools in-process instead of the /mcp server.
+        self._harness = harness
         self._coding = coding
         self._tools = tools  # Argos tools it may use; None = all, [] = none (PLAN Phase 10)
         self._name = name
@@ -677,10 +884,17 @@ class ClaudeSDKAdapter:
         exists = (
             await asyncio.to_thread(get_session_info, session_id, str(self._workspace))
         ) is not None
-        argos = {"argos": {"type": "http", "url": self._mcp_url}} if self._tools != [] else {}
+        bridge = self._harness
+        argos: dict[str, Any] = (
+            {"argos": {"type": "http", "url": self._mcp_url}} if self._tools != [] else {}
+        )
         allowed = (
             ["mcp__argos"] if self._tools is None else [f"mcp__argos__{t}" for t in self._tools]
         )
+        if bridge is not None:
+            # Every call goes to `can_use_tool`: nothing is pre-approved by name.
+            argos = {"argos": bridge.sdk_server()} if len(bridge.registry) else {}
+            allowed = []
         common: dict[str, Any] = {
             "mcp_servers": argos,
             "strict_mcp_config": True,
@@ -713,6 +927,30 @@ class ClaudeSDKAdapter:
                 allowed_tools=allowed,
                 skills="all",
                 **chat_common,
+            )
+        elif bridge is not None:  # a job or coding mode under the Argos approval gate
+            options = ClaudeAgentOptions(
+                system_prompt={"type": "preset", "preset": "claude_code", "append": context},
+                tools={"type": "preset", "preset": "claude_code"} if self._coding else JOB_TOOLS,
+                allowed_tools=[],
+                skills="all" if self._coding else None,
+                permission_mode="default",
+                sandbox=(  # Bash stays sandboxed even once approved
+                    {
+                        "enabled": True,
+                        "autoAllowBashIfSandboxed": False,
+                        "allowUnsandboxedCommands": False,
+                        "network": {"allowedDomains": ["*"]},
+                    }
+                    if self._coding
+                    else {
+                        "enabled": True,
+                        "autoAllowBashIfSandboxed": False,
+                        "allowUnsandboxedCommands": False,
+                    }
+                ),
+                max_budget_usd=self._job_budget,
+                **(coding_common if self._coding else common),
             )
         elif self._coding:  # coding mode: like Claude Code itself, in the project folder
             options = ClaudeAgentOptions(
@@ -764,16 +1002,64 @@ class ClaudeSDKAdapter:
         prompt: str | AsyncIterator[dict[str, Any]] = text
         if media:
             prompt = claude_prompt(await asyncio.to_thread(claude_content, text, media))
+        if bridge is None:
+            try:
+                async for message in query(prompt=prompt, options=options):
+                    if (event := claude_sdk_event(message)) is not None:
+                        yield event
+                    if isinstance(message, ResultMessage):
+                        return
+            except CLINotFoundError as exc:
+                raise AgentUnavailable("claude 명령을 찾을 수 없어요") from exc
+            except ClaudeSDKError as exc:
+                raise AgentUnavailable(f"Claude: {exc}") from exc
+            return
+        # With the harness, `can_use_tool` runs inside the SDK's reader while the run may
+        # be paused on the user: SDK messages and approval notices meet in one queue.
+        inbox: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def announce(event: ApprovalNeeded) -> None:
+            await inbox.put(event)
+
+        async def can_use_tool(
+            name: str, args: dict[str, Any], _: ToolPermissionContext
+        ) -> PermissionResult:
+            return await bridge.permit(name, args, announce)
+
+        options = replace(options, can_use_tool=can_use_tool)
+
+        async def pump() -> None:
+            try:
+                async for message in query(prompt=prompt, options=options):
+                    await inbox.put(message)
+                    if isinstance(message, ResultMessage):
+                        break
+            except Exception as exc:
+                await inbox.put(exc)
+            finally:
+                await inbox.put(_DONE)
+
+        steps = ClaudeToolSteps()
+        reader = asyncio.create_task(pump())
         try:
-            async for message in query(prompt=prompt, options=options):
-                if (event := claude_sdk_event(message)) is not None:
+            while (item := await inbox.get()) is not _DONE:
+                if isinstance(item, BaseException):
+                    raise item
+                if isinstance(item, ApprovalNeeded):
+                    yield item
+                    continue
+                for event in steps.events(item):
                     yield event
-                if isinstance(message, ResultMessage):
+                if isinstance(item, ResultMessage):
                     return
         except CLINotFoundError as exc:
             raise AgentUnavailable("claude 명령을 찾을 수 없어요") from exc
         except ClaudeSDKError as exc:
             raise AgentUnavailable(f"Claude: {exc}") from exc
+        finally:
+            if not reader.done():
+                reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)
 
 
 # --- Codex app-server (JSON-RPC over stdio) ---------------------------------------------------
@@ -1145,7 +1431,6 @@ def _native_adapter(
         HarnessRun,
         NativeHarnessAdapter,
         OpenAIChatLLM,
-        ToolContext,
         ToolRegistry,
         registry_for,
     )
@@ -1177,9 +1462,19 @@ def _native_adapter(
 
             vision = no_images
     registry = ToolRegistry() if no_tools else registry_for(agent.tools_json)
+    context = _tool_context(agent, settings, workspace, run)
+    return NativeHarnessAdapter(llm, agent.name, registry, context, run.gate, vision=vision)
+
+
+def _tool_context(
+    agent: Agent, settings: Settings, workspace: Path | None, run: "HarnessRun"
+) -> "ToolContext":
+    """What harness tools may reach for this run (native harness or Claude's bridge)."""
+    from argos.harness import ToolContext
+
     folder = (workspace or run.workspace or settings.argos_workspace).resolve()
     folder.mkdir(parents=True, exist_ok=True)
-    context = ToolContext(
+    return ToolContext(
         workspace=folder,
         agent=agent.name,
         run_id=run.run_id,
@@ -1193,7 +1488,25 @@ def _native_adapter(
         trusted=run.trusted,
         delegate=run.delegate,
     )
-    return NativeHarnessAdapter(llm, agent.name, registry, context, run.gate, vision=vision)
+
+
+def _claude_harness(
+    agent: Agent,
+    settings: Settings,
+    workspace: Path | None,
+    no_tools: bool,
+    run: "HarnessRun",
+) -> ClaudeHarness:
+    """The harness bridge for a Claude run. In a job or coding thread (`workspace`) Claude
+    keeps its own file and shell tools, so the Argos file tools are left out."""
+    from argos.file_tools import FILE_TOOLS
+    from argos.harness import ToolRegistry, registry_for
+
+    registry = ToolRegistry() if no_tools else registry_for(agent.tools_json)
+    if workspace is not None:
+        for tool in FILE_TOOLS:
+            registry.unregister(tool.name)
+    return ClaudeHarness(_tool_context(agent, settings, workspace, run), registry, run.gate)
 
 
 def build_adapter(
@@ -1267,6 +1580,11 @@ def build_adapter(
             cli = shutil.which(settings.claude_bin)
             if cli is None:
                 raise AgentUnavailable(f"{settings.claude_bin} 명령을 찾을 수 없어요")
+            bridge = (
+                _claude_harness(agent, settings, job_workspace, no_tools, harness)
+                if harness is not None
+                else None
+            )
             if job_workspace is not None:
                 return ClaudeSDKAdapter(
                     agent.name,
@@ -1276,8 +1594,11 @@ def build_adapter(
                     cli,
                     settings.job_max_budget_usd,
                     coding=coding,
+                    harness=bridge,
                 )
-            return ClaudeSDKAdapter(agent.name, agent.model, workspace, mcp, cli, tools=tools)
+            return ClaudeSDKAdapter(
+                agent.name, agent.model, workspace, mcp, cli, tools=tools, harness=bridge
+            )
         case AgentBackend.CODEX:
             binary = shutil.which(settings.codex_bin)
             if binary is None:
