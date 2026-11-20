@@ -472,8 +472,10 @@ async def update_event(
     start: str | None = None,
     end: str | None = None,
     location: str | None = None,
+    channel: str | None = None,
 ) -> dict[str, Any]:
-    """Edit an event. Giving start replaces its time (same rules as create_event)."""
+    """Edit an event. Giving start replaces its time (same rules as create_event);
+    channel (name or id, see list_channels) moves it to another channel."""
     tz = _tz(ctx)
     async with _session(ctx) as s:
         changes: dict[str, Any] = {}
@@ -481,6 +483,8 @@ async def update_event(
             changes["title"] = title
         if location is not None:
             changes["location"] = location or None
+        if channel is not None:
+            changes["channel_id"] = (await _channel(s, channel)).id
         if start is not None:
             changes |= _event_times(start, end, tz)
         elif end is not None:

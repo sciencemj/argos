@@ -15,15 +15,17 @@ import { Link, useSearchParams } from "react-router";
 import {
   type CalEvent,
   useCalendarConflicts,
+  useChannels,
   useCreateEvent,
   useDeleteEvent,
   useEvents,
   useTasks,
   useUpdateEvent,
 } from "../api";
+import { channelLabel } from "../cards";
 import { fmt } from "../dates";
 import { language, t, tr, tt } from "../i18n";
-import { btn, Chip, Dialog, ErrorText, field, label } from "../ui";
+import { btn, Chip, Dialog, ErrorText, field, label, SelectMenu } from "../ui";
 import { useChannel } from "./ChannelPage";
 
 type Draft = {
@@ -245,7 +247,7 @@ function NewEventDialog({
   );
 }
 
-function EventDialog({
+export function EventDialog({
   event,
   onClose,
 }: {
@@ -254,12 +256,23 @@ function EventDialog({
 }) {
   const update = useUpdateEvent();
   const remove = useDeleteEvent();
+  const channels = useChannels();
   const [title, setTitle] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [seen, setSeen] = useState<string | null>(null);
   if (event && event.id !== seen) {
     setSeen(event.id);
     setTitle(event.title);
+    setChannelId(event.channel_id);
   }
+  // Closed: the next open (even of the same event) starts from its saved values.
+  if (!event && seen !== null) setSeen(null);
+  // Same choices as a task's channel: courses, projects and 내 공간 (not inbox or DMs).
+  const pickable =
+    channels.data?.channels.filter(
+      (c) => c.kind !== "system" && c.kind !== "dm",
+    ) ?? [];
+  const current = channels.data?.channels.find((c) => c.id === channelId);
 
   // Other Apple calendars and recurring series change only in the calendar app (7b).
   const readOnly = Boolean(event?.read_only);
@@ -273,7 +286,13 @@ function EventDialog({
     e.preventDefault();
     if (event)
       update.mutate(
-        { id: event.id, title: title.trim() },
+        {
+          id: event.id,
+          title: title.trim(),
+          ...(channelId && channelId !== event.channel_id
+            ? { channel_id: channelId }
+            : {}),
+        },
         { onSuccess: onClose },
       );
   };
@@ -301,6 +320,21 @@ function EventDialog({
             onChange={(e) => setTitle(e.target.value)}
             readOnly={readOnly}
             required
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={label}>{tr("채널")}</span>
+          <SelectMenu
+            className={field}
+            value={channelId}
+            disabled={readOnly}
+            onChange={(value) => setChannelId(value)}
+            options={[
+              ...(current && !pickable.includes(current)
+                ? [{ value: current.id, label: channelLabel(current) }]
+                : []),
+              ...pickable.map((c) => ({ value: c.id, label: channelLabel(c) })),
+            ]}
           />
         </label>
         <ErrorText error={update.error ?? remove.error} />

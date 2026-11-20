@@ -111,6 +111,11 @@ def test_events_and_schedule(server: str) -> None:
     assert {e["title"] for e in week} == {"조교 면담", "MT"}
     moved = call(server, "update_event", {"event_id": timed["id"], "start": "2026-09-30T10:00"})
     assert moved["starts_at"] == "2026-09-30T10:00:00+09:00"
+    rehomed = call(server, "update_event", {"event_id": timed["id"], "channel": "#일상"})
+    assert rehomed["channel"] == "일상"
+    assert rehomed["starts_at"] == "2026-09-30T10:00:00+09:00"  # only the channel moved
+    missing = call(server, "update_event", {"event_id": timed["id"], "channel": "없는채널"})
+    assert "not found" in missing["error"]
 
     asked = call(server, "delete_event", {"event_id": trip["id"]})
     assert asked["status"] == "pending"
