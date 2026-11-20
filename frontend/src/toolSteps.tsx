@@ -8,7 +8,7 @@ import {
   useRunSteps,
 } from "./api";
 import { type ArtifactKind, ArtifactView } from "./artifact";
-import { tr } from "./i18n";
+import { t, tr } from "./i18n";
 import { ShieldIcon, WrenchIcon } from "./icons";
 import { btn, ErrorText } from "./ui";
 
@@ -53,23 +53,156 @@ export function ToolSteps({ message }: { message: Message }) {
   // Only runs that logged steps (native harness, jobs) have any to fetch.
   const stored = useRunSteps(run?.id, !running && Boolean(run?.log));
   const steps = running ? (live?.steps ?? []) : stepsFromRun(stored.data ?? []);
+  return <ToolStepList steps={steps} />;
+}
+
+export type StepItem =
+  | { kind: "artifact"; index: number; step: LiveStep }
+  | { kind: "single"; index: number; step: LiveStep }
+  | { kind: "group"; index: number; steps: LiveStep[] };
+
+/** Runs of 2+ ordinary consecutive calls fold into one line; a drawn artifact and a
+ * call waiting for the user's approval always stand on their own. */
+export function groupSteps(
+  steps: LiveStep[],
+  waiting: (step: LiveStep) => boolean,
+): StepItem[] {
+  const items: StepItem[] = [];
+  let run: { index: number; steps: LiveStep[] } | null = null;
+  const flush = () => {
+    if (!run) return;
+    items.push(
+      run.steps.length === 1
+        ? { kind: "single", index: run.index, step: run.steps[0] }
+        : { kind: "group", index: run.index, steps: run.steps },
+    );
+    run = null;
+  };
+  steps.forEach((step, index) => {
+    if (artifactOf(step)) {
+      flush();
+      items.push({ kind: "artifact", index, step });
+    } else if (waiting(step)) {
+      flush();
+      items.push({ kind: "single", index, step });
+    } else {
+      run ??= { index, steps: [] };
+      run.steps.push(step);
+    }
+  });
+  flush();
+  return items;
+}
+
+/** Whether `step` is paused on an approval the user has not decided yet. */
+function useWaiting(): (step: LiveStep) => boolean {
+  const pending = usePendingApprovals();
+  const ids = new Set((pending.data ?? []).map((a) => a.id));
+  return (step) =>
+    Boolean(step.approvalId) &&
+    step.output === undefined &&
+    ids.has(step.approvalId ?? "");
+}
+
+export function ToolStepList({ steps }: { steps: LiveStep[] }) {
+  const waiting = useWaiting();
   if (steps.length === 0) return null;
   return (
     <section
       className="flex flex-col gap-1.5"
       aria-label={tr("도구 사용", "Tool calls")}
     >
-      {steps.map((step, index) => {
-        const artifact = artifactOf(step);
+      {groupSteps(steps, waiting).map((item) => {
         // Call ids can repeat within a run, so the position keeps keys unique.
-        const key = `${index}:${step.id}`;
+        if (item.kind === "group")
+          return (
+            <ToolStepGroup
+              key={`${item.index}:group`}
+              steps={item.steps}
+              first={item.index}
+            />
+          );
+        const key = `${item.index}:${item.step.id}`;
+        const artifact = item.kind === "artifact" && artifactOf(item.step);
         return artifact ? (
           <ArtifactView key={key} {...artifact} />
         ) : (
-          <ToolStepCard key={key} step={step} />
+          <ToolStepCard key={key} step={item.step} />
         );
       })}
     </section>
+  );
+}
+
+const SHOWN_NAMES = 3;
+
+/** Consecutive tool calls in one line: how many, which tools, and how they went;
+ * opened, each call with its arguments and result. Folded until the user opens it. */
+export function ToolStepGroup({
+  steps,
+  first = 0,
+}: {
+  steps: LiveStep[];
+  first?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const names = [...new Set(steps.map((s) => s.name))];
+  const running = steps.filter((s) => s.output === undefined).length;
+  const failed = steps.filter((s) => s.isError).length;
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className="group rounded-2xl border border-line-soft bg-inset/60 text-[12.5px]"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none">
+        <span className="text-meta">
+          <WrenchIcon size={14} />
+        </span>
+        <span className="shrink-0 text-ink">
+          {t(`도구 ${steps.length}개 실행`, `Ran ${steps.length} tools`)}
+        </span>
+        <span className="min-w-0 grow truncate font-mono text-[12px] text-meta">
+          {names.slice(0, SHOWN_NAMES).join(", ")}
+          {names.length > SHOWN_NAMES ? " …" : ""}
+        </span>
+        {failed > 0 && (
+          <span className="shrink-0 rounded-full bg-danger-bg px-2 py-px text-[11px] font-medium text-danger">
+            {t(`실패 ${failed}`, `${failed} failed`)}
+          </span>
+        )}
+        <span
+          className={`flex shrink-0 items-center gap-1.5 text-[11.5px] ${running ? "text-text-3" : "text-meta"}`}
+        >
+          {running > 0 && (
+            <span
+              aria-hidden
+              className="size-3 animate-spin rounded-full border-[1.5px] border-line border-t-ink"
+            />
+          )}
+          {running > 0
+            ? tr("실행 중…", "Running…")
+            : failed > 0
+              ? tr("일부 실패", "Some failed")
+              : tr("완료", "Done")}
+        </span>
+        <span
+          aria-hidden
+          className="shrink-0 text-meta transition-transform group-open:rotate-90"
+        >
+          ›
+        </span>
+      </summary>
+      {open && (
+        <div className="flex flex-col gap-1.5 px-2 pb-2">
+          {steps.map((step, i) => {
+            // Call ids can repeat within a run: the run position keeps keys unique.
+            const key = `${first + i}:${step.id}`;
+            return <ToolStepCard key={key} step={step} />;
+          })}
+        </div>
+      )}
+    </details>
   );
 }
 

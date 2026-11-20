@@ -1,10 +1,20 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { stepsFromRun, ToolStepCard } from "./toolSteps";
+import {
+  groupSteps,
+  stepsFromRun,
+  ToolStepCard,
+  ToolStepList,
+} from "./toolSteps";
 
 const mocks = vi.hoisted(() => ({
   pending: { data: [] as { id: string }[] },
   resolve: { mutate: vi.fn(), isPending: false, error: null as unknown },
+}));
+vi.mock("./artifact", () => ({
+  ArtifactView: ({ title }: { title: string }) => (
+    <figure aria-label="artifact">{title}</figure>
+  ),
 }));
 vi.mock("./api", () => ({
   usePendingApprovals: () => mocks.pending,
@@ -142,5 +152,94 @@ test("a call id reused in a later turn pairs with its own result", () => {
   expect(steps.map((s) => [s.name, s.output])).toEqual([
     ["a", "first"],
     ["b", "second"],
+  ]);
+});
+
+const call = (
+  id: string,
+  name: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  id,
+  name,
+  args: { path: id },
+  output: "ok",
+  ...extra,
+});
+const ART = call("a1", "render_artifact", {
+  args: { title: "차트", kind: "svg", code: "<svg/>" },
+});
+
+test("consecutive calls fold into one line and open on click", () => {
+  mocks.pending.data = [];
+  const { container } = render(
+    <ToolStepList
+      steps={[
+        call("c1", "read_file"),
+        call("c2", "grep_files"),
+        call("c3", "read_file", { isError: true, output: "nope" }),
+      ]}
+    />,
+  );
+  const groups = container.querySelectorAll("details");
+  expect(groups).toHaveLength(1);
+  const summary = groups[0].querySelector("summary") as HTMLElement;
+  expect(summary.textContent).toContain("도구 3개 실행");
+  expect(summary.textContent).toContain("read_file, grep_files");
+  expect(summary.textContent).toContain("실패 1");
+  expect(screen.queryByText("nope")).toBeNull(); // folded
+  groups[0].open = true;
+  fireEvent(groups[0], new Event("toggle"));
+  expect(container.querySelectorAll("details details")).toHaveLength(3);
+});
+
+test("a running group shows progress", () => {
+  mocks.pending.data = [];
+  render(
+    <ToolStepList
+      steps={[call("c1", "read_file"), { id: "c2", name: "ls", args: {} }]}
+    />,
+  );
+  expect(screen.getByText("실행 중…")).toBeTruthy();
+});
+
+test("render_artifact stays inline and splits the runs around it", () => {
+  mocks.pending.data = [];
+  const steps = [call("c1", "a"), call("c2", "b"), ART, call("c3", "c")];
+  expect(groupSteps(steps, () => false).map((i) => i.kind)).toEqual([
+    "group",
+    "artifact",
+    "single",
+  ]);
+  const { container } = render(<ToolStepList steps={steps} />);
+  expect(screen.getByRole("figure", { name: "artifact" }).textContent).toBe(
+    "차트",
+  );
+  expect(container.querySelectorAll(":scope section > details")).toHaveLength(
+    2,
+  );
+});
+
+test("a call waiting for approval stands out, open, with its buttons", () => {
+  mocks.pending.data = [{ id: "ap1" }];
+  const waitingStep = {
+    id: "c3",
+    name: "run_command",
+    args: { command: "ls" },
+    approvalId: "ap1",
+  };
+  render(
+    <ToolStepList
+      steps={[call("c1", "read_file"), call("c2", "grep_files"), waitingStep]}
+    />,
+  );
+  expect(screen.getByText("도구 2개 실행")).toBeTruthy();
+  expect(screen.getByText("승인 대기")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "승인" })).toBeTruthy();
+});
+
+test("a single ordinary call is not grouped", () => {
+  expect(groupSteps([call("c1", "a")], () => false)).toEqual([
+    { kind: "single", index: 0, step: call("c1", "a") },
   ]);
 });
