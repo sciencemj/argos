@@ -23,6 +23,14 @@ const KNOWN: Record<
     bg: "var(--codex)",
     text: "var(--codex-text)",
   },
+  // Default chat's hidden runner (v0.2): not an agent, so it is labelled as default
+  // chat (reply headers show the model it ran on when they know it).
+  _chat: {
+    name: tr("기본 채팅", "Default chat"),
+    initials: "✦",
+    bg: "var(--step-4)",
+    text: "var(--text-2)",
+  },
   local: {
     name: tr("로컬 모델"),
     initials: "L",

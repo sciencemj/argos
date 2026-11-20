@@ -1,11 +1,18 @@
+import { useEffect, useId, useRef, useState } from "react";
 import { AgentAvatar } from "./agents";
 import {
   type Agent,
   type Channel,
+  type ChatEffort,
+  type ChatModel,
   type PermissionMode,
+  useChatModels,
+  useChatSettings,
+  useSaveChatSettings,
   useUpdateChannel,
 } from "./api";
 import { tr, tt } from "./i18n";
+import { CheckIcon, SearchIcon } from "./icons";
 import { SelectMenu, type SelectOption, useIsMobile } from "./ui";
 
 /** The chat composer's bottom bar (v0.2, Orca-style): attach and permission mode on
@@ -13,14 +20,6 @@ import { SelectMenu, type SelectOption, useIsMobile } from "./ui";
 
 const pill =
   "h-8 max-w-full rounded-full border border-line-soft bg-inset px-3 text-[12.5px] font-medium text-text-2 outline-none hover:text-ink focus-visible:border-ink";
-
-const BACKEND_TEXT: Record<string, string> = {
-  claude_code: "Claude Code",
-  codex: "Codex",
-  hermes: "Hermes",
-  ollama: tr("모델 연결", "Model connection"),
-  native: tr("Argos 하네스", "Argos harness"),
-};
 
 function ShieldMini() {
   return (
@@ -110,41 +109,6 @@ export function PermissionSelect({ channel }: { channel: Channel }) {
   );
 }
 
-/** Which agent answers this message (and, in a thread, from now on). */
-export function AgentSelect({
-  agents,
-  value,
-  onChange,
-}: {
-  agents: Agent[];
-  value: string;
-  onChange: (name: string) => void;
-}) {
-  const options: SelectOption[] = agents.map((a) => ({
-    value: a.name,
-    label: a.display_name,
-    text: a.display_name,
-    icon: <AgentAvatar id={a.name} size={18} />,
-    disabled: !a.available,
-    description: a.available
-      ? [BACKEND_TEXT[a.backend] ?? a.backend, a.model]
-          .filter(Boolean)
-          .join(" · ")
-      : (a.problem ?? tr("지금은 쓸 수 없어요", "Unavailable right now")),
-  }));
-  return (
-    <SelectMenu
-      ariaLabel={tr("답할 에이전트", "Agent")}
-      value={value}
-      options={options}
-      placement="top"
-      menuWidth={300}
-      className={`${pill} shrink`}
-      onChange={onChange}
-    />
-  );
-}
-
 // Rough context windows by backend; a native/local model's is the smallest common one.
 const WINDOW: Record<string, number> = {
   claude_code: 200_000,
@@ -211,6 +175,235 @@ export function ContextRing({
           transform="rotate(-90 10 10)"
         />
       </svg>
+    </span>
+  );
+}
+
+const EFFORTS: { value: ChatEffort; label: string }[] = [
+  { value: "low", label: tr("낮음", "Low") },
+  { value: "medium", label: tr("중간", "Medium") },
+  { value: "high", label: tr("높음", "High") },
+];
+
+/** The models in `list` whose name or connection contains `query`, case-insensitive. */
+export function filterModels(list: ChatModel[], query: string): ChatModel[] {
+  const key = query.trim().toLowerCase();
+  if (!key) return list;
+  return list.filter(
+    (m) =>
+      m.model.toLowerCase().includes(key) ||
+      m.provider_name.toLowerCase().includes(key),
+  );
+}
+
+/** Default chat's model (v0.2): what a message with no @mention runs on. Searchable
+ * across every connection, with the reasoning effort below; the pick is the default
+ * for all chats (also in Settings → 기본 채팅 모델). */
+export function ModelPicker() {
+  const chat = useChatSettings();
+  const save = useSaveChatSettings();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const models = useChatModels(open);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [open]);
+
+  const data = chat.data;
+  const model = data?.resolved_model;
+  const effort = EFFORTS.find((e) => e.value === data?.effort);
+  const shown = filterModels(models.data?.models ?? [], query);
+  const isCurrent = (m: ChatModel) =>
+    m.model === model && m.provider_name === data?.provider_name;
+  // Keyboard: ↑↓ move the highlight over the list, Enter picks it (Escape closes).
+  const ids = useId();
+  const [active, setActive] = useState(0);
+  const highlighted = Math.min(active, Math.max(shown.length - 1, 0));
+  const optionId = (i: number) => `${ids}-model-${i}`;
+  const pick = (m: ChatModel) => {
+    save.mutate({ provider_id: m.provider_id, model: m.model });
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open)
+      document
+        .getElementById(optionId(highlighted))
+        ?.scrollIntoView?.({ block: "nearest" });
+  });
+
+  return (
+    <div ref={box} className="relative min-w-0 shrink">
+      <button
+        type="button"
+        aria-label={tr("채팅 모델", "Chat model")}
+        aria-expanded={open}
+        title={data?.problem ?? undefined}
+        onClick={() => {
+          if (!open) {
+            setQuery("");
+            const current = (models.data?.models ?? []).findIndex(isCurrent);
+            setActive(Math.max(current, 0));
+          }
+          setOpen(!open);
+        }}
+        className={`${pill} flex min-w-0 items-center gap-1.5 ${data?.problem ? "text-danger" : ""}`}
+      >
+        <span className="min-w-0 truncate">
+          {model ?? tr("모델 고르기", "Pick a model")}
+        </span>
+        {model && effort && (
+          <span className="shrink-0 text-meta">{effort.label}</span>
+        )}
+        <span aria-hidden className="shrink-0 text-meta">
+          ⌄
+        </span>
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label={tr("모델 고르기", "Pick a model")}
+          className="absolute right-0 bottom-10 z-30 flex w-[320px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-lift"
+        >
+          <label className="flex items-center gap-2 border-b border-line-soft px-3 py-2.5 text-meta">
+            <SearchIcon size={15} />
+            <input
+              // biome-ignore lint/a11y/noAutofocus: the picker opens to search
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              role="combobox"
+              aria-expanded
+              aria-controls={`${ids}-models`}
+              aria-activedescendant={
+                shown.length ? optionId(highlighted) : undefined
+              }
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!shown.length) return;
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setActive((highlighted + step + shown.length) % shown.length);
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  const m = shown[highlighted];
+                  if (m) pick(m);
+                }
+              }}
+              placeholder={tr("모델 검색…", "Search models…")}
+              aria-label={tr("모델 검색", "Search models")}
+              className="min-w-0 grow border-0 bg-transparent p-0 text-[13.5px] text-ink outline-none placeholder:text-meta"
+            />
+          </label>
+          <div
+            id={`${ids}-models`}
+            role="listbox"
+            aria-label={tr("모델", "Models")}
+            className="flex max-h-[280px] flex-col gap-px overflow-y-auto p-1.5"
+          >
+            {models.isLoading && (
+              <p className="m-0 px-3 py-2 text-[12.5px] text-meta">
+                {tr("모델을 불러오는 중…", "Loading models…")}
+              </p>
+            )}
+            {shown.map((m, i) => (
+              <button
+                key={`${m.provider_id}:${m.model}`}
+                id={optionId(i)}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={isCurrent(m)}
+                data-active={i === highlighted || undefined}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => pick(m)}
+                className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-inset aria-selected:bg-inset data-active:bg-inset data-active:ring-1 data-active:ring-line"
+              >
+                <span className="flex min-w-0 grow flex-col">
+                  <span className="truncate text-[13.5px] text-ink">
+                    {m.model}
+                  </span>
+                  <span className="truncate text-[11.5px] text-meta">
+                    {m.provider_name}
+                    {m.remote ? ` · ${tr("클라우드")}` : ""}
+                  </span>
+                </span>
+                {isCurrent(m) && (
+                  <span className="shrink-0 text-ink">
+                    <CheckIcon size={15} />
+                  </span>
+                )}
+              </button>
+            ))}
+            {models.data && shown.length === 0 && (
+              <p className="m-0 px-3 py-2 text-[12.5px] text-meta">
+                {tr("맞는 모델이 없어요", "No matching models")}
+              </p>
+            )}
+            {models.data?.errors.map((e) => (
+              <p key={e} className="m-0 px-3 py-1 text-[11.5px] text-meta">
+                {e}
+              </p>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 border-t border-line-soft px-3 py-2">
+            <span className="grow text-[12.5px] text-text-3">
+              {tr("추론 수준", "Reasoning")}
+            </span>
+            {EFFORTS.map((e) => (
+              <button
+                key={e.value}
+                type="button"
+                aria-pressed={data?.effort === e.value}
+                onClick={() =>
+                  save.mutate({
+                    effort: data?.effort === e.value ? null : e.value,
+                  })
+                }
+                className="h-7 cursor-pointer rounded-full px-2.5 text-[12.5px] text-text-3 hover:text-ink aria-pressed:bg-inset aria-pressed:font-medium aria-pressed:text-ink"
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          {data?.problem && (
+            <p className="m-0 border-t border-line-soft px-3 py-2 text-[12px] text-danger">
+              {data.problem}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** In place of the model picker when the message calls an agent: its own model. */
+export function AgentBadge({ agent }: { agent: Agent }) {
+  return (
+    <span
+      className={`${pill} flex min-w-0 items-center gap-1.5`}
+      title={tr(
+        "에이전트가 자기 모델로 답해요",
+        "The agent answers with its own model",
+      )}
+    >
+      <AgentAvatar id={agent.name} size={18} />
+      <span className="truncate">@{agent.name}</span>
     </span>
   );
 }

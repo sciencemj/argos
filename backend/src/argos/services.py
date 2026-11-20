@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 from sqlalchemy import CursorResult, func, or_, select, update
+from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -48,6 +49,7 @@ from argos.models import (
     InboxItem,
     InboxStatus,
     LmsNotice,
+    Memory,
     Message,
     ModelProvider,
     NoteRef,
@@ -2534,7 +2536,18 @@ async def abandon_run_approvals(session: AsyncSession) -> None:
 
 # --- agents (PLAN Phase 5) -----------------------------------------------------------
 
+# Default chat (v0.2): a chat message with no @mention runs Argos's own harness on the
+# model picked for chat (`chat_*` app settings), with the main memory. Runs and replies
+# need an agent row, so it has a hidden one: its name cannot be a user's agent handle
+# (they start with a letter), and it is never listed, mentioned or shown as an agent.
+DEFAULT_ASSISTANT = "_chat"
+LEGACY_ASSISTANT = "argos"  # c34de5a's visible built-in; folded into the hidden one
+CHAT_PROVIDER, CHAT_MODEL, CHAT_EFFORT = "chat_provider_id", "chat_model", "chat_effort"
+CHAT_EFFORTS = ("low", "medium", "high")
+
 BUILTIN_AGENTS: tuple[tuple[str, str, str, AgentBackend], ...] = (
+    # Never shown as an agent; "Argos" is only how the model is told who it is.
+    (DEFAULT_ASSISTANT, "Argos", "", AgentBackend.NATIVE),
     ("hermes", "Hermes", "H", AgentBackend.HERMES),
     ("claude", "Claude", "C", AgentBackend.CLAUDE_CODE),
     ("codex", "Codex", "Cx", AgentBackend.CODEX),
@@ -2543,11 +2556,57 @@ BUILTIN_AGENTS: tuple[tuple[str, str, str, AgentBackend], ...] = (
 
 
 async def list_agents(session: AsyncSession) -> Sequence[Agent]:
-    return (await session.scalars(select(Agent).order_by(Agent.created_at, Agent.name))).all()
+    """The agents a user sees and can @mention: built-ins, then custom ones (the default
+    chat's hidden runner is not one of them)."""
+    rows = await session.scalars(
+        select(Agent)
+        .where(Agent.name != DEFAULT_ASSISTANT)
+        .order_by(Agent.is_builtin.desc(), Agent.created_at, Agent.name)
+    )
+    return rows.all()
 
 
 async def get_agent(session: AsyncSession, agent_id: str) -> Agent:
     return await _get(session, Agent, agent_id)
+
+
+async def default_assistant(session: AsyncSession) -> Agent | None:
+    """The default chat's hidden runner (seeded at startup)."""
+    return await session.scalar(select(Agent).where(Agent.name == DEFAULT_ASSISTANT))
+
+
+async def set_run_model(session: AsyncSession, run_id: str, model: str) -> None:
+    """Bookkeeping like the permission mode: no activity log."""
+    run = await get_run(session, run_id)
+    run.model = model
+    await session.commit()
+
+
+async def chat_settings(session: AsyncSession) -> dict[str, str | None]:
+    """The model default chat uses: its connection (None: the inbox classifier's),
+    model (None: the classifier's chat model, on that connection only) and reasoning
+    effort (None: the model's own default)."""
+    return {
+        "provider_id": await get_setting(session, CHAT_PROVIDER),
+        "model": await get_setting(session, CHAT_MODEL),
+        "effort": await get_setting(session, CHAT_EFFORT),
+    }
+
+
+async def save_chat_settings(
+    session: AsyncSession, changes: dict[str, str | None], actor: str
+) -> dict[str, str | None]:
+    if (provider := changes.get("provider_id")) is not None:
+        await _get(session, ModelProvider, provider)
+    if (effort := changes.get("effort")) is not None and effort not in CHAT_EFFORTS:
+        raise InvalidError(f"추론 수준은 {', '.join(CHAT_EFFORTS)} 중 하나예요")
+    if (model := changes.get("model")) is not None and len(model) > 200:
+        raise InvalidError("모델 이름이 너무 길어요")
+    keys = {"provider_id": CHAT_PROVIDER, "model": CHAT_MODEL, "effort": CHAT_EFFORT}
+    for field, key in keys.items():
+        if field in changes:
+            await set_setting(session, key, changes[field] or None, actor)
+    return await chat_settings(session)
 
 
 async def find_agent(session: AsyncSession, handle: str) -> Agent | None:
@@ -2750,6 +2809,35 @@ async def set_agent_model(
     if model is not None and len(model) > 120:
         raise InvalidError("모델 이름이 너무 길어요")
     return await _update(session, agent, {"model": model}, actor)
+
+
+# --- memory (v0.2) ---------------------------------------------------------------------
+
+MAIN_MEMORY = "main"
+MEMORY_LIMIT = 2000  # characters of one memory
+
+
+def memory_scope(agent_name: str) -> str:
+    """The default assistant reads and writes the main memory; every other agent has
+    its own."""
+    return MAIN_MEMORY if agent_name == DEFAULT_ASSISTANT else f"agent:{agent_name}"
+
+
+async def list_memories(session: AsyncSession, scope: str, limit: int = 50) -> list[Memory]:
+    """The scope's most recent memories, oldest first."""
+    rows = await session.scalars(
+        select(Memory).where(Memory.scope == scope).order_by(Memory.created_at.desc()).limit(limit)
+    )
+    return list(reversed(rows.all()))
+
+
+async def remember(session: AsyncSession, scope: str, text: str, actor: str) -> Memory:
+    text = text.strip()
+    if not text:
+        raise InvalidError("기억할 내용이 비었어요")
+    if len(text) > MEMORY_LIMIT:
+        raise InvalidError(f"기억은 {MEMORY_LIMIT}자까지예요")
+    return await _create(session, Memory(scope=scope, text=text), actor)
 
 
 async def delete_agent(session: AsyncSession, agent_id: str, actor: str) -> None:
@@ -3265,6 +3353,43 @@ def load_seed(seed_path: Path) -> dict[str, Any]:
     return tomllib.loads(seed_path.read_text(encoding="utf-8"))
 
 
+async def _fold_legacy_assistant(session: AsyncSession) -> None:
+    """c34de5a seeded the default assistant as a visible built-in `argos`. It becomes the
+    hidden runner (same row, so its runs and memory stay), its model and connection
+    become the chat settings, and its replies are attributed to the default chat. A
+    user's own agent called `argos` (not built-in) is left alone."""
+    legacy = await session.scalar(
+        select(Agent).where(Agent.name == LEGACY_ASSISTANT, Agent.is_builtin.is_(True))
+    )
+    if legacy is None:
+        return
+    # Bulk bookkeeping first: the row update below commits the whole session.
+    await session.execute(
+        update(Message)
+        .where(Message.author_type == AuthorType.AGENT, Message.author_id == LEGACY_ASSISTANT)
+        .values(author_id=DEFAULT_ASSISTANT)
+    )
+    if await get_setting(session, "default_agent") == LEGACY_ASSISTANT:  # back to .env's
+        await session.execute(sa_delete(AppSetting).where(AppSetting.key == "default_agent"))
+    hidden = await default_assistant(session)
+    if hidden is not None:  # both exist: keep the hidden one, move the runs over
+        await session.execute(
+            update(AgentRun).where(AgentRun.agent_id == legacy.id).values(agent_id=hidden.id)
+        )
+        await _delete(session, legacy, "system")
+        return
+    if legacy.model and await get_setting(session, CHAT_MODEL) is None:
+        await set_setting_quietly(session, CHAT_MODEL, legacy.model)
+        if legacy.provider_id:
+            await set_setting_quietly(session, CHAT_PROVIDER, legacy.provider_id)
+    await _update(
+        session,
+        legacy,
+        {"name": DEFAULT_ASSISTANT, "display_name": "Argos", "avatar": "", "model": None},
+        "system",
+    )
+
+
 async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
     """Ensures the system channels, then loads the demo areas/channels from the seed
     config only into an empty database: afterwards the user owns the list and a
@@ -3279,6 +3404,7 @@ async def seed_defaults(session: AsyncSession, config: dict[str, Any]) -> None:
         if exists is None:
             channel = Channel(name=name, kind=ChannelKind.SYSTEM, sort_order=order)
             await _create(session, channel, "system")
+    await _fold_legacy_assistant(session)
     for name, display, avatar, backend in BUILTIN_AGENTS:
         if await session.scalar(select(Agent.id).where(Agent.name == name)) is None:
             agent = Agent(

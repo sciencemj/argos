@@ -1,4 +1,6 @@
 export const enTemplates: Record<string, string> = {
+  "{0}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 에이전트는 @이름으로 불러요.":
+    "Ask {0} right away; it sees this channel's tasks, events and files. Call an agent with @name.",
   "Argos {0}에서 바뀐 점": "What's new in Argos {0}",
   "안 읽은 메시지 {0}개": "{0} unread",
   "#{0} 삭제": "Delete #{0}",

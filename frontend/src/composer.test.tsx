@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
-import { ComposerHighlight } from "./feed";
+import { ComposerHighlight, chatAgentName } from "./feed";
 
 afterEach(cleanup);
 
@@ -41,4 +41,24 @@ test("colors a known agent skill command", () => {
     />,
   );
   expect(screen.getByText("/review")).toHaveClass("text-warn");
+});
+
+const base = {
+  chatBar: true,
+  coding: false,
+  channelAgent: "hermes",
+};
+
+test("chat with no @mention is default chat, not an agent", () => {
+  expect(chatAgentName(base)).toBe("");
+});
+
+test("an @mention or the thread's own agent answers", () => {
+  expect(chatAgentName({ ...base, mention: "claude" })).toBe("claude");
+  expect(chatAgentName({ ...base, sticky: "codex" })).toBe("codex");
+});
+
+test("coding mode and the feed keep the channel's agent", () => {
+  expect(chatAgentName({ ...base, coding: true })).toBe("hermes");
+  expect(chatAgentName({ ...base, chatBar: false })).toBe("hermes");
 });

@@ -188,8 +188,13 @@ async def _route(
     # /job and /debate name agents with @ too, but they are commands, not conversations.
     names_agents = body.lstrip().startswith(("/job", "/debate"))
     # Coding mode is a conversation too: with the channel's agent when none is named.
+    # A chat-view message with no @mention (v0.2) goes to the built-in default
+    # assistant; coding mode keeps the channel's agent (it needs Claude or Codex).
+    fallback = (
+        await services.default_assistant(session) if agent_session and not coding else None
+    ) or await services.default_agent(session, agent_channel, settings.default_agent)
     coding_agent = (
-        (chosen or await services.default_agent(session, agent_channel, settings.default_agent))
+        (chosen or fallback)
         if (coding or agent_session)
         and not (mentioned or dm_agent)
         and not commands.is_command(body)

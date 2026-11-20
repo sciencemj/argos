@@ -18,6 +18,12 @@ export type Channel = Schemas["ChannelOut"];
 export type Task = Schemas["TaskOut"];
 export type TaskStatus = Task["status"];
 export type CalEvent = Schemas["EventOut"];
+/** Default chat's hidden runner (v0.2): replies to chat messages with no @mention are
+ * written by it. Not an agent: never listed, mentioned or shown under this name. */
+export const DEFAULT_ASSISTANT = "_chat";
+export type ChatSettings = Schemas["ChatSettingsOut"];
+export type ChatModel = Schemas["ChatModelOut"];
+export type ChatEffort = "low" | "medium" | "high";
 export type InboxItem = Schemas["InboxOut"];
 export type Activity = Schemas["ActivityOut"];
 export type Config = Schemas["ConfigOut"];
@@ -814,6 +820,32 @@ export const useAgentSettings = () =>
   useQuery({
     queryKey: ["settings", "agents"],
     queryFn: () => call(client.GET("/api/v1/settings/agents")),
+  });
+
+/** Default chat's model: connection, model and reasoning effort (v0.2). */
+export const useChatSettings = () =>
+  useQuery({
+    queryKey: ["settings", "chat"],
+    queryFn: () => call(client.GET("/api/v1/settings/chat")),
+  });
+
+export function useSaveChatSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas["ChatSettingsIn"]) =>
+      call(client.PUT("/api/v1/settings/chat", { body })),
+    onSuccess: (data) => qc.setQueryData(["settings", "chat"], data),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+}
+
+/** Every model the configured connections offer, for the composer's model picker. */
+export const useChatModels = (enabled = true) =>
+  useQuery({
+    queryKey: ["chat-models"],
+    queryFn: () => call(client.GET("/api/v1/chat/models")),
+    enabled,
+    staleTime: 60_000,
   });
 
 export function useSaveDefaultAgent() {

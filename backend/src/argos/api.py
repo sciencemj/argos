@@ -88,7 +88,7 @@ from argos.models import (
     Task,
     TaskStatus,
 )
-from argos.runner import Runner
+from argos.runner import Runner, chat_agent
 
 USER = "user"
 
@@ -492,6 +492,7 @@ class RunOut(Out):
     workspace: str | None
     log: str | None
     permission_mode: Literal["auto_edit", "ask"] | None = None
+    model: str | None = None  # default chat: the model that answered
 
 
 class RunStepOut(Out):
@@ -1563,7 +1564,8 @@ async def set_agent_model(
     session: Session, config: Config, name: str, body: AgentModelIn
 ) -> AgentOut:
     """Settings → 기본 에이전트: which model Claude Code, Codex or the local model use."""
-    agent = await session.scalar(select(Agent).where(Agent.name == name))
+    # Listed agents only: default chat's hidden runner takes its model from /settings/chat.
+    agent = await services.find_agent(session, name)
     if agent is None:
         raise services.NotFoundError("agent", name)
     agent = await services.set_agent_model(session, agent.id, body.model, USER)
@@ -1738,6 +1740,113 @@ async def export_sft(
         media_type="application/x-ndjson; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+class ChatSettingsIn(BaseModel):
+    """Default chat's model (v0.2). Omitted: unchanged; null: back to the default."""
+
+    provider_id: str | None = None
+    model: str | None = Field(default=None, max_length=200)
+    effort: Literal["low", "medium", "high"] | None = None
+
+
+class ChatSettingsOut(BaseModel):
+    provider_id: str | None
+    model: str | None
+    effort: Literal["low", "medium", "high"] | None
+    # What a message would run on now: the connection and model in effect (the
+    # classifier's when none is picked), or why it cannot run.
+    provider_name: str | None
+    resolved_model: str | None
+    problem: str | None
+
+
+async def _chat_settings_out(session: AsyncSession, config: Settings) -> ChatSettingsOut:
+    chat = await services.chat_settings(session)
+    runner_row = await services.default_assistant(session) or Agent(
+        name=services.DEFAULT_ASSISTANT, display_name="Argos", backend=AgentBackend.NATIVE
+    )
+    agent, _ = chat_agent(runner_row, chat)
+    effort = chat["effort"] if chat["effort"] in services.CHAT_EFFORTS else None
+    try:
+        provider, model = agents.local_target(agent, config)
+        return ChatSettingsOut(
+            provider_id=chat["provider_id"],
+            model=chat["model"],
+            effort=cast(Any, effort),
+            provider_name=provider.name,
+            resolved_model=model,
+            problem=None,
+        )
+    except agents.AgentUnavailable as exc:
+        return ChatSettingsOut(
+            provider_id=chat["provider_id"],
+            model=chat["model"],
+            effort=cast(Any, effort),
+            provider_name=None,
+            resolved_model=None,
+            problem=str(exc),
+        )
+
+
+@router.get("/settings/chat")
+async def get_chat_settings(session: Session, config: Config) -> ChatSettingsOut:
+    """The model a chat message with no @mention runs on."""
+    return await _chat_settings_out(session, config)
+
+
+@router.put("/settings/chat")
+async def save_chat_settings(
+    session: Session, config: Config, body: ChatSettingsIn
+) -> ChatSettingsOut:
+    """Settings → 기본 채팅 모델, and the composer's model picker."""
+    changes = body.model_dump(exclude_unset=True)
+    if "provider_id" in changes and "model" not in changes:
+        changes["model"] = None  # another connection lists other models
+    await services.save_chat_settings(session, changes, USER)
+    return await _chat_settings_out(session, config)
+
+
+class ChatModelOut(BaseModel):
+    provider_id: str
+    provider_name: str
+    model: str
+    remote: bool  # an Ollama cloud model (the text leaves this computer)
+
+
+class ChatModelsOut(BaseModel):
+    models: list[ChatModelOut]
+    errors: list[str]  # connections that could not list their models
+
+
+@router.get("/chat/models")
+async def chat_models(request: Request, config: Config) -> ChatModelsOut:
+    """Every model the configured connections offer, for the composer's model picker
+    (cached for a few minutes like the agent model lists)."""
+    cache: dict[str, tuple[float, ChatModelsOut]] = request.app.state.__dict__.setdefault(
+        "model_cache", {}
+    )
+    now = time_module.monotonic()
+    if (hit := cache.get("chat")) is not None and now - hit[0] < MODEL_CACHE_SECONDS:
+        return hit[1]
+    models: list[ChatModelOut] = []
+    errors: list[str] = []
+    for p in config.model_providers:
+        try:
+            listed = await providers.list_models(p)
+        except providers.ProviderNoModelList:
+            errors.append(f"{p.name}: {NO_MODEL_LIST_TEXT}")
+            continue
+        except Exception:  # an unreachable server must not hide the others
+            errors.append(f"{p.name}: {UNREACHABLE_TEXT}")
+            continue
+        models += [
+            ChatModelOut(provider_id=p.id, provider_name=p.name, model=m.name, remote=m.remote)
+            for m in listed
+        ]
+    out = ChatModelsOut(models=models, errors=errors)
+    cache["chat"] = (now, out)
+    return out
 
 
 @router.get("/settings/agents")
