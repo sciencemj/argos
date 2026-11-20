@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { AgentAvatar } from "../agents";
-import { type Channel, useAgentSettings, useAgents, useThread } from "../api";
+import {
+  type Channel,
+  DEFAULT_ASSISTANT,
+  useAgentSettings,
+  useAgents,
+  useThread,
+} from "../api";
 import { Composer, FEED_COLUMN, ThreadReplies } from "../feed";
 import { tr, tt } from "../i18n";
 import { btn } from "../ui";
@@ -61,7 +67,10 @@ function NewChat({ channel }: { channel: Channel }) {
   const [, setParams] = useSearchParams();
   const agents = useAgents();
   const settings = useAgentSettings();
+  // No agent to set up first: the built-in default assistant answers unless the
+  // message calls one with @ (older data without it: the channel's agent).
   const agent =
+    agents.data?.find((a) => a.name === DEFAULT_ASSISTANT) ??
     agents.data?.find((a) => a.id === channel.default_agent_id) ??
     agents.data?.find((a) => a.name === settings.data?.default_agent);
   const [draft, setDraft] = useState<{ text: string; key: number }>();
@@ -84,11 +93,16 @@ function NewChat({ channel }: { channel: Channel }) {
             </h2>
             <p className="m-0 max-w-[460px] text-[13px] text-text-3">
               {agent
-                ? tt`${agent.display_name}에게 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요.`
+                ? tt`${agent.display_name}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 다른 에이전트는 @이름으로 불러요.`
                 : tr("에이전트를 고르면 대화를 시작할 수 있어요 (채널 설정)")}
             </p>
             {agent && !agent.available && (
-              <p className="m-0 text-[12.5px] text-danger">{agent.problem}</p>
+              <p className="m-0 text-[12.5px] text-danger">
+                {agent.problem}{" "}
+                <Link to="/settings" className="underline">
+                  {tr("설정 열기", "Open settings")}
+                </Link>
+              </p>
             )}
           </div>
           <div className="grid w-full max-w-[560px] grid-cols-2 gap-2 max-md:grid-cols-1">

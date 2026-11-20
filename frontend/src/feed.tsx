@@ -12,6 +12,7 @@ import { AgentAvatar, agentInfo } from "./agents";
 import {
   type Channel,
   cancelRun,
+  DEFAULT_ASSISTANT,
   type Message,
   useAgentSettings,
   useAgentSkills,
@@ -224,7 +225,11 @@ export function MessageItem({
           </span>
           {(system || agent) && (
             <span className="rounded-full border border-line-soft px-[7px] text-[11px] text-meta">
-              {agent ? tr("에이전트") : tr("시스템")}
+              {message.author_id === DEFAULT_ASSISTANT
+                ? tr("기본 어시스턴트", "Default assistant")
+                : agent
+                  ? tr("에이전트")
+                  : tr("시스템")}
             </span>
           )}
           <span className="font-mono text-[11px] text-meta">
@@ -660,6 +665,28 @@ const SLASH_AT_START = /^((?:@[\w가-힣-]+\s+)*)\/([\w:.-]*)$/;
 const LEADING_MENTION = /^\s*@([\w가-힣-]+)\s/;
 
 /** Syntax colouring for the composer; the textarea itself remains the editable control. */
+/** Who answers in the composer: the agent picked in the bar, else the thread's own,
+ * else (a new chat, not coding) the built-in default assistant, else the channel's
+ * /ask agent. Coding mode keeps the channel's agent: it works in the project folder. */
+export function chatAgentName(o: {
+  picked: string | null;
+  sticky?: string;
+  chatBar: boolean;
+  coding: boolean;
+  hasDefaultAssistant: boolean;
+  channelAgent?: string;
+}): string {
+  return (
+    o.picked ??
+    o.sticky ??
+    (o.chatBar && !o.coding && o.hasDefaultAssistant
+      ? DEFAULT_ASSISTANT
+      : undefined) ??
+    o.channelAgent ??
+    ""
+  );
+}
+
 export function ComposerHighlight({
   text,
   agents,
@@ -783,12 +810,21 @@ export function Composer({
   const [picked, setPicked] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new thread starts unpicked
   useEffect(() => setPicked(null), [root?.id]);
-  const chosenName = picked ?? stickyName ?? askTarget?.name ?? "";
-  const chosenAgent = agents.data?.find((a) => a.name === chosenName);
   // Coding mode (channels with a project folder): a thread keeps it until switched.
   const codeable = !dm && Boolean(channel.workspace_path);
   const [coding, setCoding] = useState(root?.coding ?? false);
   useEffect(() => setCoding(root?.coding ?? false), [root?.coding]);
+  const chosenName = chatAgentName({
+    picked,
+    sticky: stickyName,
+    chatBar: Boolean(chatBar),
+    coding,
+    hasDefaultAssistant: Boolean(
+      agents.data?.some((a) => a.name === DEFAULT_ASSISTANT),
+    ),
+    channelAgent: askTarget?.name,
+  });
+  const chosenAgent = agents.data?.find((a) => a.name === chosenName);
 
   // The agent a "/name" goes to, for its skills: the DM's, the one named first, the
   // thread's, or the channel's agent in coding mode.

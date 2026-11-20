@@ -17,8 +17,9 @@ from argos.main import create_app
 def app(settings: Settings) -> Iterator[TestClient]:
     config = settings.model_copy(update={"default_agent": "local"})
     with TestClient(create_app(config)) as client:
+        # A chat message with no @mention goes to the built-in default assistant.
         client.app.state.runner.adapter_factory = fake_agents(  # type: ignore[attr-defined]
-            local=FakeAgent("local", ["답", "이에요"])
+            argos=FakeAgent("argos", ["답", "이에요"]), local=FakeAgent("local", ["L"])
         )
         client.app.state.classifier = FakeClassifier(error="no model")  # type: ignore[attr-defined]
         yield client

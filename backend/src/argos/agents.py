@@ -1388,11 +1388,18 @@ def local_target(agent: Agent, settings: Settings) -> tuple[providers.ProviderCo
     when no model is set."""
     # The title model is a chat model; the classifier may be a decision model.
     model = agent.model or settings.classifier_title_model or settings.classifier_model
+    harness = agent.backend == AgentBackend.NATIVE
     if not model:
+        if harness and agent.is_builtin:  # the default assistant
+            raise AgentUnavailable(
+                "기본 대화 모델이 정해지지 않았어요 "
+                "(설정 → 에이전트 · 모델에서 Argos의 모델을 골라 주세요)"
+            )
         raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
     # The built-in local agent runs where the classifier does; a Hermes classifier
-    # has no provider, so it gets the default one.
-    if not agent.is_builtin:
+    # has no provider, so it gets the default one. The default assistant (a built-in
+    # harness agent) uses its own connection, the default one unless picked.
+    if not agent.is_builtin or harness:
         return providers.resolve(settings, agent.provider_id), model
     if settings.classifier_provider == "hermes":
         return providers.resolve(settings, None), model

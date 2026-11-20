@@ -1556,6 +1556,8 @@ async def _reload_settings(request: Request, session: AsyncSession) -> None:
 
 class AgentModelIn(BaseModel):
     model: str | None = None  # None: the tool's default
+    # Harness agents (the default assistant): their model connection; null = default.
+    provider_id: str | None = None
 
 
 @router.put("/agents/{name}/model")
@@ -1566,7 +1568,13 @@ async def set_agent_model(
     agent = await session.scalar(select(Agent).where(Agent.name == name))
     if agent is None:
         raise services.NotFoundError("agent", name)
-    agent = await services.set_agent_model(session, agent.id, body.model, USER)
+    fields = body.model_dump(exclude_unset=True)
+    if "provider_id" in fields:
+        agent = await services.set_agent_model(
+            session, agent.id, body.model, USER, provider_id=body.provider_id
+        )
+    else:
+        agent = await services.set_agent_model(session, agent.id, body.model, USER)
     return await _agent_out(session, agent, config)
 
 

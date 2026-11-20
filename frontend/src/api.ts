@@ -18,6 +18,8 @@ export type Channel = Schemas["ChannelOut"];
 export type Task = Schemas["TaskOut"];
 export type TaskStatus = Task["status"];
 export type CalEvent = Schemas["EventOut"];
+/** The built-in default assistant: answers chat messages with no @mention (v0.2). */
+export const DEFAULT_ASSISTANT = "argos";
 export type InboxItem = Schemas["InboxOut"];
 export type Activity = Schemas["ActivityOut"];
 export type Config = Schemas["ConfigOut"];
@@ -1580,11 +1582,18 @@ export function useFinishSetup() {
 export function useSetAgentModel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, model }: { name: string; model: string | null }) =>
+    mutationFn: ({
+      name,
+      ...body
+    }: {
+      name: string;
+      model: string | null;
+      provider_id?: string | null; // harness agents (the default assistant) only
+    }) =>
       call(
         client.PUT("/api/v1/agents/{name}/model", {
           params: { path: { name } },
-          body: { model },
+          body,
         }),
       ),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["agents"] }),

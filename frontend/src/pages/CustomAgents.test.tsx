@@ -308,3 +308,25 @@ test("usage windows in minutes read as hours or days", () => {
   expect(windowName("90m")).toBe("90m");
   expect(windowName("5h")).toBe("5h");
 });
+
+test("the default assistant picks its own model connection", () => {
+  mocks.agents = [
+    {
+      ...BUILTIN,
+      id: "d1",
+      name: "argos",
+      display_name: "Argos",
+      backend: "native",
+      provider_id: null,
+    },
+  ];
+  render(<AgentsSection />);
+  expect(screen.getByText(/메인 기억/)).toBeTruthy();
+  selectValue(screen.getByLabelText("Argos 모델 연결"), "gpu");
+  expect(mocks.setModel).toHaveBeenCalledWith({
+    name: "argos",
+    model: null,
+    provider_id: "gpu",
+  });
+  expect(mocks.modelsFor).toHaveBeenCalledWith("native", undefined);
+});

@@ -427,6 +427,17 @@ class Agent(Record):
     send_images: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
+class Memory(Record):
+    """Something an agent was asked to remember (v0.2). `scope` is "main" for the
+    built-in default assistant (Argos's main memory) or "agent:<name>" for one agent's
+    own memory, so a called agent never reads another's notes."""
+
+    __tablename__ = "memory"
+
+    scope: Mapped[str] = mapped_column(String(80), index=True)
+    text: Mapped[str] = mapped_column(Text)
+
+
 class AgentRun(Record):
     """One agent answering one message; the reply message fills in as it streams."""
 

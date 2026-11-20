@@ -2390,6 +2390,8 @@ export interface components {
         AgentModelIn: {
             /** Model */
             model?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /** AgentOut */
         AgentOut: {

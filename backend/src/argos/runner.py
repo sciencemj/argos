@@ -92,6 +92,28 @@ def language_line(settings: Settings) -> str:
     return "한국어로 짧고 분명하게 답한다."
 
 
+MEMORY_SHOWN = 30  # most recent memories put into the context
+MEMORY_CONTEXT_LIMIT = 4000  # characters of them
+
+
+async def memory_lines(session: AsyncSession, agent: Agent, settings: Settings) -> list[str]:
+    """The agent's memory (the default assistant's is Argos's main memory), newest last,
+    and how to add to it."""
+    rows = await services.list_memories(
+        session, services.memory_scope(agent.name), limit=MEMORY_SHOWN
+    )
+    en = settings.language == "en"
+    lines = [
+        "Save lasting facts the user tells you to remember with the remember tool."
+        if en
+        else "사용자가 기억해 달라고 하거나 계속 쓸 사실은 remember 도구로 저장해라."
+    ]
+    if rows:
+        lines.append("Your memory:" if en else "기억해 둔 것:")
+        lines += [f"- {m.text}" for m in rows]
+    return lines
+
+
 async def build_context(
     session: AsyncSession,
     agent: Agent,
@@ -179,6 +201,11 @@ async def build_context(
     if agent.system_prompt:
         lines.append(agent.system_prompt)
     context = "\n".join(lines)[: settings.context_limit]
+    # Memory has its own budget so a busy channel never pushes it out of the context.
+    memory = "\n".join(await memory_lines(session, agent, settings))
+    context += "\n" + (
+        memory if len(memory) <= MEMORY_CONTEXT_LIMIT else "…" + memory[-MEMORY_CONTEXT_LIMIT:]
+    )
     if channel.kind not in (ChannelKind.DM, ChannelKind.SYSTEM):
         docs = await course_lms.course_docs(session, [channel.id])
         lms = course_lms.context_section(

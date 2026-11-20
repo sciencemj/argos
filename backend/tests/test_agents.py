@@ -247,7 +247,7 @@ def test_sessions_only_in_dm(app: TestClient) -> None:
 
 def test_agent_list_and_default_setting(app: TestClient) -> None:
     agents = {a["name"]: a for a in app.get("/api/v1/agents").json()}
-    assert set(agents) == {"hermes", "claude", "codex", "local"}
+    assert set(agents) == {"argos", "hermes", "claude", "codex", "local"}
     assert agents["hermes"]["available"] is False  # no API key in tests
     assert app.get("/api/v1/settings/agents").json()["default_agent"] == "local"
     assert app.put("/api/v1/settings/agents", json={"default_agent": "codex"}).status_code == 200

@@ -494,6 +494,29 @@ async def update_event(
 
 
 @argos_tool("write")
+async def remember(ctx: ToolContext, text: str) -> dict[str, Any]:
+    """Save something to your long-term memory (a preference, a fact about the user or
+    their work) so later conversations know it. One short fact per call. The default
+    assistant writes Argos's main memory; every other agent keeps its own."""
+    async with _session(ctx) as s:
+        memory = await services.remember(s, services.memory_scope(ctx.agent), text, ctx.actor)
+        return {"memory_id": memory.id, "text": memory.text}
+
+
+@argos_tool("read")
+async def recall(ctx: ToolContext, query: str | None = None) -> list[dict[str, Any]]:
+    """Your saved memories (newest last), optionally only those containing `query`."""
+    async with _session(ctx) as s:
+        rows = await services.list_memories(s, services.memory_scope(ctx.agent), limit=200)
+    key = (query or "").strip().lower()
+    return [
+        {"memory_id": m.id, "text": m.text, "saved": m.created_at.date().isoformat()}
+        for m in rows
+        if not key or key in m.text.lower()
+    ]
+
+
+@argos_tool("write")
 async def capture_note(ctx: ToolContext, text: str, channel: str | None = None) -> dict[str, Any]:
     """Drop free text into the inbox (e.g. something the user said in passing); Argos
     classifies it and the user confirms. Prefer add_task/create_event when clear."""

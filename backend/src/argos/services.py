@@ -48,6 +48,7 @@ from argos.models import (
     InboxItem,
     InboxStatus,
     LmsNotice,
+    Memory,
     Message,
     ModelProvider,
     NoteRef,
@@ -2534,7 +2535,12 @@ async def abandon_run_approvals(session: AsyncSession) -> None:
 
 # --- agents (PLAN Phase 5) -----------------------------------------------------------
 
+# The built-in default assistant (v0.2): Argos's own harness on a model connection.
+# A chat message with no @mention goes to it, so chatting needs no agent set up first.
+DEFAULT_ASSISTANT = "argos"
+
 BUILTIN_AGENTS: tuple[tuple[str, str, str, AgentBackend], ...] = (
+    (DEFAULT_ASSISTANT, "Argos", "A", AgentBackend.NATIVE),
     ("hermes", "Hermes", "H", AgentBackend.HERMES),
     ("claude", "Claude", "C", AgentBackend.CLAUDE_CODE),
     ("codex", "Codex", "Cx", AgentBackend.CODEX),
@@ -2548,6 +2554,12 @@ async def list_agents(session: AsyncSession) -> Sequence[Agent]:
 
 async def get_agent(session: AsyncSession, agent_id: str) -> Agent:
     return await _get(session, Agent, agent_id)
+
+
+async def default_assistant(session: AsyncSession) -> Agent | None:
+    """The built-in default assistant, if it exists (a custom agent can't take its name
+    on a fresh install; an older install's custom `argos` would be found instead)."""
+    return await session.scalar(select(Agent).where(Agent.name == DEFAULT_ASSISTANT))
 
 
 async def find_agent(session: AsyncSession, handle: str) -> Agent | None:
@@ -2739,17 +2751,59 @@ async def update_agent(
 
 
 async def set_agent_model(
-    session: AsyncSession, agent_id: str, model: str | None, actor: str
+    session: AsyncSession,
+    agent_id: str,
+    model: str | None,
+    actor: str,
+    provider_id: str | None | object = ...,
 ) -> Agent:
     """The model any agent answers with, built-in ones included (Hermes picks its own in
-    its gateway). None: the tool's own default."""
+    its gateway). None: the tool's own default. `provider_id` (when given): the model
+    connection of a harness agent such as the default assistant ("" or None: default)."""
     agent = await get_agent(session, agent_id)
     if agent.backend == AgentBackend.HERMES:
         raise InvalidError("Hermes 모델은 게이트웨이 설정에서 정해요")
     model = (model or "").strip() or None
     if model is not None and len(model) > 120:
         raise InvalidError("모델 이름이 너무 길어요")
-    return await _update(session, agent, {"model": model}, actor)
+    changes: dict[str, Any] = {"model": model}
+    if provider_id is not ...:
+        if agent.backend != AgentBackend.NATIVE:
+            raise InvalidError("모델 연결은 Argos 하네스 에이전트만 고를 수 있어요")
+        chosen = provider_id if isinstance(provider_id, str) and provider_id else None
+        if chosen is not None:
+            await _get(session, ModelProvider, chosen)
+        changes["provider_id"] = chosen
+    return await _update(session, agent, changes, actor)
+
+
+# --- memory (v0.2) ---------------------------------------------------------------------
+
+MAIN_MEMORY = "main"
+MEMORY_LIMIT = 2000  # characters of one memory
+
+
+def memory_scope(agent_name: str) -> str:
+    """The default assistant reads and writes the main memory; every other agent has
+    its own."""
+    return MAIN_MEMORY if agent_name == DEFAULT_ASSISTANT else f"agent:{agent_name}"
+
+
+async def list_memories(session: AsyncSession, scope: str, limit: int = 50) -> list[Memory]:
+    """The scope's most recent memories, oldest first."""
+    rows = await session.scalars(
+        select(Memory).where(Memory.scope == scope).order_by(Memory.created_at.desc()).limit(limit)
+    )
+    return list(reversed(rows.all()))
+
+
+async def remember(session: AsyncSession, scope: str, text: str, actor: str) -> Memory:
+    text = text.strip()
+    if not text:
+        raise InvalidError("기억할 내용이 비었어요")
+    if len(text) > MEMORY_LIMIT:
+        raise InvalidError(f"기억은 {MEMORY_LIMIT}자까지예요")
+    return await _create(session, Memory(scope=scope, text=text), actor)
 
 
 async def delete_agent(session: AsyncSession, agent_id: str, actor: str) -> None:
