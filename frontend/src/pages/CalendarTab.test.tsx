@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { selectValue } from "../test-select";
 import { EventDialog } from "./CalendarTab";
 
@@ -24,14 +24,6 @@ vi.mock("../api", () => ({
   useDeleteEvent: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }));
 
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = function showModal() {
-    this.open = true;
-  };
-  HTMLDialogElement.prototype.close = function close() {
-    this.open = false;
-  };
-});
 beforeEach(() => {
   localStorage.setItem("argos-language", "ko");
   mocks.update.mockReset();
@@ -72,4 +64,18 @@ test("only real channels are offered, and an unchanged one is not sent", () => {
     { id: "e1", title: "중간고사" },
     expect.anything(),
   );
+});
+
+test("cancelling and reopening the same event drops the unsaved draft", () => {
+  const { rerender } = render(<EventDialog event={event} onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText("제목"), {
+    target: { value: "draft" },
+  });
+  selectValue(screen.getByLabelText("채널"), "ai");
+  rerender(<EventDialog event={null} onClose={() => {}} />);
+  rerender(<EventDialog event={event} onClose={() => {}} />);
+  expect((screen.getByLabelText("제목") as HTMLInputElement).value).toBe(
+    "중간고사",
+  );
+  expect(screen.getByLabelText("채널").dataset.value).toBe("os");
 });

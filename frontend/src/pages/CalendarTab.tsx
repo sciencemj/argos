@@ -265,6 +265,8 @@ export function EventDialog({
     setTitle(event.title);
     setChannelId(event.channel_id);
   }
+  // Closed: the next open (even of the same event) starts from its saved values.
+  if (!event && seen !== null) setSeen(null);
   // Same choices as a task's channel: courses, projects and 내 공간 (not inbox or DMs).
   const pickable =
     channels.data?.channels.filter(
