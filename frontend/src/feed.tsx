@@ -39,7 +39,12 @@ import {
   TaskRefCard,
 } from "./cards";
 import { useCompleteTask } from "./complete";
-import { AgentSelect, ContextRing, PermissionSelect } from "./composerBar";
+import {
+  AgentBadge,
+  ContextRing,
+  ModelPicker,
+  PermissionSelect,
+} from "./composerBar";
 import { fmt, localInputToIso } from "./dates";
 import { t, tr, tt } from "./i18n";
 import {
@@ -221,12 +226,18 @@ export function MessageItem({
             className="font-medium"
             style={{ color: agent?.text ?? "var(--ink)" }}
           >
-            {agent ? agent.name : system ? "Argos" : tr("나")}
+            {message.author_id === DEFAULT_ASSISTANT
+              ? (message.run?.model ?? tr("기본 채팅", "Default chat"))
+              : agent
+                ? agent.name
+                : system
+                  ? "Argos"
+                  : tr("나")}
           </span>
           {(system || agent) && (
             <span className="rounded-full border border-line-soft px-[7px] text-[11px] text-meta">
               {message.author_id === DEFAULT_ASSISTANT
-                ? tr("기본 어시스턴트", "Default assistant")
+                ? tr("기본 채팅", "Default chat")
                 : agent
                   ? tr("에이전트")
                   : tr("시스템")}
@@ -446,7 +457,9 @@ function AgentReplyCard({ message }: { message: Message }) {
           className="text-[13.5px] font-medium"
           style={{ color: agent.text }}
         >
-          {agent.name}
+          {message.author_id === DEFAULT_ASSISTANT
+            ? (message.run?.model ?? agent.name)
+            : agent.name}
         </span>
         <span className="grow" />
         <span className="text-[11.5px] text-meta">
@@ -665,24 +678,21 @@ const SLASH_AT_START = /^((?:@[\w가-힣-]+\s+)*)\/([\w:.-]*)$/;
 const LEADING_MENTION = /^\s*@([\w가-힣-]+)\s/;
 
 /** Syntax colouring for the composer; the textarea itself remains the editable control. */
-/** Who answers in the composer: the agent picked in the bar, else the thread's own,
- * else (a new chat, not coding) the built-in default assistant, else the channel's
- * /ask agent. Coding mode keeps the channel's agent: it works in the project folder. */
+/** Which agent answers a composer message: one it @mentions, else the thread's own;
+ * in the chat view nobody else (default chat runs on the picked model: ""), except in
+ * coding mode, which keeps the channel's agent because it works in the project folder.
+ * Elsewhere the channel's /ask agent. */
 export function chatAgentName(o: {
-  picked: string | null;
+  mention?: string;
   sticky?: string;
   chatBar: boolean;
   coding: boolean;
-  hasDefaultAssistant: boolean;
   channelAgent?: string;
 }): string {
   return (
-    o.picked ??
+    o.mention ??
     o.sticky ??
-    (o.chatBar && !o.coding && o.hasDefaultAssistant
-      ? DEFAULT_ASSISTANT
-      : undefined) ??
-    o.channelAgent ??
+    (o.chatBar && !o.coding ? undefined : o.channelAgent) ??
     ""
   );
 }
@@ -803,25 +813,23 @@ export function Composer({
     (a) => a.name === settings.data?.default_agent,
   );
   const askTarget = channelDefault ?? fallback;
-  // Chat view: the agent picked in the bar (a thread starts on its own agent).
+  // Chat view: a thread keeps its agent (default chat's runner is not in the list).
   const stickyName = agents.data?.find(
     (a) => a.id === root?.sticky_agent_id,
   )?.name;
-  const [picked, setPicked] = useState<string | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new thread starts unpicked
-  useEffect(() => setPicked(null), [root?.id]);
+  // An @mention of a known agent anywhere in the text calls that agent.
+  const mentioned = [...text.matchAll(/(^|\s)@([\w가-힣-]+)/g)]
+    .map((m) => m[2].toLowerCase())
+    .find((handle) => agents.data?.some((a) => a.name === handle));
   // Coding mode (channels with a project folder): a thread keeps it until switched.
   const codeable = !dm && Boolean(channel.workspace_path);
   const [coding, setCoding] = useState(root?.coding ?? false);
   useEffect(() => setCoding(root?.coding ?? false), [root?.coding]);
   const chosenName = chatAgentName({
-    picked,
+    mention: mentioned,
     sticky: stickyName,
     chatBar: Boolean(chatBar),
     coding,
-    hasDefaultAssistant: Boolean(
-      agents.data?.some((a) => a.name === DEFAULT_ASSISTANT),
-    ),
     channelAgent: askTarget?.name,
   });
   const chosenAgent = agents.data?.find((a) => a.name === chosenName);
@@ -915,14 +923,12 @@ export function Composer({
         // turns coding on.
         coding: codeable ? (threadRootId ? coding : coding || null) : null,
         agent_session: agentSession && !threadRootId,
-        // The picker only speaks when it differs from who would answer anyway.
-        agent: chatBar && picked ? picked : null,
+        agent: null, // agents are called with @; otherwise default chat answers
       },
       {
         onSuccess: (message) => {
           setText("");
           files.clear();
-          setPicked(null);
           onPosted?.(message);
         },
       },
@@ -1077,6 +1083,17 @@ export function Composer({
                   ? tt`${chosenAgent.display_name}에게 답장…`
                   : tt`${chosenAgent.display_name}에게 메시지 — 새 대화가 시작돼요`
                 : null) ??
+              (chatBar && !(coding && codeable)
+                ? threadRootId
+                  ? tr(
+                      "답장… (@이름으로 에이전트 호출)",
+                      "Reply… (@name calls an agent)",
+                    )
+                  : tr(
+                      "메시지 — 새 대화가 시작돼요 (@이름으로 에이전트 호출)",
+                      "Message — starts a new conversation (@name calls an agent)",
+                    )
+                : null) ??
               (coding && codeable
                 ? tr("코딩 모드 — 작업 폴더에서 파일·셸을 다뤄요 (/로 스킬)")
                 : threadRootId
@@ -1130,16 +1147,10 @@ export function Composer({
                 {post.error.message}
               </span>
             )}
-            <AgentSelect
-              agents={(agents.data ?? []).filter(
-                (a) => a.available || a.name === chosenName,
-              )}
-              value={chosenName}
-              onChange={setPicked}
-            />
+            {chosenAgent ? <AgentBadge agent={chosenAgent} /> : <ModelPicker />}
             <ContextRing
               chars={historyChars + text.length}
-              backend={chosenAgent?.backend}
+              backend={chosenAgent?.backend ?? "native"}
             />
             <button
               type="button"

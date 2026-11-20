@@ -44,24 +44,21 @@ test("colors a known agent skill command", () => {
 });
 
 const base = {
-  picked: null,
   chatBar: true,
   coding: false,
-  hasDefaultAssistant: true,
   channelAgent: "hermes",
 };
 
-test("a new chat goes to the default assistant, no agent needed", () => {
-  expect(chatAgentName(base)).toBe("argos");
+test("chat with no @mention is default chat, not an agent", () => {
+  expect(chatAgentName(base)).toBe("");
 });
 
-test("a picked agent or the thread's own agent wins", () => {
-  expect(chatAgentName({ ...base, picked: "claude" })).toBe("claude");
+test("an @mention or the thread's own agent answers", () => {
+  expect(chatAgentName({ ...base, mention: "claude" })).toBe("claude");
   expect(chatAgentName({ ...base, sticky: "codex" })).toBe("codex");
 });
 
 test("coding mode and the feed keep the channel's agent", () => {
   expect(chatAgentName({ ...base, coding: true })).toBe("hermes");
   expect(chatAgentName({ ...base, chatBar: false })).toBe("hermes");
-  expect(chatAgentName({ ...base, hasDefaultAssistant: false })).toBe("hermes");
 });

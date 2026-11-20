@@ -710,6 +710,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Settings
+         * @description The model a chat message with no @mention runs on.
+         */
+        get: operations["get_chat_settings_api_v1_settings_chat_get"];
+        /**
+         * Save Chat Settings
+         * @description Settings → 기본 채팅 모델, and the composer's model picker.
+         */
+        put: operations["save_chat_settings_api_v1_settings_chat_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Models
+         * @description Every model the configured connections offer, for the composer's model picker
+         *     (cached for a few minutes like the agent model lists).
+         */
+        get: operations["chat_models_api_v1_chat_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/agents": {
         parameters: {
             query?: never;
@@ -2390,8 +2435,6 @@ export interface components {
         AgentModelIn: {
             /** Model */
             model?: string | null;
-            /** Provider Id */
-            provider_id?: string | null;
         };
         /** AgentOut */
         AgentOut: {
@@ -2710,6 +2753,51 @@ export interface components {
             areas: components["schemas"]["AreaOut"][];
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
+        };
+        /** ChatModelOut */
+        ChatModelOut: {
+            /** Provider Id */
+            provider_id: string;
+            /** Provider Name */
+            provider_name: string;
+            /** Model */
+            model: string;
+            /** Remote */
+            remote: boolean;
+        };
+        /** ChatModelsOut */
+        ChatModelsOut: {
+            /** Models */
+            models: components["schemas"]["ChatModelOut"][];
+            /** Errors */
+            errors: string[];
+        };
+        /**
+         * ChatSettingsIn
+         * @description Default chat's model (v0.2). Omitted: unchanged; null: back to the default.
+         */
+        ChatSettingsIn: {
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Effort */
+            effort?: ("low" | "medium" | "high") | null;
+        };
+        /** ChatSettingsOut */
+        ChatSettingsOut: {
+            /** Provider Id */
+            provider_id: string | null;
+            /** Model */
+            model: string | null;
+            /** Effort */
+            effort: ("low" | "medium" | "high") | null;
+            /** Provider Name */
+            provider_name: string | null;
+            /** Resolved Model */
+            resolved_model: string | null;
+            /** Problem */
+            problem: string | null;
         };
         /** ClassifierSettingsIn */
         ClassifierSettingsIn: {
@@ -3966,6 +4054,8 @@ export interface components {
             log: string | null;
             /** Permission Mode */
             permission_mode?: ("auto_edit" | "ask") | null;
+            /** Model */
+            model?: string | null;
         };
         /**
          * RunStatus
@@ -5767,6 +5857,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_settings_api_v1_settings_chat_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSettingsOut"];
+                };
+            };
+        };
+    };
+    save_chat_settings_api_v1_settings_chat_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_models_api_v1_chat_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatModelsOut"];
                 };
             };
         };

@@ -4,8 +4,7 @@ import { AgentAvatar } from "../agents";
 import {
   type Channel,
   DEFAULT_ASSISTANT,
-  useAgentSettings,
-  useAgents,
+  useChatSettings,
   useThread,
 } from "../api";
 import { Composer, FEED_COLUMN, ThreadReplies } from "../feed";
@@ -65,14 +64,9 @@ export function ChatTab() {
 
 function NewChat({ channel }: { channel: Channel }) {
   const [, setParams] = useSearchParams();
-  const agents = useAgents();
-  const settings = useAgentSettings();
-  // No agent to set up first: the built-in default assistant answers unless the
-  // message calls one with @ (older data without it: the channel's agent).
-  const agent =
-    agents.data?.find((a) => a.name === DEFAULT_ASSISTANT) ??
-    agents.data?.find((a) => a.id === channel.default_agent_id) ??
-    agents.data?.find((a) => a.name === settings.data?.default_agent);
+  // No agent to set up first: default chat answers on the picked model unless the
+  // message calls an agent with @.
+  const chat = useChatSettings();
   const [draft, setDraft] = useState<{ text: string; key: number }>();
   const keys = useRef(0);
   return (
@@ -84,7 +78,7 @@ function NewChat({ channel }: { channel: Channel }) {
         <div
           className={`${FEED_COLUMN} flex grow flex-col items-center justify-center gap-6 px-8 py-10 max-md:px-4`}
         >
-          <AgentAvatar id={agent?.name} size={44} />
+          <AgentAvatar id={DEFAULT_ASSISTANT} size={44} />
           <div className="flex flex-col items-center gap-1.5 text-center">
             <h2 className="m-0 text-[22px] font-light tracking-[-0.01em] text-ink">
               {channel.kind === "personal"
@@ -92,13 +86,16 @@ function NewChat({ channel }: { channel: Channel }) {
                 : tt`#${channel.name}에서 새 대화`}
             </h2>
             <p className="m-0 max-w-[460px] text-[13px] text-text-3">
-              {agent
-                ? tt`${agent.display_name}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 다른 에이전트는 @이름으로 불러요.`
-                : tr("에이전트를 고르면 대화를 시작할 수 있어요 (채널 설정)")}
+              {chat.data?.resolved_model
+                ? tt`${chat.data.resolved_model}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 에이전트는 @이름으로 불러요.`
+                : tr(
+                    "아래에서 모델을 골라 바로 대화하세요. 에이전트는 @이름으로 불러요.",
+                    "Pick a model below to start. Call an agent with @name.",
+                  )}
             </p>
-            {agent && !agent.available && (
+            {chat.data?.problem && (
               <p className="m-0 text-[12.5px] text-danger">
-                {agent.problem}{" "}
+                {chat.data.problem}{" "}
                 <Link to="/settings" className="underline">
                   {tr("설정 열기", "Open settings")}
                 </Link>

@@ -1059,6 +1059,9 @@ class HarnessRun:
     classifier: Any = None
     trusted: tuple[Path, ...] = ()  # local folders linked to the channel
     delegate: "Callable[[str, str], Awaitable[str]] | None" = None  # ask_agent
+    # Default chat's reasoning effort (low | medium | high) for OpenAI-compatible and
+    # Ollama connections; Anthropic and Google connections ignore it for now.
+    effort: str | None = None
 
 
 def registry_for(tools: list[str] | None, base: ToolRegistry | None = None) -> ToolRegistry:

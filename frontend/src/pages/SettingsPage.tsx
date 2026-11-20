@@ -30,6 +30,7 @@ import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
 import { LanguagePicker, ThemePicker } from "../LanguagePicker";
 import { btn, card, ErrorText, field, label, SelectMenu } from "../ui";
+import { ChatModelSection } from "./ChatModelSettings";
 import { AgentsSection } from "./CustomAgents";
 import { LmsSection } from "./LmsSettings";
 import {
@@ -191,6 +192,7 @@ export function SettingsPage() {
           {current === "agents" && (
             <>
               <AgentsSection />
+              <ChatModelSection />
               <ProviderSection>
                 <ClassifierQuickPick />
               </ProviderSection>

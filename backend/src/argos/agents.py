@@ -1385,25 +1385,43 @@ class _NoSessions:
 
 def local_target(agent: Agent, settings: Settings) -> tuple[providers.ProviderConfig, str]:
     """Where a local-model agent runs and with which model. Raises AgentUnavailable
-    when no model is set."""
-    # The title model is a chat model; the classifier may be a decision model.
-    model = agent.model or settings.classifier_title_model or settings.classifier_model
+    when no model is set.
+
+    Without a model of its own an agent borrows the inbox classifier's chat model, but
+    only on the classifier's own connection: another server would not have it (and a
+    local model name must not be sent to an outside provider)."""
     harness = agent.backend == AgentBackend.NATIVE
-    if not model:
-        if harness and agent.is_builtin:  # the default assistant
-            raise AgentUnavailable(
-                "기본 대화 모델이 정해지지 않았어요 "
-                "(설정 → 에이전트 · 모델에서 Argos의 모델을 골라 주세요)"
-            )
-        raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
-    # The built-in local agent runs where the classifier does; a Hermes classifier
-    # has no provider, so it gets the default one. The default assistant (a built-in
-    # harness agent) uses its own connection, the default one unless picked.
-    if not agent.is_builtin or harness:
-        return providers.resolve(settings, agent.provider_id), model
-    if settings.classifier_provider == "hermes":
-        return providers.resolve(settings, None), model
-    return providers.classifier_provider(settings), model
+    classifier_conn = (
+        None
+        if settings.classifier_provider == "hermes"
+        else providers.classifier_provider(settings)
+    )
+    # The built-in local agent and, until another is picked, the default assistant run
+    # where the classifier does (a Hermes classifier has none: the default connection).
+    if agent.is_builtin and (not harness or agent.provider_id is None):
+        provider = classifier_conn or providers.resolve(settings, None)
+        shares = True
+    else:
+        provider = providers.resolve(settings, agent.provider_id)
+        shares = agent.provider_id is None or (
+            classifier_conn is not None and provider.id == classifier_conn.id
+        )
+    # The title model is a chat model; the classifier may be a decision model.
+    borrowed = settings.classifier_title_model or settings.classifier_model
+    model = agent.model or (borrowed if shares else None)
+    if model:
+        return provider, model
+    if not shares:
+        raise AgentUnavailable(
+            f"{provider.name} 연결에서 쓸 모델을 골라 주세요 (설정 → 기본 채팅 모델)"
+            if agent.is_builtin
+            else f"{provider.name} 연결에서 쓸 모델을 골라 주세요 (에이전트 수정)"
+        )
+    if harness and agent.is_builtin:  # default chat
+        raise AgentUnavailable(
+            "기본 채팅 모델이 정해지지 않았어요 (설정 → 기본 채팅 모델에서 골라 주세요)"
+        )
+    raise AgentUnavailable("로컬 모델이 정해지지 않았어요 (설정 → 인박스 분류)")
 
 
 def cloud_model_name(model: str) -> bool:
@@ -1459,7 +1477,15 @@ def _native_adapter(
         gemini = providers.gemini_client(p, timeout=settings.agent_timeout, max_retries=0)
         llm = GeminiLLM(gemini, model, unreachable=unreachable)
     else:
-        extra = {"reasoning_effort": "none"} if p.kind == "ollama" else None
+        # Default chat's reasoning effort when picked; otherwise Ollama thinks not at all
+        # (slow) and other servers use their own default.
+        extra = (
+            {"reasoning_effort": run.effort}
+            if run.effort
+            else {"reasoning_effort": "none"}
+            if p.kind == "ollama"
+            else None
+        )
         openai_client = providers.chat_client(p, timeout=settings.agent_timeout, max_retries=0)
         llm = OpenAIChatLLM(openai_client, model, extra=extra, unreachable=unreachable)
         if p.kind == "ollama":

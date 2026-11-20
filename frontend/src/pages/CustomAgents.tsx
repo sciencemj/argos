@@ -3,7 +3,6 @@ import { AgentAvatar } from "../agents";
 import {
   type Agent,
   agentExportUrl,
-  DEFAULT_ASSISTANT,
   useAgentModels,
   useAgentSettings,
   useAgents,
@@ -66,10 +65,6 @@ const BACKEND_TEXT: Record<string, string> = {
   claude_code: tr("Claude Code CLI · Argos 도구만 사용 · Claude 사용량을 씀"),
   codex: tr("Codex CLI · Argos 도구만 사용 · Codex 사용량을 씀"),
   ollama: tr("모델 연결 · 인박스 분류와 같은 연결과 모델 사용"),
-  native: tr(
-    "기본 어시스턴트 · @ 없이 보낸 채팅에 답하고 메인 기억을 써요",
-    "Default assistant · answers chat without @ and uses the main memory",
-  ),
 };
 
 /** Plan usage the status bar reads, per built-in backend (PLAN Phase 9). */
@@ -93,49 +88,21 @@ export function windowName(name: string): string {
 function BuiltinModelPicker({ agent }: { agent: Agent }) {
   // The built-in local agent runs where the inbox classifier runs (Phase 20).
   const classifierSettings = useClassifierSettings();
-  // The default assistant (a built-in harness agent) runs on a connection of its own.
-  const harness = agent.backend === "native";
-  const providers = useProviders();
   const models = useAgentModels(
     agent.backend,
     agent.backend === "ollama"
       ? classifierSettings.data?.provider_id || undefined
-      : harness
-        ? agent.provider_id || undefined
-        : undefined,
+      : undefined,
   );
   const save = useSetAgentModel();
   const current = agent.model ?? "";
   const known = models.data?.models ?? [];
   const fallback =
-    agent.backend === "ollama" || harness
+    agent.backend === "ollama"
       ? tr("인박스 분류 모델과 같게")
       : tr("도구 기본값");
   return (
     <div className="flex flex-col gap-1">
-      {harness && (
-        <SelectMenu
-          ariaLabel={tt`${agent.display_name} 모델 연결`}
-          className={`${field} w-full`}
-          value={agent.provider_id ?? ""}
-          disabled={save.isPending}
-          onChange={(value) =>
-            // Another connection lists other models: start from its default.
-            save.mutate({
-              name: agent.name,
-              model: null,
-              provider_id: value || null,
-            })
-          }
-          options={[
-            { value: "", label: tr("기본 모델 연결", "Default connection") },
-            ...(providers.data ?? []).map((p) => ({
-              value: p.id,
-              label: p.name,
-            })),
-          ]}
-        />
-      )}
       <SelectMenu
         ariaLabel={tt`${agent.display_name} 모델`}
         className={`${field} w-full`}
@@ -178,14 +145,7 @@ export function AgentsSection() {
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<Agent | null>(null);
   const all = agents.data ?? [];
-  // The default assistant first: it is the one that answers chat by default.
-  const builtin = all
-    .filter((a) => a.is_builtin)
-    .sort(
-      (a, b) =>
-        Number(b.name === DEFAULT_ASSISTANT) -
-        Number(a.name === DEFAULT_ASSISTANT),
-    );
+  const builtin = all.filter((a) => a.is_builtin);
   const custom = all.filter((a) => !a.is_builtin);
   const active = settings.data?.default_agent;
 

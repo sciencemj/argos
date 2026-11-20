@@ -19,7 +19,7 @@ def app(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(config)) as client:
         # A chat message with no @mention goes to the built-in default assistant.
         client.app.state.runner.adapter_factory = fake_agents(  # type: ignore[attr-defined]
-            argos=FakeAgent("argos", ["답", "이에요"]), local=FakeAgent("local", ["L"])
+            _chat=FakeAgent("_chat", ["답", "이에요"]), local=FakeAgent("local", ["L"])
         )
         client.app.state.classifier = FakeClassifier(error="no model")  # type: ignore[attr-defined]
         yield client

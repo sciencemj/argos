@@ -1,6 +1,6 @@
 export const enTemplates: Record<string, string> = {
-  "{0}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 다른 에이전트는 @이름으로 불러요.":
-    "Ask {0} right away; it sees this channel's tasks, events and files. Call another agent with @name.",
+  "{0}에게 바로 물어보세요. 이 채널의 할 일·일정·자료를 함께 봐요. 에이전트는 @이름으로 불러요.":
+    "Ask {0} right away; it sees this channel's tasks, events and files. Call an agent with @name.",
   "Argos {0}에서 바뀐 점": "What's new in Argos {0}",
   "안 읽은 메시지 {0}개": "{0} unread",
   "#{0} 삭제": "Delete #{0}",
@@ -45,7 +45,6 @@ export const enTemplates: Record<string, string> = {
   "{0} 받는 중…": "Downloading {0}…",
   "최신 버전이에요 · {0} 확인": "Up to date · Checked {0}",
   "{0} 모델": "{0} model",
-  "{0} 모델 연결": "{0} model connection",
   "{0} 삭제": "Delete {0}",
   " {0}분마다 자동으로 맞춰요.": " Syncs automatically every {0} min.",
   "마지막 동기화 {0}{1}": "Last synced {0}{1}",

@@ -462,6 +462,8 @@ class AgentRun(Record):
     # ask_agent (v0.2): the run that delegated this one, and how deep the chain is.
     parent_run_id: Mapped[str | None] = mapped_column(String(36), index=True)
     depth: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Default chat (v0.2): the model it answered with, shown in place of an agent name.
+    model: Mapped[str | None] = mapped_column(String(200))
 
 
 class AgentRunStep(Base):

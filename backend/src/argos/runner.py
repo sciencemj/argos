@@ -35,6 +35,7 @@ from argos.agents import (
     ToolResult,
     Turn,
     build_adapter,
+    local_target,
 )
 from argos.approval_waits import approval_waits
 from argos.config import Settings
@@ -92,6 +93,23 @@ def language_line(settings: Settings) -> str:
     return "한국어로 짧고 분명하게 답한다."
 
 
+def chat_agent(runner: Agent, chat: dict[str, str | None]) -> tuple[Agent, str | None]:
+    """The default chat's hidden runner as an unsaved copy carrying the chat model and
+    connection (all core tools), and the reasoning effort to ask for."""
+    copy = Agent(
+        id=runner.id,
+        name=runner.name,
+        display_name=runner.display_name,
+        backend=AgentBackend.NATIVE,
+        is_builtin=True,
+        model=chat["model"],
+        provider_id=chat["provider_id"],
+        tools_json=None,
+        send_images=False,
+    )
+    return copy, chat["effort"]
+
+
 MEMORY_SHOWN = 30  # most recent memories put into the context
 MEMORY_CONTEXT_LIMIT = 4000  # characters of them
 
@@ -110,7 +128,17 @@ async def memory_lines(session: AsyncSession, agent: Agent, settings: Settings) 
     ]
     if rows:
         lines.append("Your memory:" if en else "기억해 둔 것:")
-        lines += [f"- {m.text}" for m in rows]
+        # The guidance and header always stay; entries fill the rest of the budget,
+        # newest first, and are shown oldest first.
+        budget = MEMORY_CONTEXT_LIMIT - sum(len(line) + 1 for line in lines)
+        kept: list[str] = []
+        for memory in reversed(rows):
+            entry = f"- {memory.text}"
+            if len(entry) + 1 > budget:
+                break
+            kept.append(entry)
+            budget -= len(entry) + 1
+        lines += reversed(kept)
     return lines
 
 
@@ -202,10 +230,7 @@ async def build_context(
         lines.append(agent.system_prompt)
     context = "\n".join(lines)[: settings.context_limit]
     # Memory has its own budget so a busy channel never pushes it out of the context.
-    memory = "\n".join(await memory_lines(session, agent, settings))
-    context += "\n" + (
-        memory if len(memory) <= MEMORY_CONTEXT_LIMIT else "…" + memory[-MEMORY_CONTEXT_LIMIT:]
-    )
+    context += "\n" + "\n".join(await memory_lines(session, agent, settings))
     if channel.kind not in (ChannelKind.DM, ChannelKind.SYSTEM):
         docs = await course_lms.course_docs(session, [channel.id])
         lms = course_lms.context_section(
@@ -837,6 +862,15 @@ class Runner:
             reply = (
                 await session.get(Message, run.reply_message_id) if run.reply_message_id else None
             )
+            effort: str | None = None
+            if agent.name == services.DEFAULT_ASSISTANT:
+                # Default chat: the hidden runner wears the model picked for chat.
+                agent, effort = chat_agent(agent, await services.chat_settings(session))
+                try:
+                    _, model = local_target(agent, self.settings)
+                    await services.set_run_model(session, run_id, model)
+                except AgentUnavailable:
+                    pass  # build_adapter below raises it with the guidance text
         thread = reply.thread_root_id if reply is not None else run.thread_root_id
         gate = _RunApprovals(
             self._sessionmaker,
@@ -864,6 +898,7 @@ class Runner:
             classifier=self.classifier(),
             trusted=tuple(Path(f) for f in channel.linked_folders or []),
             delegate=delegate,
+            effort=effort,
         )
         workspace = job.workspace if job is not None else coding
         return self.adapter_factory(
