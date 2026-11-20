@@ -259,3 +259,17 @@ def test_channel_order_rejects_system_channels(client: TestClient) -> None:
         c for c in client.get("/api/v1/channels").json()["channels"] if c["name"] == "today"
     )
     assert client.put("/api/v1/channels/order", json={"ids": [today["id"]]}).status_code == 422
+
+
+def test_event_moves_to_another_channel(client: TestClient) -> None:
+    course = course_channel(client)
+    other = course_channel(client, "운영체제")
+    event = client.post(
+        "/api/v1/events",
+        json={"channel_id": course["id"], "title": "중간고사", "start_date": "2026-10-20"},
+    ).json()
+    url = f"/api/v1/events/{event['id']}"
+    moved = client.patch(url, json={"channel_id": other["id"]})
+    assert moved.status_code == 200
+    assert moved.json()["channel_id"] == other["id"]
+    assert client.patch(url, json={"channel_id": "nope"}).status_code == 404
