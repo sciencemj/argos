@@ -155,7 +155,7 @@ export function ToolStepGroup({
       onToggle={(e) => setOpen(e.currentTarget.open)}
       className="group rounded-2xl border border-line-soft bg-inset/60 text-[12.5px]"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none [&::-webkit-details-marker]:hidden">
         <span className="text-meta">
           <WrenchIcon size={14} />
         </span>
@@ -182,9 +182,11 @@ export function ToolStepGroup({
           )}
           {running > 0
             ? tr("실행 중…", "Running…")
-            : failed > 0
-              ? tr("일부 실패", "Some failed")
-              : tr("완료", "Done")}
+            : failed === steps.length
+              ? tr("실패", "Failed")
+              : failed > 0
+                ? tr("일부 실패", "Some failed")
+                : tr("완료", "Done")}
         </span>
         <span
           aria-hidden
@@ -262,7 +264,7 @@ export function ToolStepCard({ step }: { step: LiveStep }) {
       }}
       className={`group rounded-2xl border bg-inset/60 text-[12.5px] ${waiting ? "border-danger-line" : "border-line-soft"}`}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 select-none [&::-webkit-details-marker]:hidden">
         {waiting ? (
           <span className="text-danger">
             <ShieldIcon size={14} />

@@ -243,3 +243,29 @@ test("a single ordinary call is not grouped", () => {
     { kind: "single", index: 0, step: call("c1", "a") },
   ]);
 });
+
+test("a group where every call failed says so", () => {
+  mocks.pending.data = [];
+  const { container, rerender } = render(
+    <ToolStepList
+      steps={[
+        call("c1", "read_file", { isError: true, output: "x" }),
+        call("c2", "grep_files", { isError: true, output: "y" }),
+      ]}
+    />,
+  );
+  const summary = () =>
+    (container.querySelector("summary") as HTMLElement).textContent ?? "";
+  expect(summary()).toContain("실패 2");
+  expect(summary()).not.toContain("일부 실패");
+  expect(summary()).toContain("실패 2실패"); // badge, then the state label
+  rerender(
+    <ToolStepList
+      steps={[
+        call("c1", "read_file", { isError: true, output: "x" }),
+        call("c2", "grep_files"),
+      ]}
+    />,
+  );
+  expect(summary()).toContain("일부 실패");
+});
