@@ -82,6 +82,12 @@ def test_default_chat_is_not_an_agent(app: tuple[TestClient, Any, Any]) -> None:
     assert taken.status_code == 422
 
 
+def test_hidden_runner_has_no_agent_model_endpoint(app: tuple[TestClient, Any, Any]) -> None:
+    client, _, _ = app
+    assert client.put("/api/v1/agents/_chat/model", json={"model": "x"}).status_code == 404
+    assert client.put("/api/v1/agents/claude/model", json={"model": None}).status_code == 200
+
+
 def test_chat_without_mention_runs_on_the_chat_model(
     app: tuple[TestClient, FakeAgent, FakeAgent],
 ) -> None:

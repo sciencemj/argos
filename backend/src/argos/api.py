@@ -1564,7 +1564,8 @@ async def set_agent_model(
     session: Session, config: Config, name: str, body: AgentModelIn
 ) -> AgentOut:
     """Settings → 기본 에이전트: which model Claude Code, Codex or the local model use."""
-    agent = await session.scalar(select(Agent).where(Agent.name == name))
+    # Listed agents only: default chat's hidden runner takes its model from /settings/chat.
+    agent = await services.find_agent(session, name)
     if agent is None:
         raise services.NotFoundError("agent", name)
     agent = await services.set_agent_model(session, agent.id, body.model, USER)

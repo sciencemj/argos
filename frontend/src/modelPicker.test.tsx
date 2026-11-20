@@ -94,3 +94,35 @@ test("default chat is labelled as such, never as an agent called argos", () => {
   expect(agentInfo("_chat").name).toBe("기본 채팅");
   expect(agentInfo("_chat").initials).not.toBe("_C");
 });
+
+test("arrow keys move the highlight, Enter picks it", () => {
+  render(<ModelPicker />);
+  fireEvent.click(screen.getByRole("button", { name: "채팅 모델" }));
+  const search = screen.getByRole("combobox", { name: "모델 검색" });
+  const active = () =>
+    document.getElementById(search.getAttribute("aria-activedescendant") ?? "");
+  expect(active()?.textContent).toContain("qwen3.5:9b"); // starts on the current one
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(active()?.textContent).toContain("gemma4:e4b");
+  expect(active()?.dataset.active).toBe("true");
+  fireEvent.keyDown(search, { key: "ArrowUp" });
+  fireEvent.keyDown(search, { key: "ArrowUp" }); // wraps to the last
+  expect(active()?.textContent).toContain("llama3");
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(mocks.save).toHaveBeenCalledWith({
+    provider_id: "gpu",
+    model: "llama3",
+  });
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("typing restarts the highlight at the first match; Escape closes", () => {
+  render(<ModelPicker />);
+  fireEvent.click(screen.getByRole("button", { name: "채팅 모델" }));
+  const search = screen.getByRole("combobox", { name: "모델 검색" });
+  fireEvent.change(search, { target: { value: "e" } });
+  const id = search.getAttribute("aria-activedescendant") ?? "";
+  expect(document.getElementById(id)?.textContent).toContain("qwen3.5:9b");
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+});

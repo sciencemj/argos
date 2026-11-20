@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AgentAvatar } from "./agents";
 import {
   type Agent,
@@ -228,6 +228,21 @@ export function ModelPicker() {
   const shown = filterModels(models.data?.models ?? [], query);
   const isCurrent = (m: ChatModel) =>
     m.model === model && m.provider_name === data?.provider_name;
+  // Keyboard: ↑↓ move the highlight over the list, Enter picks it (Escape closes).
+  const ids = useId();
+  const [active, setActive] = useState(0);
+  const highlighted = Math.min(active, Math.max(shown.length - 1, 0));
+  const optionId = (i: number) => `${ids}-model-${i}`;
+  const pick = (m: ChatModel) => {
+    save.mutate({ provider_id: m.provider_id, model: m.model });
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open)
+      document
+        .getElementById(optionId(highlighted))
+        ?.scrollIntoView?.({ block: "nearest" });
+  });
 
   return (
     <div ref={box} className="relative min-w-0 shrink">
@@ -236,7 +251,14 @@ export function ModelPicker() {
         aria-label={tr("채팅 모델", "Chat model")}
         aria-expanded={open}
         title={data?.problem ?? undefined}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) {
+            setQuery("");
+            const current = (models.data?.models ?? []).findIndex(isCurrent);
+            setActive(Math.max(current, 0));
+          }
+          setOpen(!open);
+        }}
         className={`${pill} flex min-w-0 items-center gap-1.5 ${data?.problem ? "text-danger" : ""}`}
       >
         <span className="min-w-0 truncate">
@@ -261,13 +283,35 @@ export function ModelPicker() {
               // biome-ignore lint/a11y/noAutofocus: the picker opens to search
               autoFocus
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              role="combobox"
+              aria-expanded
+              aria-controls={`${ids}-models`}
+              aria-activedescendant={
+                shown.length ? optionId(highlighted) : undefined
+              }
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!shown.length) return;
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setActive((highlighted + step + shown.length) % shown.length);
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  const m = shown[highlighted];
+                  if (m) pick(m);
+                }
+              }}
               placeholder={tr("모델 검색…", "Search models…")}
               aria-label={tr("모델 검색", "Search models")}
               className="min-w-0 grow border-0 bg-transparent p-0 text-[13.5px] text-ink outline-none placeholder:text-meta"
             />
           </label>
           <div
+            id={`${ids}-models`}
             role="listbox"
             aria-label={tr("모델", "Models")}
             className="flex max-h-[280px] flex-col gap-px overflow-y-auto p-1.5"
@@ -277,17 +321,18 @@ export function ModelPicker() {
                 {tr("모델을 불러오는 중…", "Loading models…")}
               </p>
             )}
-            {shown.map((m) => (
+            {shown.map((m, i) => (
               <button
                 key={`${m.provider_id}:${m.model}`}
+                id={optionId(i)}
                 type="button"
                 role="option"
+                tabIndex={-1}
                 aria-selected={isCurrent(m)}
-                onClick={() => {
-                  save.mutate({ provider_id: m.provider_id, model: m.model });
-                  setOpen(false);
-                }}
-                className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-inset aria-selected:bg-inset"
+                data-active={i === highlighted || undefined}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => pick(m)}
+                className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-inset aria-selected:bg-inset data-active:bg-inset data-active:ring-1 data-active:ring-line"
               >
                 <span className="flex min-w-0 grow flex-col">
                   <span className="truncate text-[13.5px] text-ink">

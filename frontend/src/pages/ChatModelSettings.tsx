@@ -51,7 +51,10 @@ export function ChatModelSection() {
           className={field}
           value={connection}
           disabled={save.isPending}
-          onChange={(value) => save.mutate({ provider_id: value || null })}
+          // Another connection lists other models: drop the old pick with it.
+          onChange={(value) =>
+            save.mutate({ provider_id: value || null, model: null })
+          }
           options={[
             {
               value: "",
