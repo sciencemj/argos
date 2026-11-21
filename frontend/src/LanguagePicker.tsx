@@ -1,4 +1,5 @@
 import { language, setLanguage, tr } from "./i18n";
+import { type MascotPref, setMascotPref, useMascotPref } from "./mascot/pref";
 import { setThemePref, type ThemePref, useThemePref } from "./theme";
 import { SelectMenu } from "./ui";
 
@@ -40,6 +41,28 @@ export function ThemePicker() {
           { value: "system", label: tr("시스템") },
           { value: "light", label: tr("라이트") },
           { value: "dark", label: tr("다크") },
+        ]}
+      />
+    </div>
+  );
+}
+
+/** The dog beside the Today heading: watch the cursor, stay put, or hide. */
+export function MascotPicker() {
+  const pref = useMascotPref();
+  return (
+    <div className="flex items-center gap-2 text-[13px] text-text-3">
+      <span>{tr("오늘 화면 강아지", "Today dog")}</span>
+      <SelectMenu<MascotPref>
+        ariaLabel={tr("오늘 화면 강아지", "Today dog")}
+        value={pref}
+        onChange={setMascotPref}
+        className={small}
+        menuWidth={180}
+        options={[
+          { value: "follow", label: tr("커서 따라보기", "Follow the cursor") },
+          { value: "still", label: tr("가만히", "Stay still") },
+          { value: "off", label: tr("끄기", "Off") },
         ]}
       />
     </div>

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { t } from "../i18n";
 import { type Mood, moodLabel } from "./mood";
+import { useMascotPref } from "./pref";
 
 const ArgosMascot = lazy(() => import("./ArgosMascot"));
 
@@ -56,6 +57,7 @@ export function MascotSlot({
   mood: Mood;
   doneCount: number;
 }) {
+  const pref = useMascotPref();
   const reducedMotion = useReducedMotion();
   const [webgl] = useState(hasWebGL);
   const [jumps, setJumps] = useState(0);
@@ -68,7 +70,7 @@ export function MascotSlot({
     lastDone.current = doneCount;
   }, [doneCount]);
 
-  if (!webgl) return null;
+  if (!webgl || pref === "off") return null;
   const label = `${t("Argos 강아지", "Argos the dog")} · ${moodLabel(mood)}`;
   return (
     <button
@@ -84,6 +86,7 @@ export function MascotSlot({
             mood={mood}
             jumps={jumps}
             reducedMotion={reducedMotion}
+            followCursor={pref === "follow"}
           />
         </Suspense>
       </Quiet>
