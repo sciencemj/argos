@@ -1717,18 +1717,23 @@ async def external_event_block(
     session: AsyncSession, event_id: str, fields: set[str] | None
 ) -> str | None:
     """Why `fields` of the event (None: deleting it) cannot be changed from Argos, if
-    they cannot: it is read from another calendar. Changing only its channel is fine."""
-    await get_event(session, event_id)  # unknown ids: the usual not-found error
+    they cannot (the same rules as `_check_event_writable`, checked before any approval
+    is asked for): it is read from another calendar, or it is a synced series whose
+    times only the calendar may change. Changing only its channel is always fine."""
+    event = await get_event(session, event_id)  # unknown ids: the usual not-found error
     link = await session.scalar(
         select(SourceLink).where(
             SourceLink.object_type == "event", SourceLink.object_id == event_id
         )
     )
-    if link is None or not link.read_only:
+    if link is None:
         return None
-    if fields is not None and not (fields - {"channel_id"}):
-        return None
-    return EXTERNAL_EVENT_TEXT.format(calendar=link.container_name)
+    if link.read_only and (fields is None or fields - {"channel_id"}):
+        return EXTERNAL_EVENT_TEXT.format(calendar=link.container_name)
+    moving = fields is None or bool(fields & {*EVENT_TIME_FIELDS, "rrule"})
+    if event.rrule and moving:
+        return "반복 일정은 캘린더 앱에서 고쳐 주세요"
+    return None
 
 
 def _same_title(a: str, b: str) -> bool:

@@ -258,3 +258,35 @@ def test_calendar_event_edits_fail_before_any_approval(server: str, settings: Se
     assert "update_event의 channel" in edit["error"]
     moved = call(server, "update_event", {"event_id": event_id, "channel": "일상"})
     assert (moved["source"], moved["calendar"], moved["editable"]) == ("calendar", "직장", False)
+
+
+def test_synced_series_delete_fails_before_any_approval(server: str, settings: Settings) -> None:
+    async def add_series() -> str:
+        engine = make_engine(settings.db_url)
+        async with make_sessionmaker(engine)() as s:
+            daily = await services.get_personal_channel(s)
+            assert daily is not None
+            event = Event(
+                channel_id=daily.id, title="스터디", start_date=date(2026, 11, 22),
+                rrule="FREQ=WEEKLY",
+            )  # fmt: skip
+            s.add(event)
+            await s.flush()
+            s.add(
+                SourceLink(
+                    object_type="event", object_id=event.id, source="icloud",
+                    external_id="/c/a/s.ics", container="/c/a/", container_name="Argos",
+                    uid="us", read_only=False,
+                )
+            )  # fmt: skip
+            await s.commit()
+            event_id = event.id
+        await engine.dispose()
+        return event_id
+
+    event_id = asyncio.run(add_series())
+    refused = call(server, "delete_event", {"event_id": event_id})
+    assert "반복 일정은 캘린더 앱에서 고쳐 주세요" in refused["error"]
+    assert httpx2.get(f"{server}/api/v1/approvals").json() == []
+    moved = call(server, "update_event", {"event_id": event_id, "channel": "일상"})
+    assert moved["source"] == "calendar" and moved["editable"] is True

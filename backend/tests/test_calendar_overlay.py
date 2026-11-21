@@ -119,3 +119,39 @@ async def test_create_event_refuses_a_duplicate_unless_forced(
     # A different day or title is a different event.
     other = await argos_tools.create_event(tools, "BA 데이터 전처리 및 2 (b)", "일상", "2026-11-23")
     assert other["source"] == "argos" and other["editable"] is True
+
+
+async def test_synced_series_times_and_delete_fail_before_approval(
+    maker: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    ids = await setup(maker)
+    async with maker() as s:  # a series on a calendar Argos may write
+        series = Event(
+            channel_id=ids["daily"],
+            title="스터디",
+            start_date=DAY,
+            rrule="FREQ=WEEKLY",
+        )
+        s.add(series)
+        await s.flush()
+        s.add(
+            SourceLink(
+                object_type="event", object_id=series.id, source="icloud",
+                external_id="/cal/argos/s.ics", container="/cal/argos/",
+                container_name="Argos", uid="uid-s", read_only=False,
+            )
+        )  # fmt: skip
+        await s.commit()
+        series_id = series.id
+    tools = ctx(maker, tmp_path)
+    update = argos_tools.tool_def(argos_tools.ARGOS_TOOLS["update_event"]).precheck
+    delete = argos_tools.tool_def(argos_tools.ARGOS_TOOLS["delete_event"]).precheck
+    assert update is not None and delete is not None
+    with pytest.raises(services.ConflictError, match="반복 일정은 캘린더 앱에서 고쳐 주세요"):
+        await update({"event_id": series_id, "start": "2026-11-23"}, tools)
+    with pytest.raises(services.ConflictError, match="반복 일정은"):
+        await delete({"event_id": series_id}, tools)
+    # Its title and its channel may still change from Argos.
+    await update({"event_id": series_id, "title": "스터디 (새)"}, tools)
+    moved = await argos_tools.update_event(tools, series_id, channel="비즈니스애널리틱스II")
+    assert moved["channel"] == "비즈니스애널리틱스II"
