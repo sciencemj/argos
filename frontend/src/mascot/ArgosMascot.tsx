@@ -86,8 +86,10 @@ function Dog({ mood, jumps, reducedMotion, followCursor }: MascotProps) {
     gltf.scene.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       o.frustumCulled = false; // skinned bounds don't follow the jump
-      const mat = o.material as Material;
-      if (mat.name === OUTLINE_MATERIAL) {
+      const old = o.material as Material | Material[];
+      const mats = Array.isArray(old) ? old : [old];
+      if (mats.some((m) => m.name === OUTLINE_MATERIAL)) {
+        for (const m of mats) m.dispose(); // replaced: free its GPU resources
         o.material = new MeshBasicMaterial({ color: "#1c1717" });
       }
     });
@@ -157,7 +159,9 @@ function Dog({ mood, jumps, reducedMotion, followCursor }: MascotProps) {
   return <primitive object={gltf.scene} />;
 }
 
+// Scratch objects reused every frame (no per-frame allocation).
 const tmpParent = new Quaternion();
+const tmpParentInv = new Quaternion();
 const tmpTurn = new Quaternion();
 const tmpEuler = new Euler(0, 0, 0, "YXZ");
 
@@ -170,7 +174,7 @@ function turn(bone: Object3D | undefined, yaw: number, pitch: number) {
   tmpTurn.setFromEuler(tmpEuler.set(pitch, yaw, 0));
   // local' = parent⁻¹ · turn · parent · local
   bone.quaternion.premultiply(
-    tmpParent.clone().invert().multiply(tmpTurn).multiply(tmpParent),
+    tmpParentInv.copy(tmpParent).invert().multiply(tmpTurn).multiply(tmpParent),
   );
   bone.updateWorldMatrix(false, true);
 }

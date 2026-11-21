@@ -13,13 +13,21 @@ import { useMascotPref } from "./pref";
 
 const ArgosMascot = lazy(() => import("./ArgosMascot"));
 
+// Checked once per page: probing makes a throwaway canvas and GL context.
+let webglSupported: boolean | null = null;
+
 function hasWebGL(): boolean {
+  if (webglSupported !== null) return webglSupported;
   try {
     const canvas = document.createElement("canvas");
-    return !!(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    webglSupported = !!gl;
+    // Give the probe's context back now instead of waiting for GC (browsers cap them).
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
   } catch {
-    return false;
+    webglSupported = false;
   }
+  return webglSupported;
 }
 
 function useReducedMotion(): boolean {
