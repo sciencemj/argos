@@ -31,7 +31,7 @@ jobs:
           uv run ruff format --check .
           uv run pyright
       - name: Test
-        run: uv run pytest -q
+        run: uv run pytest -q -ra --durations=15
       - name: Migrations match the models
         env:
           ARGOS_DB_PATH: ${{ runner.temp }}/ci.db

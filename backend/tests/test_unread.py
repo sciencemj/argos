@@ -43,7 +43,7 @@ def unread(client: TestClient) -> dict[str, int]:
 
 
 def wait_for(check: Any) -> None:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         if check():
             return

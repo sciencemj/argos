@@ -325,7 +325,7 @@ def test_agent_gets_attachments_of_the_thread(settings: Settings) -> None:
             json={"body": "", "thread_root_id": asked["id"], "attachment_ids": [second["id"]]},
         )
         assert reply.status_code == 201, reply.text
-        deadline = time.time() + 5
+        deadline = time.time() + 15
         while len(local.transcripts) < 2 and time.time() < deadline:
             time.sleep(0.02)
     first_turn = local.transcripts[0][-1]

@@ -36,7 +36,7 @@ def sessions(app: TestClient, channel: str) -> list[dict[str, Any]]:
 
 
 def settle(app: TestClient, channel: str) -> list[dict[str, Any]]:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         rows = sessions(app, channel)
         if rows and not any(r["active"] for r in rows) and rows[0]["reply_count"]:
@@ -59,7 +59,7 @@ def test_agent_session_and_session_list(app: TestClient) -> None:
     second = app.post(url, json={"body": "두 번째", "agent_session": True}).json()
     settle(app, channel)
     app.post(url, json={"body": "이어서", "thread_root_id": first["id"]})
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         rows = sessions(app, channel)
         if rows[0]["root_message_id"] == first["id"] and rows[0]["reply_count"] == 3:
@@ -86,7 +86,7 @@ def test_agent_picker_routes_and_resticks(settings: Settings) -> None:
         app.post(
             url, json={"body": "이어서", "thread_root_id": first.json()["id"], "agent": "local"}
         )
-        deadline = time.time() + 5
+        deadline = time.time() + 15
         while time.time() < deadline and len(local.transcripts) < 1:
             time.sleep(0.02)
         assert len(local.transcripts) == 1

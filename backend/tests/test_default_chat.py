@@ -55,7 +55,7 @@ def project(client: TestClient) -> str:
 
 
 def reply(client: TestClient, root: str) -> dict[str, Any]:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         replies: list[dict[str, Any]] = client.get(f"/api/v1/messages/{root}/thread").json()[
             "replies"

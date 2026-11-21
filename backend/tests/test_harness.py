@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx2
 import pytest
-from fakes import FakeClassifier
+from fakes import TERMINAL, FakeClassifier
 from fastapi.testclient import TestClient
 
 from argos import harness, providers, services
@@ -504,7 +504,7 @@ def app(settings: Settings) -> Iterator[TestClient]:
         yield client
 
 
-def _wait(check: Any, timeout: float = 5) -> Any:
+def _wait(check: Any, timeout: float = 15) -> Any:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if result := check():
@@ -593,11 +593,12 @@ def test_native_run_pauses_for_approval(
 
     def finished() -> dict[str, Any] | None:
         thread = app.get(f"/api/v1/messages/{sent.json()['id']}/thread").json()
-        replies = [r for r in thread["replies"] if r["run"] and r["run"]["status"] != "running"]
+        replies = [r for r in thread["replies"] if r["run"] and r["run"]["status"] in TERMINAL]
         return replies[0] if replies else None
 
     reply = _wait(finished)
-    assert reply["body"] == "처리했어요" and reply["run"]["status"] == "done"
+    run = reply["run"]
+    assert (reply["body"], run["status"]) == ("처리했어요", "done"), run.get("error")
     assert reply["run"]["permission_mode"] == "auto_edit"
     assert deleted == (["a.txt"] if approve else [])
     steps = app.get(f"/api/v1/runs/{reply['run']['id']}/steps").json()

@@ -45,6 +45,7 @@ dev = [
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.4.0",
     "ruff>=0.16.8",
     "types-python-dateutil>=2.9.0.20260807",
     "types-pyyaml>=6.0.12.20260906",
@@ -65,3 +66,7 @@ typeCheckingMode = "strict"
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
+# A hanging test must fail with its name and every thread's stack (CI kills the whole
+# job at 10 minutes otherwise). "thread" also works when the main thread is stuck in C.
+timeout = 60
+timeout_method = "thread"
