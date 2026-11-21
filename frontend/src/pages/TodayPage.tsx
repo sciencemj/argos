@@ -25,6 +25,8 @@ import {
   ClockIcon,
   KanbanIcon,
 } from "../icons";
+import { MascotSlot } from "../mascot/MascotSlot";
+import { countOverdue, deriveMood } from "../mascot/mood";
 import { RoutinePanel } from "../routines";
 import {
   clockWindow,
@@ -89,26 +91,40 @@ export function TodayPage() {
   return (
     <div className="min-h-0 grow overflow-y-auto">
       <div className="flex w-full flex-col gap-[18px] px-9 pt-8 pb-[26px] max-md:px-4">
-        <header data-tauri-drag-region="deep" className="flex flex-col gap-2">
-          <div className="font-mono text-[12px] text-meta">
-            {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
-          </div>
-          <h1 className="m-0 text-[44px] leading-[1.1] font-light tracking-[-0.02em] text-ink">
-            {tr("오늘 챙길 것")}
-          </h1>
-          <p className="m-0 text-[15px] text-text-2">
-            {summary(
-              weekItems.filter(
-                (i) =>
-                  i.kind === "event" &&
-                  i.end > now.getTime() &&
-                  i.start < todayStart + DAY_MS,
-              ).length,
-              due.length,
-              today.data?.inbox_count ?? 0,
-            )}
-          </p>
-        </header>
+        <div className="flex items-start gap-4">
+          <header
+            data-tauri-drag-region="deep"
+            className="flex min-w-0 grow flex-col gap-2"
+          >
+            <div className="font-mono text-[12px] text-meta">
+              {format(inZone(now), "EEE · yyyy.MM.dd · HH:mm").toUpperCase()}
+            </div>
+            <h1 className="m-0 text-[44px] leading-[1.1] font-light tracking-[-0.02em] text-ink">
+              {tr("오늘 챙길 것")}
+            </h1>
+            <p className="m-0 text-[15px] text-text-2">
+              {summary(
+                weekItems.filter(
+                  (i) =>
+                    i.kind === "event" &&
+                    i.end > now.getTime() &&
+                    i.start < todayStart + DAY_MS,
+                ).length,
+                due.length,
+                today.data?.inbox_count ?? 0,
+              )}
+            </p>
+          </header>
+          <MascotSlot
+            mood={deriveMood({
+              overdue: countOverdue(tasks.data ?? [], now),
+              dueToday: due.length,
+              inbox: today.data?.inbox_count ?? 0,
+              doneThisWeek: today.data?.done_this_week ?? 0,
+            })}
+            doneCount={today.data?.done_this_week ?? 0}
+          />
+        </div>
 
         <Kpis
           doneThisWeek={today.data?.done_this_week ?? 0}

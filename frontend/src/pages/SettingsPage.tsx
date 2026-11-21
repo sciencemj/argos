@@ -28,7 +28,7 @@ import {
 import { BASE } from "../base";
 import { fmt } from "../dates";
 import { t, tr, tt } from "../i18n";
-import { LanguagePicker, ThemePicker } from "../LanguagePicker";
+import { LanguagePicker, MascotPicker, ThemePicker } from "../LanguagePicker";
 import { btn, card, ErrorText, field, label, SelectMenu } from "../ui";
 import { ChatModelSection } from "./ChatModelSettings";
 import { AgentsSection } from "./CustomAgents";
@@ -258,6 +258,7 @@ function DisplaySection() {
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         <ThemePicker />
         <LanguagePicker />
+        <MascotPicker />
       </div>
     </section>
   );

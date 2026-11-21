@@ -163,7 +163,7 @@ function MobileShell({
         </button>
         <span className="flex grow justify-center">
           <Link
-            to="/"
+            to="/today"
             aria-label={tr("홈 · 오늘")}
             onClick={() => onPickArea(null)}
             className="flex items-center gap-1.5 rounded-full px-2 py-1 text-[15px] font-medium text-ink"
