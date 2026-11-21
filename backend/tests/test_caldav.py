@@ -1138,3 +1138,26 @@ def test_deadline_resource_matches_the_feed() -> None:
     [item] = Calendar.from_ical(english).events
     assert str(item["SUMMARY"]) == "Due · 보고서"
     assert caldav_sync.deadline_digest(task, "운영체제", "en") != same
+
+
+def test_channel_overlay_survives_resync_and_a_new_href(
+    app: TestClient, server: FakeCalDAV
+) -> None:
+    school = server.calendars_[f"{HOME}학교/"]
+    href = server.store(
+        school, "class", vevent("c1", "수업", ":20261012T000000Z", ":20261012T013000Z")
+    )
+    connect(app)
+    [event] = events(app)
+    course = channel_named(app, "컴퓨터구조")
+    assert (
+        app.patch(f"/api/v1/events/{event['id']}", json={"channel_id": course}).status_code == 200
+    )
+    sync(app)
+    assert [e["channel_id"] for e in events(app)] == [course]  # re-sync keeps it
+    # The calendar re-files it under a new href (same UID): one event, same channel.
+    ics = server.resources.pop(href)[2]
+    server.store(school, "class-moved", ics)
+    sync(app)
+    assert [(e["title"], e["channel_id"]) for e in events(app)] == [("수업", course)]
+    assert not [h for m, h, _ in server.requests if m != "GET" and "학교" in h]  # unwritten

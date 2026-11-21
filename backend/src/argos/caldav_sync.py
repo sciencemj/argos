@@ -576,9 +576,15 @@ async def sync(
                     orphans.append((item.href, item.etag))
                 continue
             if link is None:
+                # A channel Argos chose for this calendar event before (by UID) wins over
+                # the calendar's default: moving it in Argos never wrote the calendar.
+                channel_id = await services.remembered_event_channel(
+                    session, SOURCE, uid
+                ) or await channel_for(cal.url)
+                await services.remember_event_channel(session, SOURCE, uid, channel_id)
                 event = await services.create_event(
                     session,
-                    channel_id=await channel_for(cal.url),
+                    channel_id=channel_id,
                     title=remote.title,
                     starts_at=remote.starts_at,
                     ends_at=remote.ends_at,

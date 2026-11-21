@@ -79,3 +79,28 @@ test("cancelling and reopening the same event drops the unsaved draft", () => {
   );
   expect(screen.getByLabelText("채널").dataset.value).toBe("os");
 });
+
+test("another calendar's event: only its channel changes", () => {
+  const external = {
+    id: "e2",
+    channel_id: "me",
+    title: "BA 회의",
+    all_day: true,
+    start_date: "2026-11-22",
+    read_only: true,
+    source: "직장",
+  } as never;
+  render(<EventDialog event={external} onClose={() => {}} />);
+  expect(screen.getByText(/'직장' 캘린더의 일정이라/)).toBeTruthy();
+  expect((screen.getByLabelText("제목") as HTMLInputElement).readOnly).toBe(
+    true,
+  );
+  expect(screen.queryByRole("button", { name: "저장" })).toBeNull();
+  selectValue(screen.getByLabelText("채널"), "ai");
+  fireEvent.click(screen.getByRole("button", { name: "저장" }));
+  expect(mocks.update).toHaveBeenCalledWith(
+    { id: "e2", channel_id: "ai" },
+    expect.anything(),
+  );
+  expect(screen.queryByRole("button", { name: "삭제" })).toBeNull();
+});

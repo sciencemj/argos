@@ -46,6 +46,7 @@ from argos.models import (
     DebateStatus,
     DmSession,
     Event,
+    EventChannel,
     InboxItem,
     InboxStatus,
     LmsNotice,
@@ -1647,6 +1648,8 @@ async def update_event(
             **changes,
             "channel_id": await _personal_destination(session, changes["channel_id"]),
         }
+        if actor not in SYNC_ACTORS and changes["channel_id"] != event.channel_id:
+            await _remember_event_channel(session, event.id, changes["channel_id"])
     if any(key in changes for key in EVENT_TIME_FIELDS):
         current = {key: getattr(event, key) for key in EVENT_TIME_FIELDS}
         times = {k: v for k, v in changes.items() if k in EVENT_TIME_FIELDS}
@@ -1658,6 +1661,103 @@ async def delete_event(session: AsyncSession, event_id: str, actor: str) -> None
     event = await get_event(session, event_id)
     await _check_event_writable(session, event, actor)
     await _delete(session, event, actor)
+
+
+async def _remember_event_channel(session: AsyncSession, event_id: str, channel_id: str) -> None:
+    """A calendar event moved to another channel: remember it by the calendar's UID
+    (bookkeeping beside the event row; written in the same transaction)."""
+    link = await session.scalar(
+        select(SourceLink).where(
+            SourceLink.object_type == "event", SourceLink.object_id == event_id
+        )
+    )
+    if link is None or not link.uid:
+        return
+    row = await session.scalar(
+        select(EventChannel).where(EventChannel.source == link.source, EventChannel.uid == link.uid)
+    )
+    if row is None:
+        session.add(EventChannel(source=link.source, uid=link.uid, channel_id=channel_id))
+    else:
+        row.channel_id = channel_id
+
+
+async def remembered_event_channel(session: AsyncSession, source: str, uid: str) -> str | None:
+    """The channel Argos keeps for a calendar event (by its UID), if any still exists."""
+    channel_id = await session.scalar(
+        select(EventChannel.channel_id).where(
+            EventChannel.source == source, EventChannel.uid == uid
+        )
+    )
+    return channel_id if channel_id and await channel_exists(session, channel_id) else None
+
+
+async def remember_event_channel(
+    session: AsyncSession, source: str, uid: str, channel_id: str
+) -> None:
+    """Sync: a newly imported calendar event starts its overlay in its first channel."""
+    if not uid:
+        return
+    exists = await session.scalar(
+        select(EventChannel.id).where(EventChannel.source == source, EventChannel.uid == uid)
+    )
+    if exists is None:
+        session.add(EventChannel(source=source, uid=uid, channel_id=channel_id))
+
+
+# What an agent is told when it tries to change a calendar event Argos may not write.
+EXTERNAL_EVENT_TEXT = (
+    "이 일정은 '{calendar}' 캘린더 일정이라 Argos에서 수정·삭제할 수 없어요. "
+    "캘린더 앱에서 수정해 주세요. 채널은 update_event의 channel로 바꿀 수 있어요 "
+    "(복제해서 옮기지 마세요: 같은 일정이 두 개가 돼요)."
+)
+
+
+async def external_event_block(
+    session: AsyncSession, event_id: str, fields: set[str] | None
+) -> str | None:
+    """Why `fields` of the event (None: deleting it) cannot be changed from Argos, if
+    they cannot: it is read from another calendar. Changing only its channel is fine."""
+    await get_event(session, event_id)  # unknown ids: the usual not-found error
+    link = await session.scalar(
+        select(SourceLink).where(
+            SourceLink.object_type == "event", SourceLink.object_id == event_id
+        )
+    )
+    if link is None or not link.read_only:
+        return None
+    if fields is not None and not (fields - {"channel_id"}):
+        return None
+    return EXTERNAL_EVENT_TEXT.format(calendar=link.container_name)
+
+
+def _same_title(a: str, b: str) -> bool:
+    return " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
+
+
+async def same_event(
+    session: AsyncSession,
+    title: str,
+    *,
+    starts_at: datetime | None = None,
+    ends_at: datetime | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> Event | None:
+    """An existing event in any channel and source with the same title and the same
+    date(s) or times (as stored, after the usual normalising): a create_event that
+    would only duplicate it."""
+    times = _check_event_times(starts_at, ends_at, start_date, end_date)
+    if times["start_date"] is not None:
+        query = select(Event).where(Event.start_date == times["start_date"])
+    else:
+        query = select(Event).where(Event.starts_at == times["starts_at"])
+    for event in (await session.scalars(query)).all():
+        if all(getattr(event, k) == v for k, v in times.items()) and _same_title(
+            event.title, title
+        ):
+            return event
+    return None
 
 
 async def event_sources(session: AsyncSession, event_ids: Sequence[str]) -> dict[str, SourceLink]:

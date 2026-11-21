@@ -782,3 +782,15 @@ async def test_openai_llm_client_errors_are_not_retried_whole() -> None:
     with pytest.raises(AgentUnavailable):
         await _collect(OpenAIChatLLM(client, "m").turn("sys", [HMsg("user", "hi")], []))
     assert calls == [True]
+
+
+async def test_precheck_fails_before_any_approval(tmp_path: Path) -> None:
+    async def blocked(args: dict[str, Any], ctx: ToolContext) -> None:
+        raise services.ConflictError("캘린더 앱에서 고쳐 주세요")
+
+    llm = ScriptedLLM([LLMDone("", [call("c1", "rm", "{}")]), LLMDone("알겠어요")])
+    gate = FakeGate(True)
+    registry = ToolRegistry([tool("rm", "destructive", precheck=blocked)])
+    events = await run(adapter(llm, registry, tmp_path, gate))
+    assert ToolResult("c1", "rm", "오류: 캘린더 앱에서 고쳐 주세요", True) in events
+    assert gate.requests == []  # no approval was asked for

@@ -822,6 +822,13 @@ class ClaudeHarness:
 
         tool, builtin = self.tool_def(name)
         ctx = self.context
+        if not builtin and tool.precheck is not None:
+            try:
+                await tool.precheck(args, ctx)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # bound to fail: refuse before any approval
+                return PermissionResultDeny(message=str(exc))
         if builtin and any(
             not any(inside(p, root) for root in ctx.allowed_roots()) for p in _claude_paths(args)
         ):

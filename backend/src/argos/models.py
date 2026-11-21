@@ -271,6 +271,20 @@ class ActivityLog(Record):
     actor: Mapped[str] = mapped_column(String(100))
 
 
+class EventChannel(Record):
+    """Which channel an event read from an outside calendar belongs to: Argos's own
+    choice, kept apart from the calendar (which Argos may not write) and keyed by the
+    calendar event's iCalendar UID, so it survives re-syncs, a new href (moved between
+    calendars) and the event being re-created after its link was lost."""
+
+    __tablename__ = "event_channel"
+    __table_args__ = (UniqueConstraint("source", "uid", name="uq_event_channel_uid"),)
+
+    source: Mapped[str] = mapped_column(String(20))  # "icloud"
+    uid: Mapped[str] = mapped_column(String(500))
+    channel_id: Mapped[str] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"))
+
+
 class SourceLink(Record):
     """Where an Argos object came from or is mirrored to outside (PLAN §5): a CalDAV
     resource per synced event (Phase 7b), a note line per imported task (Phase 8).

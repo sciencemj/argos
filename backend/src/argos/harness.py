@@ -123,6 +123,9 @@ class ToolDef:
     plugin: str | None = None
     paths: Callable[[dict[str, Any]], Sequence[str]] = _no_paths
     summarize: Callable[[dict[str, Any]], str] | None = None  # the approval card's line
+    # Runs before the permission gate: a call bound to fail (e.g. editing an event from
+    # a calendar Argos cannot write) fails at once instead of asking for approval.
+    precheck: "Callable[[dict[str, Any], ToolContext], Awaitable[None]] | None" = None
 
     def summary(self, args: dict[str, Any]) -> str:
         if self.summarize is not None:
@@ -1016,6 +1019,14 @@ class NativeHarnessAdapter:
             )
             return
         ctx = self._ctx
+        if tool.precheck is not None:
+            try:
+                await tool.precheck(args, ctx)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                yield ToolResult(call.id, call.name, f"오류: {exc}", True)
+                return
         if decide(tool, args, ctx.permission_mode, ctx.workspace, ctx.trusted) == "ask":
             if self._gate is None:
                 yield ToolResult(

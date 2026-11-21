@@ -15,7 +15,7 @@ itself waits on (`ApprovalNeeded`), so once approved they delete directly.
 import asyncio
 import inspect
 import json
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -28,7 +28,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from argos import chat, course_lms, knowledge, services, vault
 from argos.harness import ToolContext, ToolDef, ToolKind, ToolRegistry
-from argos.models import Channel, ChannelKind, Event, InboxStatus, Task, TaskStatus
+from argos.models import (
+    Channel,
+    ChannelKind,
+    Event,
+    InboxStatus,
+    SourceLink,
+    Task,
+    TaskStatus,
+)
 
 STATUSES = [s.value for s in TaskStatus]
 DOMAIN_ERRORS = (services.NotFoundError, services.InvalidError, services.ConflictError)
@@ -43,12 +51,19 @@ class ArgosTool:
     params: tuple[inspect.Parameter, ...]  # without ctx
     args_model: type[BaseModel]
     mcp: bool = True  # also served by the MCP server
+    # Runs before any approval is asked for: a call that cannot succeed fails at once.
+    precheck: Callable[[ToolContext, dict[str, Any]], Awaitable[None]] | None = None
 
 
 ARGOS_TOOLS: dict[str, ArgosTool] = {}
 
 
-def argos_tool(kind: ToolKind, *, mcp: bool = True) -> Callable[[Any], Any]:
+def argos_tool(
+    kind: ToolKind,
+    *,
+    mcp: bool = True,
+    precheck: Callable[[ToolContext, dict[str, Any]], Awaitable[None]] | None = None,
+) -> Callable[[Any], Any]:
     def decorate(fn: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         hints = get_type_hints(fn)
         params = tuple(
@@ -61,7 +76,14 @@ def argos_tool(kind: ToolKind, *, mcp: bool = True) -> Callable[[Any], Any]:
         }
         model = create_model(f"{fn.__name__}_args", **fields)
         ARGOS_TOOLS[fn.__name__] = ArgosTool(
-            fn.__name__, kind, fn, inspect.cleandoc(fn.__doc__ or ""), params, model, mcp
+            fn.__name__,
+            kind,
+            fn,
+            inspect.cleandoc(fn.__doc__ or ""),
+            params,
+            model,
+            mcp,
+            precheck,
         )
         return fn
 
@@ -86,7 +108,14 @@ def tool_def(tool: ArgosTool) -> ToolDef:
 
     schema = tool.args_model.model_json_schema()
     schema.pop("title", None)
+    check = tool.precheck
+
+    async def precheck(args: dict[str, Any], ctx: ToolContext) -> None:
+        if check is not None:
+            await check(ctx, args)
+
     return ToolDef(
+        precheck=precheck if check is not None else None,
         name=tool.name,
         description=tool.description,
         parameters=schema,
@@ -142,7 +171,7 @@ async def get_today(ctx: ToolContext) -> dict[str, Any]:
         routines = await services.list_routines(s, day=local_day, today=local_day)
         return {
             "date": local_day.isoformat(),
-            "events": [_event(e, names, tz) for e in today["events"]],
+            "events": await _events(s, today["events"], names, tz),
             "due_tasks": [_task(t, names, tz) for t in today["due_tasks"]],
             "open_inbox": today["inbox_count"],
             "routines": [
@@ -165,7 +194,7 @@ async def get_schedule(
             s, start=_instant(start, tz), end=_instant(end, tz), tz=tz, channel_id=channel_id
         )
         names = await _channel_names(s)
-        return [_event(e, names, tz) for e in events]
+        return await _events(s, events, names, tz)
 
 
 @argos_tool("read")
@@ -446,25 +475,61 @@ async def create_event(
     start: str,
     end: str | None = None,
     location: str | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Add an event. start/end as ISO datetimes (end defaults to +1h), or as dates
-    YYYY-MM-DD for an all-day event (end = last day, inclusive)."""
+    YYYY-MM-DD for an all-day event (end = last day, inclusive). Refused when an event
+    with the same title and times already exists (any channel or calendar); move that
+    one with update_event instead, or pass force=true for a real second event."""
     tz = _tz(ctx)
+    times = _event_times(start, end, tz)
     async with _session(ctx) as s:
         target = await _channel(s, channel)
+        if not force and (same := await services.same_event(s, title, **times)) is not None:
+            where = (await services.event_sources(s, [same.id])).get(same.id)
+            origin = f"'{where.container_name}' 캘린더" if where else "Argos"
+            home = (await _channel_names(s)).get(same.channel_id)
+            raise services.ConflictError(
+                f"같은 일정이 이미 있어요: {same.id} ({origin}, #{home}). "
+                "채널만 바꾸려면 update_event의 channel을 쓰고, "
+                "정말 따로 만들려면 force=true로 다시 호출하세요."
+            )
         event = await services.create_event(
             s,
             channel_id=target.id,
             title=title,
             location=location,
             actor=ctx.actor,
-            **_event_times(start, end, tz),
+            **times,
         )
         await _announce(s, target, f"일정을 추가했어요: {event.title}", event, ctx.actor)
         return _event(event, {target.id: target.name}, tz)
 
 
-@argos_tool("write")
+async def _editable(s: AsyncSession, event_id: str, fields: set[str] | None) -> None:
+    if (why := await services.external_event_block(s, event_id, fields)) is not None:
+        raise services.ConflictError(why)
+
+
+_EVENT_FIELDS = {"title": "title", "start": "starts_at", "end": "ends_at", "location": "location"}
+
+
+async def _check_update_event(ctx: ToolContext, args: dict[str, Any]) -> None:
+    fields: set[str] = {
+        column for arg, column in _EVENT_FIELDS.items() if args.get(arg) is not None
+    }
+    if args.get("channel") is not None:
+        fields.add("channel_id")
+    async with _session(ctx) as s:
+        await _editable(s, str(args.get("event_id", "")), fields)
+
+
+async def _check_delete_event(ctx: ToolContext, args: dict[str, Any]) -> None:
+    async with _session(ctx) as s:
+        await _editable(s, str(args.get("event_id", "")), None)
+
+
+@argos_tool("write", precheck=_check_update_event)
 async def update_event(
     ctx: ToolContext,
     event_id: str,
@@ -477,6 +542,11 @@ async def update_event(
     """Edit an event. Giving start replaces its time (same rules as create_event);
     channel (name or id, see list_channels) moves it to another channel."""
     tz = _tz(ctx)
+    await _check_update_event(
+        ctx,
+        {"event_id": event_id, "title": title, "start": start, "end": end}
+        | {"location": location, "channel": channel},
+    )
     async with _session(ctx) as s:
         changes: dict[str, Any] = {}
         if title is not None:
@@ -490,7 +560,8 @@ async def update_event(
         elif end is not None:
             raise services.InvalidError("give start together with end")
         event = await services.update_event(s, event_id, changes, ctx.actor)
-        return _event(event, await _channel_names(s), tz)
+        link = (await services.event_sources(s, [event.id])).get(event.id)
+        return _event(event, await _channel_names(s), tz, link)
 
 
 @argos_tool("write")
@@ -553,11 +624,13 @@ async def delete_task(ctx: ToolContext, task_id: str, reason: str | None = None)
     return {"deleted": task_id, "title": title}
 
 
-@argos_tool("destructive")
+@argos_tool("destructive", precheck=_check_delete_event)
 async def delete_event(
     ctx: ToolContext, event_id: str, reason: str | None = None
 ) -> dict[str, Any]:
-    """Delete an event. The user approves it in Argos before it runs."""
+    """Delete an event. The user approves it in Argos before it runs. Events from
+    another calendar (editable=false) cannot be deleted from Argos."""
+    await _check_delete_event(ctx, {"event_id": event_id})
     async with _session(ctx) as s:
         title = (await services.get_event(s, event_id)).title
         await services.delete_event(s, event_id, ctx.actor)
@@ -684,8 +757,20 @@ def _task(t: Task, names: dict[str, str], tz: ZoneInfo) -> dict[str, Any]:
     }
 
 
-def _event(e: Event, names: dict[str, str], tz: ZoneInfo) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": e.id, "title": e.title, "channel": names.get(e.channel_id)}
+def _event(
+    e: Event, names: dict[str, str], tz: ZoneInfo, link: SourceLink | None = None
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "id": e.id,
+        "title": e.title,
+        "channel": names.get(e.channel_id),
+        # Where it lives: Argos's own, or read from a calendar Argos may not write
+        # (only its channel can change, with update_event's channel).
+        "source": "calendar" if link is not None else "argos",
+        "editable": link is None or not link.read_only,
+    }
+    if link is not None:
+        out["calendar"] = link.container_name
     if e.start_date is not None:
         last = (e.end_date or e.start_date + timedelta(days=1)) - timedelta(days=1)
         out |= {
@@ -702,6 +787,34 @@ def _event(e: Event, names: dict[str, str], tz: ZoneInfo) -> dict[str, Any]:
     if e.location:
         out["location"] = e.location
     return out
+
+
+async def _events(
+    s: AsyncSession, events: Sequence[Event], names: dict[str, str], tz: ZoneInfo
+) -> list[dict[str, Any]]:
+    """Events for an agent, with their source. An Argos event that only copies a
+    calendar event (same title and times) is folded into it, noted as `duplicates`,
+    so the agent sees one event and the user can delete the copy."""
+    links = await services.event_sources(s, [e.id for e in events])
+    out = [_event(e, names, tz, links.get(e.id)) for e in events]
+
+    def key(d: dict[str, Any]) -> tuple[str, Any, Any]:
+        return (
+            " ".join(str(d["title"]).split()).casefold(),
+            d.get("start_date") or d.get("starts_at"),
+            d.get("end_date") or d.get("ends_at"),
+        )
+
+    calendar = {key(d): d for d in out if d["source"] == "calendar"}
+    kept: list[dict[str, Any]] = []
+    for d in out:
+        original = calendar.get(key(d)) if d["source"] == "argos" else None
+        if original is None:
+            kept.append(d)
+        else:
+            dupes: list[str] = original.setdefault("duplicates", [])
+            dupes.append(str(d["id"]))
+    return kept
 
 
 def mcp_tools() -> list[ArgosTool]:
