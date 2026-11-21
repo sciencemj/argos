@@ -284,17 +284,18 @@ export function EventDialog({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (event)
-      update.mutate(
-        {
-          id: event.id,
-          title: title.trim(),
-          ...(channelId && channelId !== event.channel_id
-            ? { channel_id: channelId }
-            : {}),
-        },
-        { onSuccess: onClose },
-      );
+    if (!event) return;
+    const moved =
+      channelId && channelId !== event.channel_id
+        ? { channel_id: channelId }
+        : {};
+    // Another calendar's event: only its channel (Argos's own) can change here.
+    update.mutate(
+      readOnly
+        ? { id: event.id, ...moved }
+        : { id: event.id, title: title.trim(), ...moved },
+      { onSuccess: onClose },
+    );
   };
 
   return (
@@ -309,7 +310,7 @@ export function EventDialog({
           <p className="m-0 text-[12.5px] text-text-3">
             {event?.rrule
               ? tr("반복 일정은 캘린더 앱에서 고쳐 주세요.")
-              : tt`'${event?.source}' 캘린더의 일정이라 캘린더 앱에서 고쳐 주세요.`}
+              : tt`'${event?.source}' 캘린더의 일정이라 제목·시간은 캘린더 앱에서 고쳐 주세요. 채널은 여기서 바꿀 수 있어요.`}
           </p>
         )}
         <label className="flex flex-col gap-1">
@@ -327,7 +328,6 @@ export function EventDialog({
           <SelectMenu
             className={field}
             value={channelId}
-            disabled={readOnly}
             onChange={(value) => setChannelId(value)}
             options={[
               ...(current && !pickable.includes(current)
@@ -355,7 +355,7 @@ export function EventDialog({
           <button type="button" className={btn.ghost} onClick={onClose}>
             {tr("닫기")}
           </button>
-          {!readOnly && (
+          {(!readOnly || channelId !== event?.channel_id) && (
             <button
               type="submit"
               className={btn.cta}

@@ -146,7 +146,18 @@ def build_mcp(app: FastAPI) -> MCPServer:
         event_id: str,
         reason: str | None = None,
     ) -> dict[str, Any]:
-        """Ask to delete an event. Nothing is deleted until the user approves in Argos."""
+        """Ask to delete an event. Nothing is deleted until the user approves in Argos.
+        Events from another calendar (editable=false) cannot be deleted from Argos."""
+
+        async def check(s: AsyncSession) -> str | None:
+            return await services.external_event_block(s, event_id, None)
+
+        try:
+            blocked = await run(check)
+        except argos_tools.DOMAIN_ERRORS as exc:
+            raise ToolError(str(exc)) from exc
+        if blocked is not None:  # before any approval request
+            raise ToolError(blocked)
         return await _ask(ctx, "delete_event", {"event_id": event_id}, reason)
 
     async def _ask(

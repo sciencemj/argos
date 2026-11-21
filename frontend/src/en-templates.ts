@@ -28,8 +28,8 @@ export const enTemplates: Record<string, string> = {
   "{0} 수정": "Edited {0}",
   " · 답글 {0}": " · {0} replies",
   "마감 · {0}": "Due · {0}",
-  "'{0}' 캘린더의 일정이라 캘린더 앱에서 고쳐 주세요.":
-    "This event belongs to the '{0}' calendar. Edit it in Calendar.",
+  "'{0}' 캘린더의 일정이라 제목·시간은 캘린더 앱에서 고쳐 주세요. 채널은 여기서 바꿀 수 있어요.":
+    "This event belongs to the '{0}' calendar: edit its title and time in Calendar. Its channel can be changed here.",
   '"{0}" 일정을 삭제할까요?': 'Delete the event "{0}"?',
   " · /ask 채널 {0}개": " · /ask in {0} channels",
   "@{0} 에이전트를 지울까요? 1:1 대화도 함께 지워져요.":
