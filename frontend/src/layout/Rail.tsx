@@ -108,7 +108,7 @@ export function Rail({
         />
       )}
       <Link
-        to="/"
+        to="/today"
         aria-label={tr("홈 · 오늘")}
         title={tr("홈 · 오늘")}
         onClick={() => onPickArea(null)}
