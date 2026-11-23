@@ -519,8 +519,11 @@ h3 {
   background: var(--inset);
 }
 .player-fallback {
-  padding: 24px;
-  margin: 0;
+  margin: 16px 4px 0;
+  font-size: 13px;
+}
+.player-fallback a {
+  border-bottom: 1px solid var(--line);
 }
 .player-caption {
   display: flex;
