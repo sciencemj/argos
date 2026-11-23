@@ -1579,13 +1579,24 @@ function useToolWrite<A extends { name: string }>(
 }
 
 /** Registers Argos' MCP server and installs the argos skill in the tool. */
+/** Registers Argos' MCP server and/or installs the argos skill (both by default). */
 export const useConnectTool = () =>
-  useToolWrite(({ name }: { name: string }) =>
-    call(
-      client.POST("/api/v1/setup/tools/{name}/connect", {
-        params: { path: { name } },
-      }),
-    ),
+  useToolWrite(
+    ({
+      name,
+      mcp = true,
+      skill = true,
+    }: {
+      name: string;
+      mcp?: boolean;
+      skill?: boolean;
+    }) =>
+      call(
+        client.POST("/api/v1/setup/tools/{name}/connect", {
+          params: { path: { name } },
+          body: { mcp, skill },
+        }),
+      ),
   );
 
 /** Removes Argos' MCP entry and/or skill from the tool. */

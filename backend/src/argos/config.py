@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     # <antigravity_dir>/skills/<name>/SKILL.md (what `agy` itself reads).
     antigravity_bin: str = "agy"
     antigravity_dir: Path = Path.home() / ".gemini" / "config"
+    # Antigravity IDE (the app): it reads <antigravity_ide_dir>/mcp_config.json, which Argos
+    # edits itself (only the `argos` entry), and skills in <antigravity_ide_dir>/skills. Often
+    # both are symlinks into antigravity_dir; then the IDE and the CLI share one setup.
+    antigravity_ide_dir: Path = Path.home() / ".gemini" / "antigravity"
     usage_poll_minutes: int = 5
 
     # Empty working directory for Claude Code/Codex chat runs: they get Argos tools only.
