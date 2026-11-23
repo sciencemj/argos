@@ -66,7 +66,7 @@ from argos import (
 from argos import debate as debate_module
 from argos.classifier import Classifier
 from argos.config import Settings
-from argos.db import session_scope
+from argos.db import begin_read, session_scope
 from argos.harness import core_tools
 from argos.hub import hub
 from argos.models import (
@@ -908,6 +908,7 @@ async def list_messages(
     include_personal: bool = False,
     session_id: str | None = None,
 ) -> MessagePage:
+    await begin_read(session)  # messages and their runs from one snapshot
     channel = await services.get_channel(session, channel_id)
     personal = (
         await services.get_personal_channel(session)
@@ -982,6 +983,7 @@ async def post_message(
 
 @router.get("/messages/{message_id}/thread")
 async def get_thread(session: Session, config: Config, message_id: str) -> ThreadOut:
+    await begin_read(session)  # a reply's text and its run's status from one snapshot
     root, replies = await services.list_thread(session, message_id)
     [root_out, *reply_out] = await _messages_out(session, [root, *replies], config.attachments_dir)
     return ThreadOut(root=root_out, replies=reply_out)

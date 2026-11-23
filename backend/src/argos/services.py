@@ -148,25 +148,41 @@ async def _update[T: Record](
     actor: str,
     action: str = "updated",
 ) -> T:
-    before = snapshot(obj)
-    for key, value in changes.items():
-        setattr(obj, key, value)
-    await session.flush()
-    after = snapshot(obj)
-    diff = {k for k in after if after[k] != before[k] and k != "updated_at"}
-    if diff:
-        _log(
-            session,
-            obj,
-            action,
-            actor,
-            before={k: before[k] for k in diff},
-            after={k: after[k] for k in diff},
-        )
-    await session.commit()
-    if diff:
-        await _publish("object.updated", obj, after)
+    await _update_all(session, [(obj, changes)], actor, action)
     return obj
+
+
+async def _update_all(
+    session: AsyncSession,
+    updates: Sequence[tuple[Record, dict[str, Any]]],
+    actor: str,
+    action: str = "updated",
+) -> None:
+    """Several rows in one commit, so no reader sees some of the changes without the
+    others (an agent's reply text and its run's status). One event per changed row,
+    sent after the commit."""
+    befores = [snapshot(obj) for obj, _ in updates]
+    for obj, changes in updates:
+        for key, value in changes.items():
+            setattr(obj, key, value)
+    await session.flush()
+    changed: list[tuple[Record, dict[str, Any]]] = []
+    for (obj, _), before in zip(updates, befores, strict=True):
+        after = snapshot(obj)
+        diff = {k for k in after if after[k] != before[k] and k != "updated_at"}
+        if diff:
+            _log(
+                session,
+                obj,
+                action,
+                actor,
+                before={k: before[k] for k in diff},
+                after={k: after[k] for k in diff},
+            )
+            changed.append((obj, after))
+    await session.commit()
+    for obj, after in changed:
+        await _publish("object.updated", obj, after)
 
 
 async def _delete(session: AsyncSession, obj: Record, actor: str) -> None:
@@ -3102,14 +3118,18 @@ async def finish_run(
     error: str | None,
     log: str | None = None,
 ) -> None:
+    """The reply text and the run's end state in one commit: a reader never sees a
+    finished run next to its still-empty reply."""
     run = await _get(session, AgentRun, run_id)
     reply = await session.get(Message, run.reply_message_id) if run.reply_message_id else None
-    if reply is not None and text != reply.body:
-        await _update(session, reply, {"body": text}, "system")
     changes: dict[str, Any] = {"status": status, "error": error, "finished_at": datetime.now(UTC)}
     if log is not None:
         changes["log"] = log
-    await _update(session, run, changes, "system")
+    updates: list[tuple[Record, dict[str, Any]]] = []
+    if reply is not None and text != reply.body:
+        updates.append((reply, {"body": text}))
+    updates.append((run, changes))
+    await _update_all(session, updates, "system")
 
 
 async def add_run_step(
