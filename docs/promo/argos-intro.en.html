@@ -333,7 +333,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .ah{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px}
 .ah small{margin-left:auto;font-size:11px;color:var(--w-meta);font-weight:400;position:relative;height:16px;min-width:74px;text-align:right}
 .ah small span{position:absolute;right:0;top:0;white-space:nowrap}
-.atext{font-size:12.5px;line-height:1.7;min-height:128px;margin-top:8px;white-space:pre-wrap}
+.atext{font-size:12.5px;line-height:1.6;min-height:110px;margin-top:8px;white-space:pre-wrap}
 .atext code{font:11.5px var(--mono)}
 .comp{margin-top:10px;background:var(--w-card);border:1px solid var(--w-soft);border-radius:15px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 8px rgba(0,0,0,.03)}
 .cin{font-size:14px;min-height:22px;position:relative;white-space:nowrap}
@@ -430,6 +430,53 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .pk b{font-size:18px;font-weight:500}
 .pk b.red{color:var(--w-danger)}
 
+/* v0.2: model picker, tool steps, artifact, mascot, tool connections */
+.av.gm{background:#4285f4}
+.pmode{display:inline-flex;align-items:center;gap:5px;height:28px;border-radius:999px;padding:0 10px;font-size:11.5px;color:var(--w-text2);background:var(--w-inset);white-space:nowrap}
+.mpick{margin-left:auto;display:inline-flex;align-items:center;height:30px;border:1px solid var(--w-soft);border-radius:999px;padding:0 12px 0 6px;font-size:12px;color:var(--w-text);background:var(--w-card);position:relative;width:206px}
+.mpick .sw2{position:relative;flex:1;height:18px}
+.mpick .sw2>span{position:absolute;left:0;top:0;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.mpick small{color:var(--w-meta);font-size:11px}
+.mpick u{text-decoration:none;color:var(--w-meta);font-size:10px}
+.pv{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;color:#fff;font:700 8.5px var(--sans);font-style:normal;flex:none}
+.ring{width:20px;height:20px;border-radius:50%;flex:none;margin-left:8px;background:conic-gradient(var(--w-text) 0 18%,var(--w-soft) 18% 100%);-webkit-mask:radial-gradient(circle,transparent 5.5px,#000 6px);mask:radial-gradient(circle,transparent 5.5px,#000 6px)}
+.mmenu{position:absolute;right:50px;bottom:54px;width:320px;background:var(--w-card);border:1px solid var(--w-soft);border-radius:14px;padding:8px;box-shadow:0 24px 44px -16px rgba(24,24,37,.38);z-index:30;opacity:0;visibility:hidden;transform-origin:80% 100%}
+.msearch{display:flex;align-items:center;gap:6px;border:1px solid var(--w-soft);background:var(--w-inset);border-radius:9px;padding:0 10px;font-size:12.5px;margin-bottom:4px;position:relative;height:30px;color:var(--w-meta)}
+.msearch b{font-weight:500;color:var(--w-text)}
+.msearch .ph2{position:absolute;left:28px;top:6px}
+.mg{font-size:10.5px;color:var(--w-meta);padding:6px 8px 2px}
+.mo{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;font-size:12.5px;white-space:nowrap}
+.mo small{margin-left:auto;font-size:10.5px;color:var(--w-meta)}
+.mo.hl{background:var(--w-inset);font-weight:600}
+.meff{display:flex;align-items:center;gap:4px;border-top:1px solid var(--w-soft);margin-top:6px;padding:8px 6px 2px;font-size:11.5px;color:var(--w-meta)}
+.meff em{font-style:normal;margin-right:auto}
+.meff span{padding:2px 9px;border-radius:999px;color:var(--w-text2)}
+.meff span.on{background:var(--w-inset);color:var(--w-text);font-weight:600}
+.tstep{display:inline-flex;align-items:center;gap:7px;margin-top:6px;border:1px solid var(--w-soft);background:var(--w-inset);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--w-text2);white-space:nowrap}
+.tstep small{font:10.5px var(--mono);color:var(--w-meta)}
+.tstep code{font:11px var(--mono);color:var(--w-text)}
+.tstep .loading{width:56px;margin:0;height:8px}
+.tk{width:15px;height:15px;border-radius:50%;background:var(--w-text);color:var(--w-page);display:grid;place-items:center;font-size:9px;flex:none}
+.tdet{margin:6px 0 2px 8px;border-left:2px solid var(--w-soft);padding-left:10px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--w-text2)}
+.tdet div{display:flex;gap:8px;white-space:nowrap}
+.tdet code{font:11px var(--mono);color:var(--w-text);min-width:96px}
+.tcard{display:flex;align-items:center;gap:10px;max-width:420px;margin-top:8px;padding:9px 12px}
+.tcard b{font-size:13px;display:block;font-weight:600}
+.tcard small{font-size:11px;color:var(--w-meta)}
+.tcard .dd{margin-left:auto}
+.art{margin-top:8px;border:1px solid var(--w-soft);border-radius:12px;background:var(--w-inset);padding:7px 10px 4px}
+.arth{font-size:10.5px;color:var(--w-meta);margin-bottom:2px}
+.arth code{font:10.5px var(--mono);color:var(--w-text2)}
+.art svg{display:block;width:100%;height:58px}
+.mascot{position:relative;width:124px;height:98px;margin:-10px 8px -6px 0;flex:none}
+.mascot svg{width:124px;height:98px;overflow:visible}
+.mbub{position:absolute;right:122px;top:18px;background:var(--w-text);color:var(--w-page);font:600 11.5px var(--sans);border-radius:999px;padding:4px 10px;opacity:0;visibility:hidden;white-space:nowrap}
+.trow2{display:flex;align-items:center;gap:5px;padding:7px 0;border-bottom:1px solid var(--w-soft);font-size:12px}
+.trow2:last-child{border-bottom:0}
+.trow2 b{font-weight:600;margin-right:auto;white-space:nowrap}
+.tg2{font:600 10px var(--mono);border:1px solid var(--w-soft);border-radius:999px;padding:2px 7px;color:var(--w-meta);background:var(--w-card)}
+.tg2.on{background:var(--w-text);border-color:var(--w-text);color:var(--w-page)}
+
 /* outro */
 #pill{position:absolute;left:960px;top:540px;width:440px;height:128px;border-radius:64px;background:#000;display:grid;place-items:center;opacity:0;visibility:hidden;box-shadow:0 40px 80px -30px rgba(0,0,0,.5)}
 #pill svg{width:150px;height:150px;opacity:0}
@@ -466,25 +513,25 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <div class="layer" id="s1">
         <h2 class="l1"><span class="w">Classes,</span> <span class="w">tasks,</span> <span class="w">events,</span> <span class="w">agents.</span></h2>
         <h2 class="l2"><span class="clip"><span>Argos keeps watch in <em>one place.</em></span></span></h2>
-        <div class="chip" style="left:250px;top:200px"><i style="background:#e2533f">31</i>iCloud Calendar</div>
+        <div class="chip" style="left:250px;top:200px"><i style="background:#e2533f">31</i>Apple Calendar</div>
         <div class="chip" style="left:1400px;top:170px"><i style="background:#7b5bd6">O</i>Obsidian vault</div>
-        <div class="chip" style="left:170px;top:720px"><i style="background:#2aa3de">T</i>Telegram</div>
+        <div class="chip" style="left:170px;top:720px"><i style="background:#4285f4">G</i>Gemini</div>
         <div class="chip" style="left:1480px;top:760px"><i style="background:#a45d46">C</i>Claude</div>
         <div class="chip" style="left:760px;top:130px"><i style="background:#6e5fa8">H</i>Hermes</div>
         <div class="chip" style="left:1060px;top:860px"><i style="background:#3f6fa6">Cx</i>Codex</div>
-        <div class="chip" style="left:560px;top:880px"><i style="background:#181825">⌘</i>Quick entry</div>
+        <div class="chip" style="left:560px;top:880px"><i style="background:#181825">29</i>29 built-in tools</div>
         <div class="chip" style="left:90px;top:460px"><i style="background:#1f7a8c">LX</i>LearningX LMS</div>
-        <div class="chip" style="left:1580px;top:480px"><i style="background:#181825">Ts</i>Phone · Tailscale</div>
+        <div class="chip" style="left:1580px;top:480px"><i style="background:#3367d6">Ag</i>Antigravity</div>
       </div>
 
       <!-- captions -->
-      <div class="cap" id="cap1"><div class="eb">01 — TODAY</div><h2><span class="ln"><span>Your whole week,</span></span><span class="ln"><span><em>at a glance.</em></span></span></h2><p>Weekly progress, the next 7 days of events and deadlines, and your inbox on one screen. Pick a day on the calendar to see what it holds.</p></div>
-      <div class="cap" id="cap2"><div class="eb">02 — CAPTURE IN CHAT</div><h2><span class="ln"><span>Just type.</span></span><span class="ln"><span>It gets <em>sorted.</em></span></span></h2><p>No commands needed. AI turns plain messages into tasks, events and notes, with the deadline and channel filled in.</p></div>
-      <div class="cap" id="cap3"><div class="eb">03 — AGENTS</div><h2><span class="ln"><span>Ask every agent</span></span><span class="ln"><span><em>at once.</em></span></span></h2><p>Hermes, Claude, Codex and local models. Attach slides or a screenshot, @mention them, and answers stream in live.</p></div>
+      <div class="cap" id="cap1"><div class="eb">01 — TODAY</div><h2><span class="ln"><span>Your whole week,</span></span><span class="ln"><span><em>at a glance.</em></span></span></h2><p>Weekly progress, the next 7 days of events and deadlines, and your calendar on one screen. Finish a task and the 3D Argos dog jumps with you.</p></div>
+      <div class="cap" id="cap2"><div class="eb">02 — CHAT</div><h2><span class="ln"><span>No agent needed.</span></span><span class="ln"><span>Just <em>start chatting.</em></span></span></h2><p>Pick an Anthropic, Gemini, OpenAI-compatible or Ollama model and a reasoning level in the model picker. Built-in tools record tasks and events as you talk.</p></div>
+      <div class="cap" id="cap3"><div class="eb">03 — AGENTS</div><h2><span class="ln"><span>Need an agent?</span></span><span class="ln"><span>Just <em>@mention</em> it.</span></span></h2><p>Claude, Codex, Hermes or agents you build. Attach slides and each one answers, drawing diagrams right in the thread with render_artifact.</p></div>
       <div class="cap" id="cap4"><div class="eb">04 — KANBAN &amp; JOBS</div><h2><span class="ln"><span>Move the cards.</span></span><span class="ln"><span><em>Hand off</em> the work.</span></span></h2><p>One /job line and an agent works in your project folder while the card moves itself from In progress to Review.</p></div>
-      <div class="cap" id="cap5"><div class="eb">05 — SCHOOL LMS</div><h2><span class="ln"><span>Long notices,</span></span><span class="ln"><span>read <em>short.</em></span></span></h2><p>Assignments, announcements and materials come in from LearningX. Assignments become tasks with their deadline, and AI sums up long notices in a few lines.</p></div>
+      <div class="cap" id="cap5"><div class="eb">05 — LMS &amp; SEARCH</div><h2><span class="ln"><span>Notices, read short.</span></span><span class="ln"><span>Files, <em>found fast.</em></span></span></h2><p>Assignments, notices and materials come in from LearningX and get summarized. Uploads, linked local folders and LMS files are indexed with FTS5, so search_knowledge finds them instantly.</p></div>
       <div class="cap" id="cap6"><div class="eb">06 — MORNING DIGEST</div><h2><span class="ln"><span>Every morning,</span></span><span class="ln"><span>a <em>head start.</em></span></span></h2><p>The agent you pick gathers today's events, deadlines and new LMS posts into a briefing in #today, and sends the same text to your messenger. Reply in the thread to keep talking.</p></div>
-      <div class="cap" id="cap7"><div class="eb">07 — CONNECTED</div><h2><span class="ln"><span>Calendar, Obsidian,</span></span><span class="ln"><span>and your <em>phone.</em></span></span></h2><p>Reads and writes your calendar and vault. Capture anywhere with ⌘⇧Space, open it on your phone through Tailscale, and deletions always wait for your approval.</p></div>
+      <div class="cap" id="cap7"><div class="eb">07 — CONNECTED</div><h2><span class="ln"><span>Calendar, Obsidian,</span></span><span class="ln"><span>and <em>agent tools.</em></span></span></h2><p>Overlay channels on Apple Calendar events and sync your vault. Connect MCP and skills separately to each agent tool, and open it on your phone through Tailscale.</p></div>
 
       <div class="persp">
         <div class="wwrap" id="wr-today"><div class="win tok" id="w-today"></div></div>
@@ -502,17 +549,18 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <div class="word" id="o-word"></div>
       <div id="o-sub">A personal dashboard that watches over your semester</div>
       <div id="o-chips">
-        <span><i style="background:#6e5fa8">H</i>Hermes</span>
         <span><i style="background:#a45d46">C</i>Claude</span>
+        <span><i style="background:#4285f4">G</i>Gemini</span>
         <span><i style="background:#3f6fa6">Cx</i>Codex</span>
-        <span><i style="background:#477a4a">L</i>Local models</span>
-        <span><i style="background:#181825">M</i>MCP server</span>
+        <span><i style="background:#6e5fa8">H</i>Hermes</span>
+        <span><i style="background:#477a4a">O</i>Ollama</span>
+        <span><i style="background:#181825">M</i>MCP · skills</span>
       </div>
 
       <!-- chrome -->
       <div class="corner" id="brand"><span class="mini-logo"><svg><use href="#dog"/></svg></span>Argos</div>
-      <div class="corner" id="tagTR">Personal study &amp; project dashboard</div>
-      <div class="corner" id="lbl"><span>01 / 07 · Today</span><span>02 / 07 · Capture in chat</span><span>03 / 07 · Agents</span><span>04 / 07 · Kanban &amp; jobs</span><span>05 / 07 · School LMS</span><span>06 / 07 · Morning digest</span><span>07 / 07 · Connected</span></div>
+      <div class="corner" id="tagTR">Personal study &amp; project dashboard · v0.2</div>
+      <div class="corner" id="lbl"><span>01 / 07 · Today</span><span>02 / 07 · Chat</span><span>03 / 07 · Agents</span><span>04 / 07 · Kanban &amp; jobs</span><span>05 / 07 · LMS &amp; search</span><span>06 / 07 · Morning digest</span><span>07 / 07 · Connected</span></div>
       <div class="corner" id="tagBR">On your Mac · tailnet only</div>
     </div>
   </div>
@@ -520,7 +568,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
     <button id="bPlay" type="button" aria-label="Pause">❚❚</button>
     <button id="bRestart" type="button">Restart</button>
     <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Playback position">
-    <span class="time" id="time">00:00 / 01:21</span>
+    <span class="time" id="time">00:00 / 01:23</span>
     <span class="hint">Space: play/pause · ← →: jump 2s · drag the bar to any scene</span>
   </div>
 </div>
@@ -559,7 +607,7 @@ function shell(rail, sideActive, main, status = true) {
       <div class="sec">Projects</div>
       ${ch('p1', 'capstone')}${ch('p2', 'argos')}
       <div class="sec">Agents</div>
-      ${it('', '<span class="av h">H</span>Hermes', '<span class="n">Default</span>')}
+      ${it('', '<span class="av h">H</span>Hermes', '<span class="n">Digest</span>')}
       ${it('', '<span class="av c">C</span>Claude')}
       ${it('', '<span class="av x">Cx</span>Codex', '<span class="n">● Job running</span>')}
       ${it('', '<span class="av t">Tu</span>Subject tutor', '<span class="n">Custom</span>')}
@@ -567,17 +615,36 @@ function shell(rail, sideActive, main, status = true) {
     </div>
     <div class="main">${main}</div>
   </div>
-  <div class="status"><span><span class="av h" style="display:inline-grid;width:14px;height:14px;font-size:7px;vertical-align:-3px">H</span> Hermes default</span><span class="sep"></span>
+  <div class="status"><span><span class="av gm" style="display:inline-grid;width:14px;height:14px;font-size:7px;vertical-align:-3px">G</span> Default chat · Gemini 3 Pro</span><span class="sep"></span>
     <span style="color:var(--w-claude)">Claude 5h<span class="bar"><b style="width:42%"></b></span>42% · 7d 15%</span><span class="sep"></span>
     <span style="color:var(--w-codex)">Codex 5h<span class="bar"><b style="width:71%"></b></span>71% · 7d 19%</span>
     <span style="margin-left:auto;color:var(--w-danger)">Pending approval 1</span><span class="sep"></span><span>✓ Synced 1 min ago</span></div>
   ${cursorHTML}`;
 }
-const chanHead = (tab, name = 'computer-arch', note = 'Vault lectures/comp-arch/ · Default agent Hermes') => `<div class="chead"><h1><span class="h">#</span>${name}</h1>
+const chanHead = (tab, name = 'computer-arch', note = 'Workspace: 12 files · 1 local folder · auto-edit') => `<div class="chead"><h1><span class="h">#</span>${name}</h1>
   <div class="avs"><span class="av h">H</span><span class="av c">C</span><span class="av x">Cx</span><span class="av t">Tu</span></div></div>
-  <div class="subrow"><div class="tabs">${['Feed', 'Kanban', 'Calendar', 'Notes', 'Resources'].map(t => `<span class="tab${t === tab ? ' on' : ''}">${t}</span>`).join('')}</div>
+  <div class="subrow"><div class="tabs">${['Chat', 'Feed', 'Kanban', 'Calendar', 'Notes', 'Resources'].map(t => `<span class="tab${t === tab ? ' on' : ''}">${t}</span>`).join('')}</div>
   <span>${note}</span></div>`;
 
+const mascot = (bubble) => `<div class="mascot" id="t-dog"><svg viewBox="0 0 124 98" aria-hidden="true">
+  <ellipse id="t-dogsh" cx="66" cy="92" rx="38" ry="5" fill="rgba(24,24,37,.14)"/>
+  <g id="t-dogb">
+    <g id="t-dogt"><path d="M93 62 q18 -4 17 -26" fill="none" stroke="#181825" stroke-width="8" stroke-linecap="round"/><path d="M93 62 q18 -4 17 -26" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></g>
+    <rect x="80" y="70" width="12" height="19" rx="6" fill="#f3f1ee" stroke="#181825" stroke-width="2.6"/>
+    <rect x="48" y="70" width="12" height="19" rx="6" fill="#f3f1ee" stroke="#181825" stroke-width="2.6"/>
+    <ellipse cx="72" cy="62" rx="29" ry="19" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <rect x="62" y="72" width="12" height="18" rx="6" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <rect x="88" y="72" width="12" height="18" rx="6" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <g id="t-dogh">
+      <ellipse cx="44" cy="38" rx="24" ry="21" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+      <path d="M56 18 q15 -1 16 20 q-9 3 -15 -7z" fill="#181825"/>
+      <ellipse cx="33" cy="47" rx="10" ry="7.5" fill="#fff" stroke="#181825" stroke-width="2.2"/>
+      <ellipse cx="27" cy="44.5" rx="3.6" ry="2.7" fill="#181825"/>
+      <circle cx="37" cy="34" r="3" fill="#181825"/><circle cx="51" cy="34" r="3" fill="#181825"/>
+      <circle cx="38" cy="33" r=".9" fill="#fff"/><circle cx="52" cy="33" r=".9" fill="#fff"/>
+      <circle cx="55" cy="44" r="3.4" fill="#f69251" opacity=".45"/>
+    </g>
+  </g></svg><span class="mbub" id="t-bub">${bubble}</span></div>`;
 /* ---------- today ---------- */
 const ico = {
   done: '<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg>',
@@ -600,7 +667,7 @@ for (let i = 0; i < 35; i++) {
 }
 $('#w-today').innerHTML = shell('H', 'today', `
   <div class="thead"><div><div class="mono">MON · 2026.10.12 · 09:12</div><h1>Today</h1>
-    <p>2 events and 2 deadlines today. 2 notes in the inbox are waiting to be sorted.</p></div></div>
+    <p>2 events and 2 deadlines today. 2 notes in the inbox are waiting to be sorted.</p></div>${mascot('+1 done · yay!')}</div>
   <div class="kpis">
     ${kpi(ico.done, 'Done this week', 4, 5, '+2 vs last week', '+3 vs last week', false, 't-kd')}
     ${kpi(ico.prog, 'In progress', 2, undefined, '1 awaiting review')}
@@ -639,29 +706,35 @@ $('#w-today').innerHTML = shell('H', 'today', `
   <div class="toast" id="t-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>Completed · <b>Process scheduling HW</b></div>`);
 
 /* ---------- feed ---------- */
-$('#w-feed').innerHTML = shell('S', 'arch', chanHead('Feed') + `
+$('#w-feed').innerHTML = shell('S', 'arch', chanHead('Chat') + `
   <div class="feed">
     <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">Agent</span><small>08:40 · via Telegram</small></div>
       <div class="txt">Computer Arch lecture at 10:30 today. Linking last week’s notes. <span class="src">↳ lectures/comp-arch/week4.md</span></div></div></div>
     <div class="msg"><span class="av t">Tu</span><div><div class="who">Subject tutor <span class="badge">Custom</span><small>08:41</small></div>
       <div class="txt">This week covers pipeline hazards. Try sketching the forwarding paths before the quiz.</div></div></div>
     <div class="rev" id="f-m2"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:14</small></div><div class="txt">submit HW2 by midnight friday</div></div></div></div>
-    <div class="rev" id="f-sg"><div class="card sgc">
-      <div class="sgh">✦ Argos sorted this<small style="position:relative;min-width:80px;height:14px"><span id="f-c1" style="position:absolute;right:0;top:0">Sorting…</span><span id="f-c2" style="position:absolute;right:0;top:0;opacity:0;visibility:hidden;white-space:nowrap">Confidence 0.92</span></small></div>
-      <div class="rev" id="f-sgload" style="height:auto"><div class="loading"></div><div class="loading" style="width:45%"></div></div>
-      <div class="rev" id="f-sgfull"><dl class="rows"><dt>Type</dt><dd>Task</dd><dt>Title</dt><dd><b>Submit HW2</b></dd><dt>Due</dt><dd>Fri, Oct 16 · 23:59 <span class="dd">D-4</span></dd><dt>Channel</dt><dd># computer-arch <span style="color:var(--w-meta);font-size:11px">· from channel context</span></dd></dl>
-        <div class="btns"><span class="btn cta" id="f-add">Add</span><span class="btn">Edit</span><span class="btn ghost">Keep in Inbox</span></div></div>
-      <div class="rev" id="f-sgdone"><div class="sgdone"><span class="okdot">✓</span>Added as a task <small>· Kanban › Task · original kept in Inbox</small></div></div>
-    </div></div>
+    <div class="rev" id="f-sg"><div class="msg"><span class="av gm">G</span><div style="min-width:0">
+      <div class="who">Gemini 3 Pro <span class="badge">Default chat</span><small style="position:relative;min-width:90px;height:14px"><span id="f-c1" style="position:absolute;left:0;top:0;white-space:nowrap">Running tools…</span><span id="f-c2" style="position:absolute;left:0;top:0;opacity:0;visibility:hidden;white-space:nowrap">Done · 3s</span></small></div>
+      <div class="rev" id="f-sgload" style="height:auto"><span class="tstep"><span class="loading"></span>Running 2 tools <small>add_task</small></span></div>
+      <div class="rev" id="f-sgfull"><span class="tstep" id="f-add"><span class="tk">✓</span>Ran 2 tools<small>list_channels · add_task</small><span style="color:var(--w-meta)">▸</span></span>
+        <div class="rev" id="f-sgdone"><div class="tdet"><div><code>list_channels</code><span>6 subjects · 2 projects</span></div><div><code>add_task</code><span>Submit HW2 · 10/16 23:59 · #computer-arch</span></div></div></div>
+        <div class="txt">Added it to computer-arch. It’s due Friday at 23:59.</div>
+        <div class="card tcard"><span class="chk"></span><div><b>Submit HW2</b><small># computer-arch · Fri, Oct 16 · 23:59</small></div><span class="dd">D-4</span></div></div>
+    </div></div></div>
     <div class="rev" id="f-m3"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:16</small></div><div class="txt"><span class="men c">@Claude</span> <span class="men x">@Codex</span> each of you explain forwarding vs. stalls using these slides</div><span class="fcard"><span class="fic">PDF</span>week5_pipeline.pdf<small>2.4 MB</small></span></div></div></div>
     <div class="rev" id="f-ans"><div class="ans">
-      <div class="card acard"><div class="ah"><span class="av c">C</span>Claude<small><span id="f-cs1">Thinking…</span><span id="f-cs2" style="opacity:0;visibility:hidden">Done · 14s</span></small></div><div class="atext" id="f-ct"></div></div>
+      <div class="card acard"><div class="ah"><span class="av c">C</span>Claude<small><span id="f-cs1">Thinking…</span><span id="f-cs2" style="opacity:0;visibility:hidden">Done · 14s</span></small></div><div class="atext" id="f-ct"></div><div class="rev" id="f-art"><div class="art"><div class="arth"><code>render_artifact</code> · SVG</div>
+        <svg viewBox="0 0 300 58" aria-hidden="true">
+          ${['IF', 'ID', 'EX', 'MEM', 'WB'].map((s, i) => `<rect x="${4 + i * 59}" y="20" width="46" height="24" rx="6" style="fill:var(--w-card);stroke:var(--w-line)"/><text x="${27 + i * 59}" y="36" text-anchor="middle" style="fill:var(--w-text);font:600 10px var(--mono)">${s}</text>`).join('')}
+          <path d="M${27 + 3 * 59} 18 C ${27 + 3 * 59} 2, ${27 + 2 * 59} 2, ${27 + 2 * 59} 16" fill="none" style="stroke:var(--w-cta)" stroke-width="2"/>
+          <path d="M${27 + 2 * 59 - 4} 12 l4 6 l4 -6" fill="none" style="stroke:var(--w-cta)" stroke-width="2"/>
+          <text x="${27 + 3 * 59 + 8}" y="9" text-anchor="start" style="fill:var(--w-cta);font:600 8.5px var(--mono)">forward</text>
+        </svg></div></div></div>
       <div class="card acard"><div class="ah"><span class="av x">Cx</span>Codex<small><span id="f-xs1">Typing…</span><span id="f-xs2" style="opacity:0;visibility:hidden">Done · 9s</span></small></div><div class="atext" id="f-xt"></div></div>
     </div></div>
   </div>
-  <div class="comp"><div class="drop" id="f-drop">Drop to attach</div><div class="atrow" id="f-at"><span class="atch"><span class="fic">PDF</span><span>week5_pipeline.pdf<small>2.4 MB</small></span></span></div><div class="cin" id="f-cin"><span class="ph">Write in #computer-arch — just type, Argos sorts it out</span><span id="f-typed"></span><span class="caret"></span></div>
-    <div class="crow"><span class="clip-btn"><svg viewBox="0 0 16 16"><path d="M13 7.5l-5 5a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3L6.6 11a1.1 1.1 0 01-1.5-1.5L10 4.6"/></svg></span><span class="slash">/task</span><span class="slash">/event</span><span class="slash">/note</span><span class="slash">/ask</span><span class="slash">/job</span><span class="slash">/debate</span>
-      <span class="to">To · <b>Hermes</b> (channel default)</span><span class="send" id="f-send"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4" stroke="#000" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+  <div class="comp"><div class="mmenu" id="f-menu"><div class="msearch">⌕ <b id="f-mq"></b><span class="ph2" id="f-mph">Find a model</span></div><div class="mg">Anthropic</div><div class="mo hl" id="f-mcl"><i class="pv" style="background:#a45d46">A</i>Claude Sonnet 5.5<small>default ✓</small></div><div class="mg">Google</div><div class="mo" id="f-mgem"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Pro</div><div class="mo"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Flash</div><div class="mg">OpenAI-compatible · Ollama</div><div class="mo"><i class="pv" style="background:#181825">O</i>gpt-oss-120b</div><div class="mo"><i class="pv" style="background:#477a4a">L</i>qwen3:14b<small>this Mac</small></div><div class="meff"><em>Reasoning</em><span>Low</span><span class="on">Medium</span><span>High</span></div></div><div class="drop" id="f-drop">Drop to attach</div><div class="atrow" id="f-at"><span class="atch"><span class="fic">PDF</span><span>week5_pipeline.pdf<small>2.4 MB</small></span></span></div><div class="cin" id="f-cin"><span class="ph">Chat in #computer-arch — type @ to call an agent</span><span id="f-typed"></span><span class="caret"></span></div>
+    <div class="crow"><span class="clip-btn"><svg viewBox="0 0 16 16"><path d="M13 7.5l-5 5a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3L6.6 11a1.1 1.1 0 01-1.5-1.5L10 4.6"/></svg></span><span class="slash">/job</span><span class="pmode">✎ Auto-edit</span><span class="mpick" id="f-pick"><span class="sw2"><span id="f-pm1"><i class="pv" style="background:#a45d46">A</i>Claude Sonnet 5.5<small>· Medium</small></span><span id="f-pm2" style="opacity:0;visibility:hidden"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Pro<small>· Medium</small></span></span><u>▾</u></span><span class="ring"></span><span class="send" id="f-send"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4" stroke="#000" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
   <div class="flyfile" id="f-fly"><span class="fic">PDF</span>week5_pipeline.pdf</div>
   <div class="toast" id="f-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>Task added · <b>Submit HW2</b></div>`);
 
@@ -695,7 +768,7 @@ $('#w-kan').innerHTML = shell('S', 'arch', chanHead('Kanban') + `
 
 /* ---------- LMS ---------- */
 const sysWho = (t) => `<div class="who">Argos <span class="badge">System</span><small>${t} · LearningX</small></div>`;
-$('#w-lms').innerHTML = shell('S', 'ai', chanHead('Feed', 'intro-to-ai', 'LMS course linked · Default agent Hermes') + `
+$('#w-lms').innerHTML = shell('S', 'ai', chanHead('Feed', 'intro-to-ai', 'LMS course linked · 24 files indexed') + `
   <div class="feed">
     <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">Agent</span><small>08:40</small></div>
       <div class="txt">AI lecture today at 13:00. Linking last week's quiz corrections.</div></div></div>
@@ -715,6 +788,10 @@ $('#w-lms').innerHTML = shell('S', 'ai', chanHead('Feed', 'intro-to-ai', 'LMS co
     <div class="rev" id="l-m3"><div class="msg"><span class="av sys">A</span><div>${sysWho('09:13')}
       <div class="card ncard"><div class="nh"><span class="kind">Material</span><b>Lecture 06 - Constraint Satisfaction.pdf</b></div>
         <div class="nfoot"><span>Saved to the Resources tab</span><span class="r">Open in LMS ↗</span></div></div></div></div></div>
+    <div class="rev" id="l-m4"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:20</small></div><div class="txt">is CSP on the midterm? check the materials</div></div></div></div>
+    <div class="rev" id="l-m5"><div class="msg"><span class="av gm">G</span><div><div class="who">Gemini 3 Pro <span class="badge">Default chat</span><small>09:20</small></div>
+      <span class="tstep"><span class="tk">✓</span><code>search_knowledge</code><small>"constraint satisfaction" · 3 hits</small></span>
+      <div class="txt" style="max-width:600px">Yes, it’s in scope (ch. 3–7). Lecture 06 has an arc consistency example on page 12. <span class="src">↳ LMS · Lecture 06 p.12</span> <span class="src">↳ uploads/midterm-notes.md</span></div></div></div></div>
   </div>`);
 
 /* ---------- morning digest ---------- */
@@ -746,7 +823,7 @@ const days = [['Mon', '10/12', [cev('10:30', 'Comp Arch lecture'), cev('13:00', 
   ['Sun', '10/18', [cev('23:59 due', 'Lab 3 · ALU design', 'due')]]];
 $('#grp').innerHTML = `
   <div class="gcard" style="left:0;top:0;width:650px;height:440px">
-    <div class="gh"><b>Calendar</b>Oct, week 3<span class="src">↳ Synced with iCloud · School</span></div>
+    <div class="gh"><b>Calendar</b>Oct, week 3<span class="src">↳ Apple Calendar · channel overlay</span></div>
     <div class="week">${days.map(([d, n, evs, c]) => `<div class="day ${c || ''}"><h4>${d}<span>${n}</span></h4>${evs.join('')}</div>`).join('')}</div>
   </div>
   <div class="gcard" style="left:670px;top:0;width:440px;height:440px">
@@ -759,7 +836,7 @@ $('#grp').innerHTML = `
       <div>- forwarding: EX/MEM → ALU input</div><div>- load-use costs a 1-cycle stall</div></div>
     <div class="syncl"><span id="g-s1"><span class="dd">Task</span>Checkbox synced both ways · 1 min ago</span><span id="g-s2" style="opacity:0;visibility:hidden"><span class="okdot">✓</span>Marked done on the Argos board · just now</span></div>
   </div>
-  <div class="phone" style="left:1135px;top:10px;width:250px;height:520px"><div class="pscr">
+  <div class="phone" style="left:1135px;top:0;width:250px;height:436px"><div class="pscr">
     <div class="pnotch"></div><div class="ptop"><span>≡</span><b>${dog}Argos</b><span>⌕</span></div><h5>MON · 10.12</h5><h6>Today</h6>
     <div class="pk"><div><small>Done this week</small><b>5</b></div><div><small>Due soon</small><b class="red">1</b></div></div>
     <div class="pit"><span class="t">10:30 · computer-arch</span>Computer Arch lecture</div>
@@ -780,6 +857,7 @@ $('#grp').innerHTML = `
       <div class="btns"><span class="btn danger" id="g-approve">Approve &amp; Delete</span><span class="btn">Reject</span></div></div>
     <div class="rev" id="g-adone"><div class="aprh" style="color:var(--w-text)">✓ Approved</div><div style="font-size:13px;color:var(--w-text2)">Deleted the OS make-up class (Dashboard). It stays in the activity log.</div></div>
   </div>
+  <div class="gcard" style="left:1135px;top:456px;width:250px;height:254px;padding:16px 16px 10px"><div class="gh" style="margin-bottom:6px"><b>Agent tools</b><span style="margin-left:auto">MCP · skill apart</span></div><div class="trow2"><b>Antigravity</b><span class="tg2 on">MCP</span><span class="tg2" id="g-agsk">skill</span></div><div class="trow2"><b>Antigravity IDE</b><span class="tg2 on">MCP</span><span class="tg2 on">skill</span></div><div class="trow2"><b>Claude Code</b><span class="tg2 on">MCP</span><span class="tg2 on">skill</span></div><div class="trow2"><b>Codex</b><span class="tg2 on">MCP</span><span class="tg2 on">skill</span></div><div class="trow2"><b>Hermes</b><span class="tg2 on">MCP</span><span class="tg2 on">skill</span></div></div>
   ${cursorHTML}`;
 
 /* ---------- stage scaling ---------- */
@@ -837,7 +915,7 @@ function build() {
   };
 
   const streakL = $('#streakL'), streakD = $('#streakD');
-  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-2000px 0px', duration: 81, ease: 'none' }, 0);
+  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-2000px 0px', duration: 83, ease: 'none' }, 0);
   gsap.set('#wipe', { xPercent: -50, yPercent: -50, scale: 0 });
   gsap.set('#pill', { xPercent: -50, yPercent: -50 });
   gsap.set('.wwrap', { transformOrigin: '0% 50%' });
@@ -884,6 +962,16 @@ function build() {
   });
   tl.fromTo($$('.nowv', wT), { scaleY: 0 }, { scaleY: 1, duration: .6, stagger: .06, ease: 'power2.out' }, 10.2);
   tl.fromTo($$('.i7', wT), { autoAlpha: 0, x: -10 }, { autoAlpha: 1, x: 0, duration: .45, stagger: .06 }, 10.35);
+  tl.fromTo('#t-dogh', { rotation: 0, svgOrigin: '44 52' }, { rotation: 6, duration: 1.1, ease: 'sine.inOut', yoyo: true, repeat: 1, immediateRender: false }, 9.6);
+  tl.fromTo('#t-dogt', { rotation: 0, svgOrigin: '93 62' }, { rotation: 14, duration: .22, ease: 'sine.inOut', yoyo: true, repeat: 23, immediateRender: false }, 9.8);
+  tl.to('#t-dogh', { rotation: -12, duration: .7, ease: 'power2.inOut' }, 11.4);
+  tl.to('#t-dogb', { y: -18, duration: .22, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.42);
+  tl.to('#t-dogsh', { scale: .7, svgOrigin: '66 92', duration: .22, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.42);
+  tl.to('#t-dogb', { y: -10, duration: .18, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.9);
+  tl.fromTo('#t-bub', { autoAlpha: 0, y: 8, scale: .8 }, { autoAlpha: 1, y: 0, scale: 1, duration: .3, ease: 'back.out(2)', immediateRender: false }, 12.5);
+  tl.to('#t-bub', { autoAlpha: 0, y: -6, duration: .3 }, 14.2);
+  tl.to('#t-dogh', { rotation: 10, duration: .7, ease: 'power2.inOut' }, 13.2);
+  tl.to('#t-dogh', { rotation: 0, duration: .6, ease: 'power2.inOut' }, 15.0);
   tl.to('#t-colon', { opacity: .15, duration: .5, repeat: 11, yoyo: true, ease: 'steps(1)' }, 9.6);
   tl.to(wrT, { scale: .96, x: -20, y: 20, duration: 1.4, ease: 'power2.inOut' }, 11.0);
   tl.fromTo(cT, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 11.1);
@@ -911,16 +999,27 @@ function build() {
   tl.fromTo(wrF, { autoAlpha: 0, x: 900, rotationY: 50, rotationX: 8, scale: .82 },
     { autoAlpha: 1, x: 0, rotationY: -10, rotationX: 6, scale: .9, duration: 1.5, ease: 'expo.out' }, 15.4);
   capIn('#cap2', 15.9);
-  tl.to(wrF, { scale: 1.06, rotationY: -4, rotationX: 3, x: 0, y: -60, duration: 1.5, ease: 'power2.inOut' }, 17.0);
-  tl.set(cF, { x: 900, y: 420 }, 17.19);
-  tl.fromTo(cF, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 17.2);
-  move(cF, wF, $('#f-cin'), 17.3, .85, -120, 2);
-  click(cF, null, 18.2);
-  tl.to(ph, { autoAlpha: 0, duration: .15 }, 18.3);
-  tl.to(caret, { opacity: 1, duration: .05 }, 18.3);
+  tl.to(wrF, { scale: .97, rotationY: -4, rotationX: 3, x: -30, y: -40, duration: 1.5, ease: 'power2.inOut' }, 16.9);
+  tl.set(cF, { x: 900, y: 420 }, 16.69);
+  tl.fromTo(cF, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 16.7);
+  move(cF, wF, $('#f-pick'), 16.8, .7, -30, 2);
+  click(cF, $('#f-pick'), 17.55);
+  tl.fromTo('#f-menu', { autoAlpha: 0, y: 10, scale: .97 }, { autoAlpha: 1, y: 0, scale: 1, duration: .25, immediateRender: false }, 17.6);
+  tl.to('#f-mph', { autoAlpha: 0, duration: .1 }, 17.85);
+  text($('#f-mq'), 'gem', 0, 3, 17.9, .3);
+  tl.set('#f-mcl', { className: 'mo' }, 18.2);
+  tl.set('#f-mgem', { className: 'mo hl' }, 18.2);
+  move(cF, wF, $('#f-mgem'), 18.0, .45, -40, 2);
+  click(cF, $('#f-mgem'), 18.55);
+  tl.to('#f-menu', { autoAlpha: 0, y: 8, duration: .2 }, 18.7);
+  swap('#f-pm1', '#f-pm2', 18.7);
+  move(cF, wF, $('#f-cin'), 18.8, .5, -120, 2);
+  click(cF, null, 19.35);
+  tl.to(ph, { autoAlpha: 0, duration: .15 }, 19.4);
+  tl.to(caret, { opacity: 1, duration: .05 }, 19.4);
   const s1 = 'submit HW2 by midnight friday';
-  text(typed, s1, 0, s1.length, 18.45, 1.25);
-  move(cF, wF, $('#f-send'), 19.85, .6);
+  text(typed, s1, 0, s1.length, 19.5, .85);
+  move(cF, wF, $('#f-send'), 19.95, .5);
   click(cF, $('#f-send'), 20.5);
   text(typed, s1, s1.length, 0, 20.6, .05);
   tl.to(caret, { opacity: 0, duration: .05 }, 20.6);
@@ -928,15 +1027,14 @@ function build() {
   reveal('#f-m2', 20.65, .45);
   tl.fromTo('#f-m2 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 20.7);
   reveal('#f-sg', 21.15, .5);
-  tl.fromTo('#f-sg .card', { y: 18, autoAlpha: 0, scale: .98 }, { y: 0, autoAlpha: 1, scale: 1, duration: .5, immediateRender: false }, 21.2);
+  tl.fromTo('#f-sg .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .5, immediateRender: false }, 21.2);
   tl.fromTo('#f-sgload .loading', { backgroundPosition: '0 0' }, { backgroundPosition: '200px 0', duration: .9, ease: 'none', immediateRender: false }, 21.2);
   collapse('#f-sgload', 22.05, .3);
   reveal('#f-sgfull', 22.1, .5);
   swap('#f-c1', '#f-c2', 22.1);
   move(cF, wF, $('#f-add'), 22.5, .85);
   click(cF, $('#f-add'), 23.45);
-  collapse('#f-sgfull', 23.6, .4);
-  reveal('#f-sgdone', 23.65, .4);
+  reveal('#f-sgdone', 23.6, .4);
   tl.fromTo('#f-toast', { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .4, immediateRender: false }, 23.75);
   tl.to('#f-toast', { autoAlpha: 0, y: 10, duration: .3 }, 25.1);
   tl.to(wrF, { scale: .92, rotationY: -8, rotationX: 5, x: 0, y: 0, duration: 1.3, ease: 'power2.inOut' }, 24.5);
@@ -992,6 +1090,8 @@ function build() {
   const xText = 'As in the table on slide 14: the hazard unit checks ID/EX.rs == EX/MEM.rd and flips the mux select. That is forwarding. If an instruction uses a load result right away, it blocks PC and IF/ID writes. That is the stall.';
   text($('#f-ct'), cText, 0, cText.length, 33.2, 3.1);
   text($('#f-xt'), xText, 0, xText.length, 33.6, 3.0);
+  reveal('#f-art', 34.8, .5);
+  tl.fromTo('#f-art .art', { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: .45, immediateRender: false }, 34.9);
   swap('#f-cs1', '#f-cs2', 36.35);
   swap('#f-xs1', '#f-xs2', 36.65);
   capOut('#cap3', 36.8);
@@ -1084,11 +1184,16 @@ function build() {
   reveal('#l-m3', 55.7, .45);
   tl.fromTo('#l-m3 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 55.75);
   tl.to(cL, { x: '+=180', y: '+=120', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 56.2);
-  capOut('#cap5', 57.3);
-  tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 57.3);
+  reveal('#l-m4', 56.4, .45);
+  tl.fromTo('#l-m4 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 56.45);
+  reveal('#l-m5', 57.0, .5);
+  tl.fromTo('#l-m5 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 57.05);
+  tl.fromTo('#l-m5 .txt', { autoAlpha: 0 }, { autoAlpha: 1, duration: .4, immediateRender: false }, 57.5);
+  capOut('#cap5', 58.8);
+  tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 58.8);
 
-  /* ===== s5c morning digest 58.2 – 67.2 (main time) ===== */
-  scene(0);
+  /* ===== s5c morning digest 59.7 – 68.7 (main time) ===== */
+  scene(1.5);
   const wrD = $('#wr-dig'), wD = $('#w-dig');
   label(5, 58.5);
   tl.fromTo(wrD, { autoAlpha: 0, y: 560, rotationX: 50, rotationZ: 10, rotationY: 0, scale: .8 },
@@ -1108,9 +1213,9 @@ function build() {
   capOut('#cap6', 66.2);
   tl.to(wrD, { autoAlpha: 0, scale: .6, rotationX: 40, rotationZ: 12, y: 280, duration: .9, ease: 'power3.in' }, 66.3);
 
-  scene(21.0);
+  scene(22.5);
 
-  /* ===== s6 connect 46.1 – 52.6 (+21) ===== */
+  /* ===== s6 connect 46.1 – 52.6 (+22.5) ===== */
   const grp = $('#grp'), cG = grp.querySelector('.cursor'), gcards = $$('#grp > .gcard, #grp > .phone');
   label(6, 46.2);
   tl.fromTo(grp, { autoAlpha: 0, rotationX: 58, rotationZ: -22, scale: .62, y: 320 },
@@ -1127,6 +1232,8 @@ function build() {
   reveal('#g-newev', 49.4, .45);
   tl.fromTo('#g-newev .cev', { scale: .8, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: .45, ease: 'back.out(2)', immediateRender: false }, 49.45);
   reveal('#g-pnew', 49.6, .45);
+  tl.set('#g-agsk', { className: 'tg2 on' }, 49.2);
+  tl.fromTo('#g-agsk', { scale: .7 }, { scale: 1, duration: .35, ease: 'back.out(2.5)', immediateRender: false }, 49.2);
   tl.to('#g-box b', { opacity: 1, duration: .2 }, 50.0);
   tl.fromTo('#g-strike', { '--sw': '0%' }, { '--sw': '100%', duration: .4, ease: 'power2.inOut', immediateRender: false }, 50.05);
   tl.to('#g-strike', { opacity: .55, duration: .3 }, 50.1);
@@ -1145,7 +1252,7 @@ function build() {
   tl.to(streakL, { autoAlpha: 0, duration: .8 }, 52.3);
   label(-1, 52.3);
 
-  /* ===== s7 outro 52.8 – 60 (+21) ===== */
+  /* ===== s7 outro 52.8 – 60 (+22.5) ===== */
   tl.fromTo('#pill', { autoAlpha: 0, scale: .15 }, { autoAlpha: 1, scale: 1, duration: .6, ease: 'back.out(1.6)', immediateRender: false }, 52.8);
   tl.to('#pill', { width: 196, height: 196, borderRadius: 46, duration: .75, ease: 'expo.inOut' }, 53.6);
   tl.to('#pill svg', { opacity: 1, duration: .5 }, 54.1);
