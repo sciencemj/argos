@@ -1161,3 +1161,46 @@ def test_channel_overlay_survives_resync_and_a_new_href(
     sync(app)
     assert [(e["title"], e["channel_id"]) for e in events(app)] == [("수업", course)]
     assert not [h for m, h, _ in server.requests if m != "GET" and "학교" in h]  # unwritten
+
+
+def test_stop_waits_for_a_running_sync(app: TestClient, server: FakeCalDAV) -> None:
+    """Shutdown regression (CI hang): `stop()` used to cancel a nudged run without
+    waiting, so the engine closed under the run's session ("no active connection") and
+    TestClient's exit hung. Now the run is cancelled and finished before stop returns."""
+    connect(app)
+    sync: caldav_sync.CalendarSync = app.app.state.calendar_sync  # type: ignore[attr-defined]
+    started = threading.Event()
+    seen: list[str] = []
+    calls = 0
+
+    class Blocking(FakeCalDAV):
+        async def calendars(self) -> list[RemoteCalendar]:
+            started.set()
+            try:
+                await asyncio.Event().wait()  # in flight, inside the run's DB session
+            except asyncio.CancelledError:
+                seen.append("cancelled")
+                raise
+            return []
+
+    def factory(config: Settings, username: str, password: str) -> FakeCalDAV:
+        nonlocal calls
+        calls += 1
+        return Blocking()
+
+    sync.server_factory = factory
+    sync.debounce = 0
+    portal: Any = app.portal  # BlockingPortal.call is only partly typed
+    assert portal is not None
+    portal.call(sync.nudge)
+    assert started.wait(5), "the nudged run did not start"
+
+    portal.call(sync.stop)
+    assert seen == ["cancelled"]  # finished before stop() returned, not left dangling
+    assert not sync._tasks  # pyright: ignore[reportPrivateUsage]
+    assert not sync.status.running
+    # Nothing new starts once stopped: no nudge timer, and run() returns at once.
+    portal.call(sync.nudge)
+    assert sync._soon is None  # pyright: ignore[reportPrivateUsage]
+    portal.call(sync.run)
+    assert calls == 1

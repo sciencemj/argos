@@ -320,7 +320,7 @@ class UsageMonitor:
 
     def refresh_soon(self, delay: float = 10.0) -> None:
         """After an agent run: the limits moved; read both once things settle."""
-        if self._codex_soon is not None:
+        if self._stop.is_set() or self._codex_soon is not None:
             return
 
         def fire() -> None:
@@ -331,6 +331,9 @@ class UsageMonitor:
         self._codex_soon = asyncio.get_running_loop().call_later(delay, fire)
 
     def _spawn(self, coro: Any) -> None:
+        if self._stop.is_set():
+            coro.close()  # shutting down: never started, so nothing to await
+            return
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -349,11 +352,15 @@ class UsageMonitor:
                 pass
 
     async def stop(self) -> None:
+        """Stops polling and cancels pending reads, waiting for them to end."""
         self._stop.set()
         if self._codex_soon is not None:
             self._codex_soon.cancel()
-        for task in list(self._tasks):
+            self._codex_soon = None
+        tasks = list(self._tasks)
+        for task in tasks:
             task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def usage_json(usage: ProviderUsage) -> dict[str, Any]:

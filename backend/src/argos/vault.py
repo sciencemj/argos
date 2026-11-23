@@ -702,12 +702,15 @@ class VaultSync:
         self._watch: asyncio.Task[None] | None = None
         self._watching: Path | None = None
         self._stop_watch = asyncio.Event()
+        self._stopped = False
 
     def vault(self) -> Path | None:
         path = self._settings().vault_path
         return path.expanduser() if path is not None else None
 
     async def run(self) -> VaultStatus:
+        if self._stopped:  # shutting down: the database is about to close
+            return self.status
         async with self._lock:
             vault = self.vault()
             if vault is None:
@@ -742,7 +745,7 @@ class VaultSync:
 
     def nudge(self) -> None:
         """Run soon (debounced): a file changed, or a linked task changed in Argos."""
-        if self._soon is not None:
+        if self._stopped or self._soon is not None:
             return
 
         def fire() -> None:
@@ -756,7 +759,7 @@ class VaultSync:
     def watch(self) -> None:
         """(Re)starts watching the configured vault for Markdown changes."""
         vault = self.vault()
-        if vault == self._watching and self._watch is not None:
+        if self._stopped or (vault == self._watching and self._watch is not None):
             return
         self._cancel_watch()
         self._watching = vault
@@ -785,11 +788,19 @@ class VaultSync:
             self._watch = None
 
     async def stop(self) -> None:
+        """Stops watching and cancels a pending or running sync, waiting for it to end
+        (a run still in its session when the engine closes fails and can hang)."""
+        self._stopped = True
         if self._soon is not None:
             self._soon.cancel()
+            self._soon = None
+        tasks: list[asyncio.Task[Any]] = list(self._tasks)
+        if self._watch is not None:
+            tasks.append(self._watch)
         self._cancel_watch()
-        for task in list(self._tasks):
+        for task in tasks:
             task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def note_body(vault: Path, note: NoteRef) -> str:

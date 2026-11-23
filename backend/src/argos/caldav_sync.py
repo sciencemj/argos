@@ -1020,6 +1020,8 @@ class CalendarSync:
         return (username, password) if password else None
 
     async def run(self) -> SyncStatus:
+        if self._stopped:  # shutting down: the database is about to close
+            return self.status
         async with self._lock:
             self.status.running = True
             try:
@@ -1077,17 +1079,20 @@ class CalendarSync:
         self._loop = asyncio.create_task(loop())
 
     async def stop(self) -> None:
+        """Cancels the poll loop and any nudged run, and waits for them to end: a run
+        still inside its session when the engine is disposed fails ("no active
+        connection") and can hang shutdown."""
         self._stopped = True
         if self._soon is not None:
             self._soon.cancel()
-        for task in list(self._tasks):
-            task.cancel()
+            self._soon = None
+        tasks: list[asyncio.Task[Any]] = list(self._tasks)
         if self._loop is not None:
-            self._loop.cancel()
-            try:
-                await self._loop
-            except asyncio.CancelledError:
-                pass
+            tasks.append(self._loop)
+            self._loop = None
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 ICLOUD_USERNAME = "icloud_username"

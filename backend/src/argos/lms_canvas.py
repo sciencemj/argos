@@ -644,6 +644,7 @@ class LmsSync:
         self._loop: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[SyncStatus]] = set()
         self._suggesting: set[asyncio.Task[None]] = set()
+        self._stopped = False
 
     def canvas(self, origin: str, token: str) -> Canvas:
         return Canvas(origin, token, self.transport())
@@ -656,11 +657,15 @@ class LmsSync:
         return (saved["url"], token) if token else None
 
     def start_soon(self) -> None:
+        if self._stopped:
+            return
         task = asyncio.create_task(self.run())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
     async def run(self) -> SyncStatus:
+        if self._stopped:  # shutting down: the database is about to close
+            return self.status
         async with self._run_lock:
             self.status.running = True
             try:
@@ -767,6 +772,8 @@ class LmsSync:
             log.exception("LMS course match failed")
 
     def suggest_soon(self) -> None:
+        if self._stopped:
+            return
         task = asyncio.create_task(self.suggest())
         self._suggesting.add(task)
         task.add_done_callback(self._suggesting.discard)
@@ -780,11 +787,13 @@ class LmsSync:
         self._loop = asyncio.create_task(loop())
 
     async def stop(self) -> None:
-        for task in [*self._tasks, *self._suggesting]:
-            task.cancel()
+        """Cancels the poll loop, queued syncs and course-match suggestions, and waits
+        for them to end before the database closes."""
+        self._stopped = True
+        tasks: list[asyncio.Task[Any]] = [*self._tasks, *self._suggesting]
         if self._loop is not None:
-            self._loop.cancel()
-            try:
-                await self._loop
-            except asyncio.CancelledError:
-                pass
+            tasks.append(self._loop)
+            self._loop = None
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
