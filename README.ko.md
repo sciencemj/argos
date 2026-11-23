@@ -25,14 +25,14 @@
 
 </div>
 
-https://github.com/user-attachments/assets/9ffcdd54-7323-4b26-95ae-ca2dd97151c5
+[![Argos 소개 영상 (83초) 보기](site/assets/poster-ko.jpg)](https://sciencemj.github.io/argos/#video)
 
-최신 소개 영상(83초): [한국어](docs/promo/argos-intro.ko.mp4) · [English](docs/promo/argos-intro.en.mp4)
+최신 소개 영상(83초): [소개 페이지에서 보기](https://sciencemj.github.io/argos/#video) · MP4 ([한국어](https://sciencemj.github.io/argos/media/argos-intro.ko.mp4) · [English](https://sciencemj.github.io/argos/media/argos-intro.en.mp4)) · 인터랙티브 HTML ([한국어](https://sciencemj.github.io/argos/media/argos-intro.ko.html) · [English](https://sciencemj.github.io/argos/media/argos-intro.en.html))
 
-과목과 프로젝트마다 채널이 하나씩 생기고, 채널에는 채팅처럼 쓰는 피드와 칸반, 캘린더가 붙어 있어요.
-친구에게 메시지 보내듯 "금요일에 퀴즈", "회의 전에 API 초안 공유하기"라고 적으면 Argos가 할 일·일정·노트로
-나눠 정리해요. Hermes, Claude Code, Codex, 로컬 모델 같은 AI 에이전트도 같은 공간에서 일해요. 스레드에서
-답하고, 카드에 걸린 코딩 잡을 실행하고, Argos의 MCP 서버로 일정을 읽고 써요.
+과목과 프로젝트마다 채팅·칸반·캘린더가 붙은 전용 채널이 생겨요. 채널을 열면 바로 새 채팅이 시작되고,
+친구에게 보내듯 "금요일에 퀴즈", "회의 전에 API 초안 공유하기"라고 적으면 할 일·일정·노트로 정리돼요.
+연결한 AI 모델이나 Hermes, Claude Code, Codex 같은 에이전트도 같은 공간에서 스레드와 세션 트리로
+이어서 일하고, Argos의 내장 툴·MCP 서버로 일정을 읽고 써요.
 
 모든 것이 내 Mac 안에서 돌아요. 앱은 `127.0.0.1`에만 열리고, 데이터는
 `~/Library/Application Support/Argos`에, 비밀 값은 macOS 키체인에 둬요.
@@ -40,7 +40,8 @@ https://github.com/user-attachments/assets/9ffcdd54-7323-4b26-95ae-ca2dd97151c5
 ## 기능
 
 **정리하기**
-- **과목·프로젝트별 채널**을 영역으로 묶고, **오늘**과 **내 공간**이 기본으로 있어요. 내 공간의 인박스에서 입력을 정리하고, 개인 할 일·일정·노트를 이어서 봐요.
+- **과목·프로젝트별 채널**을 영역으로 묶고, **오늘**과 **내 공간**이 기본으로 있어요. 채널과 내 공간 모두
+  채팅 탭·세션 트리를 기본으로 쓰고, 내 공간의 인박스에서 입력을 정리해 개인 할 일·일정·노트로 이어서 봐요.
 - **피드 중심 입력**: 그냥 쓴 메시지는 인박스로 가고 로컬 모델(Ollama)이나 Hermes가 할 일·일정·노트로
   분류해요. 슬래시 명령(`/task`, `/event`, `/note`, `/ask`, `/job`, `/debate`)을 쓰면 바로 만들어져요.
 - **칸반**(끌어서 이동, 진행 중 개수 경고), 반복 일정까지 보이는 **캘린더**(주·월), 이번 주 진행·앞으로 7일의
@@ -52,23 +53,27 @@ https://github.com/user-attachments/assets/9ffcdd54-7323-4b26-95ae-ca2dd97151c5
   공지는 AI가 두세 줄로 요약한 카드로 피드에 보여요([연결 안내](docs/lms-extension.md)).
 - **알림과 주간 리뷰**: 마감, 오래 둔 인박스를 앱 안, macOS 알림, Hermes를 통한 메신저로 알려 주고,
   매주 과목별 숫자를 담은 리뷰를 **리뷰** 화면에 쌓아요.
-- **모델 연결**: Anthropic, OpenAI 호환 서버, Ollama를 여러 개 등록해요. 작은 분류 모델은 이 Mac에 두고, 큰
-  모델은 내 네트워크의 GPU 서버나 클라우드에서 돌릴 수 있어요. 커스텀 에이전트와 인박스 분류가 각자 연결을 고르고,
-  설정에 이 기기 / 내 네트워크 / 클라우드로 표시돼요.
-- **채널 워크스페이스와 지식 검색**: 채널 워크스페이스(`uploads/`)에 파일을 올리고, 업로드한 파일과 LMS 수업
-  자료를 전문 색인(`search_knowledge`)으로 함께 찾아요.
+- **모델 연결**: Anthropic, Google(Gemini API), OpenAI 호환 서버, Ollama를 여러 개 등록해요. 작은 분류
+  모델은 이 Mac에 두고, 큰 모델은 내 네트워크의 GPU 서버나 클라우드에서 돌릴 수 있어요. 커스텀 에이전트와
+  인박스 분류가 각자 연결을 고르고, 설정에 이 기기 / 내 네트워크 / 클라우드로 표시돼요.
+- **채널 워크스페이스와 지식 검색**: 채널마다 파일(`uploads/`)을 올리거나 내 컴퓨터 폴더를 직접 연결해요.
+  올린 파일과 LMS 강의 자료는 SQLite FTS5로 색인되어 에이전트가 `search_knowledge`로 검색하고,
+  워크스페이스 패널에서 색인 상태를 확인할 수 있어요.
 - **비공개 대화**: 로컬 모델 DM의 유령 버튼으로, Argos가 어디에도 저장하지 않는 대화로 바꿔요. DB·파일·로그에
   남지 않고, 글과 파일은 이 기기나 내 네트워크의 모델로만 가요. 앱이 켜져 있는 동안만 유지돼요.
 - **아침 요약**: 매일 정한 시각에 고른 에이전트가 오늘 일정·마감·새 LMS 소식을 모아 #today 스레드에 브리핑을
   쓰고 같은 글을 메신저로 보내요. 답글을 달면 그대로 이어서 대화해요.
 
 **에이전트와 일하기**
-- **네이티브 하네스 + 외부 에이전트**: 자체 에이전트 하네스(Anthropic, OpenAI, OpenAI 호환, Ollama)와
-  **Hermes, Claude Code, Codex**를 채팅 우선 채널·사이드바 세션 트리·1:1 대화에서 함께 써요. `@이름`으로
-  아무나 부를 수 있어요.
-- **내장 툴·권한 모드·플러그인**: 네이티브 에이전트는 Argos 도메인 툴과 워크스페이스 파일·셸 툴을 쓰며,
-  채널별 `auto_edit` / `ask` 권한 모드와 인라인 승인 카드로 동작을 제어해요. `data_dir/plugins/*.py`에
-  커스텀 Python 툴 플러그인을 둘 수도 있어요.
+- **에이전트 없이 바로 채팅 · 모델 선택 · 메모리**: 모델만 연결해 두면 기본 채팅이 바로 동작해요. 입력창에서
+  모델과 추론 수준을 고르고, 기본 채팅은 메인 메모리(`remember`/`recall`)를, `@이름`으로 부르는 에이전트는
+  각자 메모리를 가져요.
+- **네이티브 하네스 + 외부 에이전트**: 자체 에이전트 하네스(Anthropic, Google Gemini, OpenAI 호환, Ollama)와
+  **Hermes, Claude Code, Codex**를 채팅 우선 채널·사이드바 세션 트리·1:1 대화에서 함께 써요.
+- **내장 툴 31종 · 권한 모드 · 플러그인**: Argos 도메인 툴 20종(`remember`/`recall` 포함), 파일·셸 툴 8종,
+  인라인 시각화(`render_artifact`), 에이전트 위임(`ask_agent`), 웹 문서 읽기(`web_fetch`)를 써요. 연속 툴 호출은
+  한 줄로 접히고, 채널별 `auto_edit` / `ask` 권한 모드와 인라인 승인 카드로 동작을 제어하며,
+  `data_dir/plugins/*.py`로 커스텀 Python 툴 플러그인을 추가할 수 있어요.
 - **첨부 파일**: 이미지·PDF·텍스트를 붙여넣기, 끌어 놓기, 📎 버튼으로 붙이면 에이전트가 내용을 읽어요.
 - **코딩 잡**: 카드에서 `/job`을 쓰면 허용한 폴더 안에서 Claude Code나 Codex가 작업하고, 결과를 카드에
   남겨요(할 일 → 진행 중 → 검토).
@@ -117,20 +122,22 @@ Argos만으로도 쓸 수 있고, 도구를 더하면 기능이 늘어나요.
 |---|---|---|
 | [Claude Code](https://docs.claude.com/en/docs/claude-code) | 대화·코딩 잡 에이전트, 사용량 표시 | `npm install -g @anthropic-ai/claude-code` |
 | [Codex](https://github.com/openai/codex) | 대화·코딩 잡 에이전트, 사용량 표시 | `npm install -g @openai/codex` |
-| Hermes Agent | 기본 대화 에이전트, 메신저 알림 | [docs/hermes-setup.md](docs/hermes-setup.md) 참고 |
+| Hermes Agent | 대화 에이전트, 메신저 알림 | [docs/hermes-setup.md](docs/hermes-setup.md) 참고 |
 | [Ollama](https://ollama.com/download) | 인박스 자동 분류, 비슷한 메모 묶기 | 설치 후 설정에서 모델 선택 |
 | [Obsidian](https://obsidian.md) | 채널별 노트와 체크박스 할 일 | 설정에서 볼트 선택 |
 
 ### 에이전트 연결
 
-**설정 → 에이전트 → 에이전트 도구 → "Argos에 연결"**을 누르면 각 도구의 CLI로 Argos MCP 서버를 등록하고,
-언제 어떤 도구를 쓰는지 알려 주는 `argos` 스킬을 설치해요. 같은 카드에서 둘 다 다시 지울 수 있어요.
+**설정 → 에이전트 · 모델 → 도구 연결 → "Argos에 연결"**을 누르면 CLI 도구(Claude Code, Codex, Hermes,
+`agy`)는 각 도구의 CLI로, Antigravity IDE는 `~/.gemini/antigravity/mcp_config.json`을 직접 편집해 Argos MCP
+서버를 등록하고, 언제 어떤 도구를 쓰는지 알려 주는 `argos` 스킬을 설치해요. 같은 카드에서 둘 다 다시 지울 수 있어요.
 
 | 도구 | MCP | 스킬 |
 |---|---|---|
 | Claude Code | `claude mcp add --transport http --scope user argos …` | `~/.claude/skills/argos` |
 | Codex | `codex mcp add argos --url …` | `~/.codex/skills/argos` |
 | Hermes | `hermes config set mcp_servers.argos.url …` | `skills.external_dirs`에 추가 |
+| Antigravity (`agy` / IDE) | `agy mcp add --type http argos …` (IDE: `~/.gemini/antigravity/mcp_config.json`) | `~/.gemini/config/skills/argos` (IDE: `~/.gemini/antigravity/…`) |
 
 업데이트 뒤에는 Argos가 설치한 스킬과 MCP 주소만 새로 고치고, 사용자가 지운 것은 다시 넣지 않아요.
 
@@ -166,19 +173,19 @@ make release VERSION=x.y.z   # 버전 올리고 태그·푸시 → CI가 빌드�
 
 ```
 backend/    FastAPI + async SQLAlchemy(SQLite WAL), Alembic 마이그레이션
-  argos/services.py       유일한 쓰기 경로: 활동 기록 + WebSocket 이벤트
-  argos/chat.py           메시지 라우팅: 스레드, @멘션, 슬래시 명령, 인박스
-  argos/runner.py         에이전트 실행과 코딩 잡, WebSocket 스트리밍
-  argos/harness.py        네이티브 에이전트 하네스: 툴 루프, 권한, OpenAI/Anthropic
-  argos/argos_tools.py    네이티브 하네스와 MCP가 함께 쓰는 Argos 도메인 툴
-  argos/file_tools.py     경로 검사와 백업을 포함한 워크스페이스 파일·셸 툴
-  argos/plugins.py        커스텀 툴 플러그인 로더 (data_dir/plugins/*.py)
-  argos/knowledge.py      채널 워크스페이스 업로드 및 FTS5 trigram 지식 색인
-  argos/approval_waits.py 인라인 툴 승인 대기 레지스트리
-  argos/agents.py         어댑터: 네이티브 하네스, Hermes, Claude Agent SDK, Codex, Ollama
-  argos/mcp_server.py     외부 에이전트가 쓰는 MCP 서버
-  argos/sft_export.py     SFT 트래젝토리 추출기 (CLI 및 로컬 /api/v1/sft/export)
-  argos/desktop.py        데스크톱 앱 안에서 도는 서버의 진입점
+  src/argos/services.py       유일한 쓰기 경로: 활동 기록 + WebSocket 이벤트
+  src/argos/chat.py           메시지 라우팅: 스레드, @멘션, 슬래시 명령, 인박스
+  src/argos/runner.py         에이전트 실행과 코딩 잡, WebSocket 스트리밍
+  src/argos/harness.py        네이티브 에이전트 하네스: 툴 루프, 권한, OpenAI/Anthropic
+  src/argos/argos_tools.py    네이티브 하네스와 MCP가 함께 쓰는 Argos 도메인 툴
+  src/argos/file_tools.py     경로 검사와 백업을 포함한 워크스페이스 파일·셸 툴
+  src/argos/plugins.py        커스텀 툴 플러그인 로더 (data_dir/plugins/*.py)
+  src/argos/knowledge.py      채널 워크스페이스 업로드 및 FTS5 trigram 지식 색인
+  src/argos/approval_waits.py 인라인 툴 승인 대기 레지스트리
+  src/argos/agents.py         어댑터: 네이티브 하네스, Hermes, Claude Agent SDK, Codex, Ollama
+  src/argos/mcp_server.py     외부 에이전트가 쓰는 MCP 서버
+  src/argos/sft_export.py     SFT 트래젝토리 추출기 (CLI 및 로컬 /api/v1/sft/export)
+  src/argos/desktop.py        데스크톱 앱 안에서 도는 서버의 진입점
 frontend/   React 19 + Vite + Tailwind v4 + TanStack Query
 desktop/    Tauri 2 셸: 서버 실행, 메뉴 막대, 빠른 입력, 업데이트
 integrations/  에이전트 도구에 설치하는 argos 스킬

@@ -23,15 +23,15 @@
 
 </div>
 
-https://github.com/user-attachments/assets/e36ed35e-504d-4c7c-a37b-80cc5cc38346
+[![Watch the Argos intro video (83 s)](site/assets/poster-en.jpg)](https://sciencemj.github.io/argos/#video)
 
-Latest intro video (83 s): [English](docs/promo/argos-intro.en.mp4) · [한국어](docs/promo/argos-intro.ko.mp4)
+Latest intro video (83 s): [Watch on the intro site](https://sciencemj.github.io/argos/#video) · MP4 ([English](https://sciencemj.github.io/argos/media/argos-intro.en.mp4) · [한국어](https://sciencemj.github.io/argos/media/argos-intro.ko.mp4)) · Interactive HTML ([English](https://sciencemj.github.io/argos/media/argos-intro.en.html) · [한국어](https://sciencemj.github.io/argos/media/argos-intro.ko.html))
 
-Argos gives every course and project its own channel with a chat-style feed, a kanban board and a
-calendar. Write things down the way you would text a friend — *"quiz on Friday"*, *"send the API draft
-before the meeting"* — and Argos files them as tasks, events or notes. Your AI agents (Hermes, Claude
-Code, Codex or a local model) work in the same place: they answer in threads, run coding jobs on your
-cards and read or write your schedule through Argos' MCP server.
+Every course and project gets its own channel with chat, a kanban board and a calendar. Channels open
+straight into a fresh chat: write things down the way you would text a friend — *"quiz on Friday"*,
+*"send the API draft before the meeting"* — and Argos files them as tasks, events or notes. Your
+connected AI models or agents (Hermes, Claude Code, Codex) work in the same place across threads
+and sidebar session trees, and read or write your schedule through Argos' built-in tools and MCP server.
 
 Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data in
 `~/Library/Application Support/Argos`, and stores secrets in the macOS Keychain.
@@ -42,7 +42,8 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
 ## Features
 
 **Organize**
-- **Channels per course and project**, grouped into areas, plus **Today** and **My Space**. My Space combines the capture inbox with personal tasks, events and notes.
+- **Channels per course and project**, grouped into areas, plus **Today** and **My Space**. Both channels and
+  My Space default to chat with a sidebar session tree, while My Space's inbox sorts captures into personal tasks, events and notes.
 - **Feed first**: plain messages land in the inbox and are sorted by a local model (Ollama) or Hermes into
   tasks, events and notes; slash commands (`/task`, `/event`, `/note`, `/ask`, `/job`, `/debate`) skip the guessing.
 - **Kanban** with WIP warnings and drag and drop, **calendar** (week and month) with recurring events,
@@ -56,11 +57,12 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   ([setup](docs/lms-extension.md)).
 - **Notices and weekly review**: deadline and stale-inbox notices in the app, as macOS notifications
   or through Hermes to your messenger; weekly reviews are available on the Review page.
-- **Model providers**: register Anthropic, OpenAI-compatible servers, or Ollama — keep a
+- **Model providers**: register Anthropic, Google (Gemini API), OpenAI-compatible servers, or Ollama — keep a
   small classifier on this Mac and run bigger models on a GPU box in your network or a cloud service. Custom
   agents and the inbox classifier each pick one; settings label each as this device, your network or cloud.
-- **Channel workspace & knowledge search**: upload files into a channel's workspace (`uploads/`) and search
-  both uploaded files and synced LMS course materials through full-text indexing (`search_knowledge`).
+- **Channel workspace & knowledge search**: upload files into a channel's workspace (`uploads/`) or link a
+  folder on your Mac; uploaded files and synced LMS course materials are indexed with SQLite FTS5 so agents
+  can search them via `search_knowledge`, with indexing status shown in the workspace panel.
 - **Private chat**: a ghost button in a local model's DM switches to a conversation Argos never stores —
   no database rows, no files, no logs — for work you must not leak. Text and files go only to models on this
   device or your network, and the chat lasts while the app is open.
@@ -68,12 +70,17 @@ Everything runs on your Mac. The app binds to `127.0.0.1` only, keeps its data i
   LMS posts into a briefing in a #today thread and sends the same text to your messenger. Reply to keep talking.
 
 **Work with agents**
-- **Native harness + external agents**: run Argos' built-in agent harness (Anthropic, OpenAI, OpenAI-compatible,
-  Ollama) alongside **Hermes, Claude Code, and Codex** in chat-first channels, sidebar session trees, and 1:1 chats;
-  `@mention` any of them.
-- **Tools, permissions & plugins**: native agents use Argos domain tools and workspace file/shell tools with
-  per-channel `auto_edit` / `ask` permission modes and inline approval cards, plus custom Python tool plugins from
-  `data_dir/plugins/*.py`.
+- **Chat without agents · model picker · memory**: connect a model and chat right away with no agent setup;
+  pick the model and reasoning level in the composer. Default chat keeps a main memory (`remember`/`recall`),
+  while `@mentioned` agents keep their own.
+- **Native harness + external agents**: run Argos' built-in agent harness (Anthropic, Google Gemini,
+  OpenAI-compatible, Ollama) alongside **Hermes, Claude Code, and Codex** in chat-first channels, sidebar
+  session trees, and 1:1 chats.
+- **31 built-in tools · permissions · plugins**: native agents use 20 Argos domain tools (including
+  `remember`/`recall`), 8 workspace file/shell tools, inline visuals (`render_artifact`), agent delegation
+  (`ask_agent`), and web fetching (`web_fetch`). Consecutive tool calls fold into one line, per-channel
+  `auto_edit` / `ask` modes and inline approval cards gate actions, and `data_dir/plugins/*.py` loads custom
+  Python tool plugins.
 - **Attachments**: paste, drop or pick images, PDFs and text files, and agents read them.
 - **Coding jobs**: `/job` on a card runs Claude Code or Codex in an allowed folder and reports back on
   the card (todo → in progress → review).
@@ -122,20 +129,23 @@ Argos works on its own; each tool adds more.
 |---|---|---|
 | [Claude Code](https://docs.claude.com/en/docs/claude-code) | Chat and coding-job agent, plan usage | `npm install -g @anthropic-ai/claude-code` |
 | [Codex](https://github.com/openai/codex) | Chat and coding-job agent, plan usage | `npm install -g @openai/codex` |
-| Hermes Agent | Default chat agent, messenger notices | see [docs/hermes-setup.md](docs/hermes-setup.md) |
+| Hermes Agent | Chat agent, messenger notices | see [docs/hermes-setup.md](docs/hermes-setup.md) |
 | [Ollama](https://ollama.com/download) | Local inbox sorting and note grouping | install, then pick a model in settings |
 | [Obsidian](https://obsidian.md) | Notes and checkbox tasks per channel | pick your vault in settings |
 
 ### Connecting your agents
 
-**Settings → Agents → Agent tools → "Connect to Argos"** registers Argos' MCP server with each tool's own CLI
-and installs an `argos` skill that explains when to use it. The same card removes either one again.
+**Settings → Agents · Models → Tool integrations → "Connect to Argos"** registers Argos' MCP server — via
+each tool's CLI for Claude Code, Codex, Hermes and `agy`, or by updating `~/.gemini/antigravity/mcp_config.json`
+directly for Antigravity IDE — and installs an `argos` skill that explains when to use it. The same card
+removes either one again.
 
 | Tool | MCP | Skill |
 |---|---|---|
 | Claude Code | `claude mcp add --transport http --scope user argos …` | `~/.claude/skills/argos` |
 | Codex | `codex mcp add argos --url …` | `~/.codex/skills/argos` |
 | Hermes | `hermes config set mcp_servers.argos.url …` | added to `skills.external_dirs` |
+| Antigravity (`agy` / IDE) | `agy mcp add --type http argos …` (IDE: `~/.gemini/antigravity/mcp_config.json`) | `~/.gemini/config/skills/argos` (IDE: `~/.gemini/antigravity/…`) |
 
 After an update, Argos refreshes the skills and MCP addresses it installed — and never re-adds what you removed.
 
@@ -171,19 +181,19 @@ uses 8100/5273 and both can run at once. Development data lives in `backend/data
 
 ```
 backend/    FastAPI + async SQLAlchemy (SQLite WAL), Alembic migrations
-  argos/services.py       the single write path: activity log + WebSocket events
-  argos/chat.py           routing a message: thread, @mention, slash command or inbox
-  argos/runner.py         agent runs and coding jobs, streamed over WebSocket
-  argos/harness.py        native agent harness: tool loop, permissions, OpenAI/Anthropic
-  argos/argos_tools.py    Argos domain tools shared by native harness and MCP
-  argos/file_tools.py     workspace file and shell tools with path guards and backups
-  argos/plugins.py        custom tool plugin loader (data_dir/plugins/*.py)
-  argos/knowledge.py      channel workspace uploads and FTS5 trigram knowledge index
-  argos/approval_waits.py inline tool-approval wait registry
-  argos/agents.py         adapters: native harness, Hermes, Claude Agent SDK, Codex, Ollama
-  argos/mcp_server.py     the MCP server external agents use
-  argos/sft_export.py     SFT trajectory exporter (CLI & local /api/v1/sft/export)
-  argos/desktop.py        entry point of the server inside the desktop app
+  src/argos/services.py       the single write path: activity log + WebSocket events
+  src/argos/chat.py           routing a message: thread, @mention, slash command or inbox
+  src/argos/runner.py         agent runs and coding jobs, streamed over WebSocket
+  src/argos/harness.py        native agent harness: tool loop, permissions, OpenAI/Anthropic
+  src/argos/argos_tools.py    Argos domain tools shared by native harness and MCP
+  src/argos/file_tools.py     workspace file and shell tools with path guards and backups
+  src/argos/plugins.py        custom tool plugin loader (data_dir/plugins/*.py)
+  src/argos/knowledge.py      channel workspace uploads and FTS5 trigram knowledge index
+  src/argos/approval_waits.py inline tool-approval wait registry
+  src/argos/agents.py         adapters: native harness, Hermes, Claude Agent SDK, Codex, Ollama
+  src/argos/mcp_server.py     the MCP server external agents use
+  src/argos/sft_export.py     SFT trajectory exporter (CLI & local /api/v1/sft/export)
+  src/argos/desktop.py        entry point of the server inside the desktop app
 frontend/   React 19 + Vite + Tailwind v4 + TanStack Query
 desktop/    Tauri 2 shell: sidecar server, menu bar, quick capture, updater
 integrations/  the argos skills installed into agent tools
