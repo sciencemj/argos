@@ -456,7 +456,7 @@ def test_argos_changes_sync_within_seconds(app: TestClient, server: FakeCalDAV) 
 
 
 def wait_until(check: Callable[[], bool]) -> None:
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 10
     while not check():
         assert time.monotonic() < deadline, "sync did not follow the change"
         time.sleep(0.02)

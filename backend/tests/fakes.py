@@ -119,3 +119,8 @@ class FakeKeychain:
 
             raise PasswordDeleteError("locked")
         self.saved.pop(key, None)
+
+
+# A run that will not change any more. Polling helpers wait for one of these: "queued"
+# (a job waiting for a slot) is not "running" either, but it is not finished.
+TERMINAL = frozenset({"done", "error", "cancelled"})

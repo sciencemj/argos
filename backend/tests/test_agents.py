@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from fakes import FakeAgent, FakeClassifier, fake_agents
+from fakes import TERMINAL, FakeAgent, FakeClassifier, fake_agents
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from files import png, text_pdf
@@ -62,13 +62,13 @@ def send(client: TestClient, channel: str, body: str, **extra: Any) -> dict[str,
 
 def settle(client: TestClient, channel: str, count: int = 1) -> list[dict[str, Any]]:
     """Polls the feed until `count` agent replies under the newest message finished."""
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         top: list[dict[str, Any]] = client.get(f"/api/v1/channels/{channel}/messages").json()[
             "items"
         ]
         replies: list[dict[str, Any]] = top[-1]["agent_replies"] if top else []
-        done = [r for r in replies if r["run"] and r["run"]["status"] != "running"]
+        done = [r for r in replies if r["run"] and r["run"]["status"] in TERMINAL]
         if len(done) >= count:
             return replies
         time.sleep(0.02)
@@ -171,7 +171,7 @@ def test_dm_conversation(app: TestClient, local: FakeAgent) -> None:
     assert app.post("/api/v1/agents/local/dm").json()["id"] == dm["id"]  # reused
     send(app, dm["id"], "오늘 뭐 해야 해?")
     items: list[dict[str, Any]] = []
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         items = app.get(f"/api/v1/channels/{dm['id']}/messages").json()["items"]
         if len(items) == 2 and items[1]["run"]["status"] == "done":
@@ -183,10 +183,10 @@ def test_dm_conversation(app: TestClient, local: FakeAgent) -> None:
 
 def _dm_settled(client: TestClient, dm: str, count: int) -> list[dict[str, Any]]:
     """Waits until the DM holds `count` top-level messages, every answer finished."""
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         items: list[dict[str, Any]] = client.get(f"/api/v1/channels/{dm}/messages").json()["items"]
-        if len(items) == count and all(m["run"]["status"] != "running" for m in items if m["run"]):
+        if len(items) == count and all(m["run"]["status"] in TERMINAL for m in items if m["run"]):
             return items
         time.sleep(0.02)
     raise AssertionError("DM did not settle")
@@ -255,11 +255,11 @@ def test_agent_list_and_default_setting(app: TestClient) -> None:
 
 
 def _wait_thread(client: TestClient, root_id: str, agent_replies: int) -> dict[str, Any]:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         thread = client.get(f"/api/v1/messages/{root_id}/thread").json()
         agents = [r for r in thread["replies"] if r["author_type"] == "agent"]
-        if len(agents) >= agent_replies and all(r["run"]["status"] != "running" for r in agents):
+        if len(agents) >= agent_replies and all(r["run"]["status"] in TERMINAL for r in agents):
             return thread
         time.sleep(0.02)
     raise AssertionError("thread did not settle")

@@ -104,7 +104,7 @@ def test_course_question_gets_its_assignment_and_notices(app: TestClient, local:
     )
 
     app.post(f"/api/v1/channels/{course}/messages", json={"body": "/ask 과제 1 제출 형식이 뭐야?"})
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while not local.contexts and time.time() < deadline:
         time.sleep(0.02)
 

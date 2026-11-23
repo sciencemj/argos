@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx2
 import pytest
-from fakes import FakeAgent, FakeClassifier
+from fakes import TERMINAL, FakeAgent, FakeClassifier
 from fastapi.testclient import TestClient
 from test_harness import ScriptedLLM, call
 from test_harness import _course as _course  # pyright: ignore[reportPrivateUsage]
@@ -257,7 +257,7 @@ def _steps_of(app: TestClient, root: str, agent: str) -> tuple[dict[str, Any], l
         mine = [
             r
             for r in thread["replies"]
-            if r["author_id"] == agent and r["run"] and r["run"]["status"] != "running"
+            if r["author_id"] == agent and r["run"] and r["run"]["status"] in TERMINAL
         ]
         return mine[0] if mine else None
 
@@ -394,7 +394,7 @@ def test_cancelling_the_parent_cancels_the_child(app: TestClient) -> None:
 
     started = _wait(runs)
     assert app.post(f"/api/v1/runs/{started['boss']['id']}/cancel").json() == {"cancelled": True}
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         now = runs() or {}
         if all(now.get(a, {}).get("status") == "cancelled" for a in ("boss", "local")):

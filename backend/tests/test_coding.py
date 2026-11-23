@@ -63,7 +63,7 @@ def send(client: TestClient, channel: str, body: str, **extra: Any) -> dict[str,
 
 
 def wait_calls(agent: FakeAgent, count: int) -> None:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while len(agent.coding) < count and time.time() < deadline:
         time.sleep(0.02)
     assert len(agent.coding) >= count

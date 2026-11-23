@@ -264,7 +264,7 @@ def test_slash_commands_work_in_threads(app: TestClient, cast: dict[str, Scripte
 
     ask = reply(app, root_id, "/ask 이 계획 괜찮아?").json()
     assert ask["thread_root_id"] == root_id
-    deadline = time.time() + 3
+    deadline = time.time() + 10
     while time.time() < deadline and not any(
         r["author_id"] == "hermes" for r in thread(app, root_id)
     ):

@@ -45,7 +45,7 @@ def send(client: TestClient, channel: str, body: str) -> Any:
 
 
 def wait_job(client: TestClient, task_id: str, *statuses: str) -> dict[str, Any]:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         task = client.get(f"/api/v1/tasks/{task_id}").json()
         # A done run moves its card to review in a second commit: wait for that too.

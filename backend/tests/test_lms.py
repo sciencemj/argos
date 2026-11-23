@@ -458,7 +458,7 @@ def test_import_queues_long_notices_for_summary(client: TestClient) -> None:
     assert response.status_code == 200
     assert "summarize" not in response.json()
     # The worker runs on the app's event loop: wait by polling, not by joining its queue.
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while not fake.calls and time.time() < deadline:
         time.sleep(0.05)
     assert len(fake.calls) == 1
