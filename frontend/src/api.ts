@@ -1558,27 +1558,35 @@ export const useSetup = () =>
     staleTime: Number.POSITIVE_INFINITY, // tool checks run CLIs; refetch on purpose
   });
 
+/** After connecting or removing: the tool's new state into the setup list. A tool that
+ * shares its config with another (the Antigravity IDE and CLI) changed that one too, so
+ * then the whole list is read again (it never goes stale on its own). */
+export function afterToolWrite(qc: QueryClient, tool: SetupTool) {
+  const old = qc.getQueryData<Setup>(["setup"]);
+  const paired =
+    !!tool.shared_with || !!old?.tools.some((t) => t.shared_with === tool.name);
+  qc.setQueryData<Setup>(["setup"], (prev) =>
+    prev
+      ? {
+          ...prev,
+          tools: prev.tools.map((t) => (t.name === tool.name ? tool : t)),
+        }
+      : prev,
+  );
+  if (paired) void qc.invalidateQueries({ queryKey: ["setup"] });
+  void qc.invalidateQueries({ queryKey: ["agents"] });
+}
+
 function useToolWrite<A extends { name: string }>(
   fn: (args: A) => Promise<SetupTool>,
 ) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
-    onSuccess: (tool) => {
-      qc.setQueryData<Setup>(["setup"], (old) =>
-        old
-          ? {
-              ...old,
-              tools: old.tools.map((t) => (t.name === tool.name ? tool : t)),
-            }
-          : old,
-      );
-      void qc.invalidateQueries({ queryKey: ["agents"] });
-    },
+    onSuccess: (tool) => afterToolWrite(qc, tool),
   });
 }
 
-/** Registers Argos' MCP server and installs the argos skill in the tool. */
 /** Registers Argos' MCP server and/or installs the argos skill (both by default). */
 export const useConnectTool = () =>
   useToolWrite(

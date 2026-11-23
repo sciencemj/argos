@@ -101,12 +101,21 @@ export function ToolRow({ tool }: { tool: SetupTool }) {
   const connect = useConnectTool();
   const disconnect = useDisconnectTool();
   const [removing, setRemoving] = useState<Parts | null>(null);
+  // Which button sent the running connect: the header one may ask for one part too.
+  const [via, setVia] = useState<"all" | "mcp" | "skill" | null>(null);
   const busy = connect.isPending || disconnect.isPending;
-  // Which button is working: the parts the running request adds or removes.
-  const adding = connect.isPending ? connect.variables : undefined;
+  const adding = connect.isPending ? via : null;
   const dropping = disconnect.isPending ? disconnect.variables : undefined;
-  const addingAll = !!adding && adding.mcp !== false && adding.skill !== false;
-  const missing = !tool.connected || (tool.skill_supported && !tool.skill);
+  // Only what is missing: an MCP-only tool never asks for a skill.
+  const rest: Parts = {
+    mcp: !tool.connected,
+    skill: tool.skill_supported && !tool.skill,
+  };
+  const missing = rest.mcp || rest.skill;
+  const add = (from: "all" | "mcp" | "skill", parts: Parts) => {
+    setVia(from);
+    connect.mutate({ name: tool.name, ...parts });
+  };
   const partial =
     tool.skill_supported && (tool.connected || tool.skill) && missing;
 
@@ -126,9 +135,9 @@ export function ToolRow({ tool }: { tool: SetupTool }) {
             type="button"
             className={`${btn.outline} shrink-0`}
             disabled={busy}
-            onClick={() => connect.mutate({ name: tool.name })}
+            onClick={() => add("all", rest)}
           >
-            {addingAll
+            {adding === "all"
               ? tr("연결하는 중…")
               : partial
                 ? t("나머지 연결", "Connect the rest")
@@ -163,12 +172,8 @@ export function ToolRow({ tool }: { tool: SetupTool }) {
             add={t("연결", "Connect")}
             remove={t("해제", "Disconnect")}
             busy={busy}
-            pending={
-              adding?.skill === false || (!!dropping?.mcp && !dropping.skill)
-            }
-            onAdd={() =>
-              connect.mutate({ name: tool.name, mcp: true, skill: false })
-            }
+            pending={adding === "mcp" || (!!dropping?.mcp && !dropping.skill)}
+            onAdd={() => add("mcp", { mcp: true, skill: false })}
             onRemove={() => setRemoving({ mcp: true, skill: false })}
           />
           {tool.skill_supported ? (
@@ -181,11 +186,9 @@ export function ToolRow({ tool }: { tool: SetupTool }) {
               remove={t("제거", "Remove")}
               busy={busy}
               pending={
-                adding?.mcp === false || (!!dropping?.skill && !dropping.mcp)
+                adding === "skill" || (!!dropping?.skill && !dropping.mcp)
               }
-              onAdd={() =>
-                connect.mutate({ name: tool.name, mcp: false, skill: true })
-              }
+              onAdd={() => add("skill", { mcp: false, skill: true })}
               onRemove={() => setRemoving({ mcp: false, skill: true })}
             />
           ) : (

@@ -63,7 +63,11 @@ test("MCP and skill connect on their own, or both at once", () => {
     skill: true,
   });
   fireEvent.click(screen.getByRole("button", { name: "Argos에 연결" }));
-  expect(mocks.connect.mutate).toHaveBeenLastCalledWith({ name: "claude" });
+  expect(mocks.connect.mutate).toHaveBeenLastCalledWith({
+    name: "claude",
+    mcp: true,
+    skill: true,
+  });
 });
 
 test("removing only the skill asks first, then keeps MCP", () => {
@@ -80,11 +84,23 @@ test("removing only the skill asks first, then keeps MCP", () => {
   });
 });
 
-test("a half-connected tool offers to connect the rest", () => {
+test("connecting the rest asks only for the missing part", () => {
   render(<ToolRow tool={tool({ connected: true })} />);
   expect(screen.getByRole("button", { name: "MCP 해제" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "나머지 연결" }));
-  expect(mocks.connect.mutate).toHaveBeenCalledWith({ name: "claude" });
+  expect(mocks.connect.mutate).toHaveBeenCalledWith({
+    name: "claude",
+    mcp: false,
+    skill: true,
+  });
+  cleanup();
+  render(<ToolRow tool={tool({ skill: true })} />);
+  fireEvent.click(screen.getByRole("button", { name: "나머지 연결" }));
+  expect(mocks.connect.mutate).toHaveBeenLastCalledWith({
+    name: "claude",
+    mcp: true,
+    skill: false,
+  });
 });
 
 test("a tool without skills is MCP only", () => {
@@ -95,6 +111,12 @@ test("a tool without skills is MCP only", () => {
   );
   expect(screen.queryByRole("button", { name: /스킬/ })).toBeNull();
   expect(screen.getByText(/MCP만 연결해요/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Argos에 연결" }));
+  expect(mocks.connect.mutate).toHaveBeenCalledWith({
+    name: "x",
+    mcp: true,
+    skill: false,
+  });
 });
 
 test("the IDE says when it shares the CLI's config", () => {

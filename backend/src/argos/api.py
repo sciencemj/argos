@@ -3345,8 +3345,10 @@ async def disconnect_tool(
     name: str, config: Config, body: ToolPartsIn | None = None
 ) -> SetupToolOut:
     """Removes Argos' MCP entry and/or skill from the tool (settings → 에이전트 도구)."""
+    parts = body or ToolPartsIn()
+    if not (parts.mcp or parts.skill):
+        raise services.InvalidError("MCP와 스킬 중 하나는 골라 주세요")
     try:
-        parts = body or ToolPartsIn()
         status = await asyncio.to_thread(
             onboarding.disconnect, config, name, parts.mcp, parts.skill
         )

@@ -440,3 +440,45 @@ def test_ide_refresh_and_uninstall(config: Settings, tools: Path) -> None:
     assert removed == ["Antigravity IDE: MCP + 스킬 제거"]
     assert json.loads(path.read_text())["mcpServers"] == OTHERS
     assert not (config.antigravity_ide_dir / "skills" / "argos").exists()
+
+
+def test_new_ide_config_is_private_and_non_ascii_survives(config: Settings) -> None:
+    config.antigravity_ide_dir.mkdir(parents=True)
+    onboarding.connect(config, "antigravity_ide", skill=False)
+    path = onboarding.ide_config(config)
+    assert oct(path.stat().st_mode & 0o777) == "0o600"  # a new file is private
+
+    servers: dict[str, object] = {
+        **OTHERS,
+        "노션": {"serverUrl": "https://example.com/mcp", "note": "한글 ✓"},
+    }
+    _ide_file(config, servers)
+    onboarding.connect(config, "antigravity_ide", skill=False)
+    text = path.read_text(encoding="utf-8")
+    assert '"노션"' in text and "한글 ✓" in text  # written as is, not \\uXXXX escapes
+    assert json.loads(text)["mcpServers"]["노션"]["note"] == "한글 ✓"
+    onboarding.disconnect(config, "antigravity_ide", mcp=True, skill=False)
+    assert "한글 ✓" in path.read_text(encoding="utf-8")
+
+
+def test_a_tool_without_skills_connects_mcp_only(
+    config: Settings, tools: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_claude_skills(name: str) -> bool:
+        return name != "claude"
+
+    monkeypatch.setattr(onboarding, "skill_supported", no_claude_skills)
+    status = onboarding.connect(config, "claude")  # both asked: the skill is skipped
+    assert status.connected and not status.skill and not status.skill_supported
+    assert not (config.claude_dir / "skills" / "argos").exists()
+
+
+def test_disconnect_needs_mcp_or_skill(config: Settings, tools: Path) -> None:
+    with TestClient(create_app(config)) as client:
+        client.post("/api/v1/setup/tools/claude/connect")
+        neither = client.post(
+            "/api/v1/setup/tools/claude/disconnect", json={"mcp": False, "skill": False}
+        )
+        assert neither.status_code == 422
+        still = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}["claude"]
+        assert still["mcp_connected"] and still["skill_installed"]

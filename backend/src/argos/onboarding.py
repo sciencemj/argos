@@ -60,6 +60,12 @@ CONNECTABLE = ("claude", "codex", "hermes", "antigravity", "antigravity_ide")
 IDE = "antigravity_ide"
 
 
+def skill_supported(name: str) -> bool:
+    """Whether the tool reads skills, so Argos can install its `argos` skill there. Every
+    connectable tool does today; a new MCP-only tool would be left out here."""
+    return name in CONNECTABLE
+
+
 class ConnectError(Exception):
     pass
 
@@ -166,7 +172,7 @@ def _read_config(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         data: Any = json.loads(text) if text.strip() else {}
     except (OSError, ValueError) as exc:
         raise ConnectError(f"{path}을 읽지 못해 건드리지 않았어요: {exc}") from exc
@@ -180,14 +186,15 @@ def _read_config(path: Path) -> dict[str, Any]:
 
 def _write_config(path: Path, data: dict[str, Any]) -> None:
     """Atomic: a temp file next to the real one, then a rename. A symlink is followed, so
-    the link stays and the file it points at is replaced; the file keeps its permissions."""
+    the link stays and the file it points at is replaced; the file keeps its permissions
+    (a new one is private, like the files Antigravity writes itself)."""
     target = path.resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
+    mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o600
     fd, temp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w") as file:
-            json.dump(data, file, indent=2)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=2, ensure_ascii=False)
             file.write("\n")
         os.chmod(temp, mode)
         os.replace(temp, target)
@@ -305,7 +312,7 @@ def tool_status(settings: Settings, name: str) -> ToolStatus:
         connectable=connectable,
         connected=False,
         skill=False,
-        skill_supported=connectable,
+        skill_supported=skill_supported(name),
         skill_path=None,
         skill_conflict=False,
         hint=hint,
@@ -392,6 +399,7 @@ def connect(settings: Settings, name: str, mcp: bool = True, skill: bool = True)
     """Registers Argos' MCP server (replacing an older Argos entry that points elsewhere)
     and/or installs the argos skill. Hermes then restarts its gateway to load them."""
     binary = _usable(settings, name)
+    skill = skill and skill_supported(name)  # an MCP-only tool: nothing to install
     if mcp:
         _register_mcp(settings, binary, name, mcp_url(settings, name))
     if skill:
