@@ -1,0 +1,50 @@
+name: Pages
+
+# Publishes the intro site (site/) with the promo videos to GitHub Pages.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/promo/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - name: Assemble _site
+        run: |
+          mkdir -p _site/media
+          cp -R site/. _site/
+          cp docs/promo/argos-intro.ko.mp4 docs/promo/argos-intro.en.mp4 _site/media/
+          cp docs/promo/argos-intro.ko.html docs/promo/argos-intro.en.html _site/media/
+          touch _site/.nojekyll
+          ls -la _site _site/media
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
