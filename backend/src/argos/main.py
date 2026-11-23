@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from argos import (
+    argos_tools,
     caldav_sync,
     lms,
     lms_canvas,
@@ -23,7 +24,6 @@ from argos import (
     vault,
 )
 from argos.api import install_error_handlers, router, ws_router
-from argos.argos_tools import register_argos_tools
 from argos.classifier import apply_overrides, build_classifier
 from argos.config import Settings, settings
 from argos.db import make_engine, make_sessionmaker
@@ -63,7 +63,7 @@ def create_app(
         app.state.runner = Runner(app.state.sessionmaker, app.state.settings)
         app.state.runner.classifier = lambda: app.state.classifier
         # Native harness tools (v0.2): Argos tools, workspace files/shell, then plugins.
-        register_argos_tools(core_tools)
+        argos_tools.register_argos_tools(core_tools)
         register_file_tools(core_tools)
         register_extra_tools(core_tools)
         app.state.plugins = await asyncio.to_thread(
@@ -140,6 +140,11 @@ def create_app(
         await asyncio.gather(app.state.knowledge_index, return_exceptions=True)
         if starting := getattr(app.state, "remote_start", None):
             await asyncio.wait([starting], timeout=5)
+            starting.cancel()  # still waiting on Tailscale: give up (no DB involved)
+            await asyncio.gather(starting, return_exceptions=True)
+        if refreshing := getattr(app.state, "tool_refresh", None):
+            refreshing.cancel()  # the CLI thread finishes on its own; it uses no DB
+            await asyncio.gather(refreshing, return_exceptions=True)
         await app.state.vault_sync.stop()
         await app.state.usage.stop()
         await app.state.notifier.stop()
@@ -148,6 +153,7 @@ def create_app(
         await app.state.backups.stop()
         await app.state.calendar_sync.stop()
         await app.state.runner.shutdown()
+        await argos_tools.stop()  # background inbox classification from tool calls
         await engine.dispose()
 
     app = FastAPI(title="Argos", lifespan=lifespan)

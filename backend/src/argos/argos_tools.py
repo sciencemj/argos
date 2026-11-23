@@ -651,12 +651,33 @@ _SUMMARIES: dict[str, Callable[[dict[str, Any]], str]] = {
 # --- helpers -----------------------------------------------------------------------------
 
 _tasks: set[asyncio.Task[None]] = set()
+_stopping = False
 
 
 def _background(coro: Awaitable[None]) -> None:
+    if _stopping:  # shutting down: the database is about to close
+        if asyncio.iscoroutine(coro):
+            coro.close()
+        return
     task = asyncio.ensure_future(coro)
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
+
+
+async def stop() -> None:
+    """App shutdown: cancels the background work tools started on this event loop (inbox
+    classification) and waits for it, before the database engine is disposed. New work
+    is refused meanwhile; the next app (tests start many) can spawn again."""
+    global _stopping
+    _stopping = True
+    try:
+        loop = asyncio.get_running_loop()
+        tasks = [t for t in _tasks if t.get_loop() is loop]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        _stopping = False
 
 
 async def _channel(s: AsyncSession, ref: str | None) -> Channel:

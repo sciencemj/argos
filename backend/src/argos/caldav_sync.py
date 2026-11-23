@@ -1006,6 +1006,8 @@ class CalendarSync:
 
         def fire() -> None:
             self._soon = None
+            if self._stopped:
+                return
             task = asyncio.create_task(self.run())
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
@@ -1023,6 +1025,8 @@ class CalendarSync:
         if self._stopped:  # shutting down: the database is about to close
             return self.status
         async with self._lock:
+            if self._stopped:  # stopped while waiting for the previous run
+                return self.status
             self.status.running = True
             try:
                 async with self._sessionmaker() as session:

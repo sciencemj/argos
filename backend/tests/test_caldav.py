@@ -1163,7 +1163,7 @@ def test_channel_overlay_survives_resync_and_a_new_href(
     assert not [h for m, h, _ in server.requests if m != "GET" and "학교" in h]  # unwritten
 
 
-def test_stop_waits_for_a_running_sync(app: TestClient, server: FakeCalDAV) -> None:
+def test_stop_waits_for_a_running_sync(app: TestClient) -> None:
     """Shutdown regression (CI hang): `stop()` used to cancel a nudged run without
     waiting, so the engine closed under the run's session ("no active connection") and
     TestClient's exit hung. Now the run is cancelled and finished before stop returns."""

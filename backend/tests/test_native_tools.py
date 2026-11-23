@@ -447,3 +447,37 @@ def test_mcp_serves_every_destructive_tool_as_an_approval_request() -> None:
     mcp_server.build_mcp(FastAPI())
     assert mcp_server.DESTRUCTIVE == {"delete_task", "delete_event"}
     assert mcp_server.DESTRUCTIVE <= set(mcp_server.TOOL_NAMES)
+
+
+async def test_stop_cancels_and_awaits_background_work() -> None:
+    """App shutdown: inbox classification a tool started is cancelled and finished
+    before the engine closes; work offered meanwhile is dropped, not started."""
+    import asyncio
+
+    seen: list[str] = []
+    gate = asyncio.Event()
+
+    async def classify() -> None:
+        seen.append("started")
+        try:
+            await gate.wait()
+        except asyncio.CancelledError:
+            seen.append("cancelled")
+            raise
+
+    argos_tools._background(classify())  # pyright: ignore[reportPrivateUsage]
+    await asyncio.sleep(0)
+    await argos_tools.stop()
+    assert seen == ["started", "cancelled"]
+    assert not argos_tools._tasks  # pyright: ignore[reportPrivateUsage]
+
+    async def late() -> None:
+        seen.append("late")
+
+    argos_tools._stopping = True  # pyright: ignore[reportPrivateUsage]
+    try:
+        argos_tools._background(late())  # pyright: ignore[reportPrivateUsage]
+    finally:
+        argos_tools._stopping = False  # pyright: ignore[reportPrivateUsage]
+    await asyncio.sleep(0)
+    assert seen == ["started", "cancelled"]

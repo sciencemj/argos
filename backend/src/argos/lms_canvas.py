@@ -667,6 +667,8 @@ class LmsSync:
         if self._stopped:  # shutting down: the database is about to close
             return self.status
         async with self._run_lock:
+            if self._stopped:  # stopped while waiting for the previous run
+                return self.status
             self.status.running = True
             try:
                 async with self._sessionmaker() as session:
@@ -762,6 +764,8 @@ class LmsSync:
     async def suggest(self) -> None:
         """Suggest merging LMS courses into same-course channels the user named
         differently (the extension's imports land here too, via suggest_soon)."""
+        if self._stopped:
+            return
         matcher = self.matcher(self._settings())
         if matcher is None:
             return

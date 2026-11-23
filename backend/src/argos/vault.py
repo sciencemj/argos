@@ -712,6 +712,8 @@ class VaultSync:
         if self._stopped:  # shutting down: the database is about to close
             return self.status
         async with self._lock:
+            if self._stopped:  # stopped while waiting for the previous run
+                return self.status
             vault = self.vault()
             if vault is None:
                 return self.status
@@ -750,6 +752,8 @@ class VaultSync:
 
         def fire() -> None:
             self._soon = None
+            if self._stopped:
+                return
             task = asyncio.create_task(self.run())
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
@@ -782,9 +786,14 @@ class VaultSync:
         self._watch = asyncio.create_task(loop())
 
     def _cancel_watch(self) -> None:
+        """Stops the current watcher; `stop()` still waits for it (it is kept in
+        `_tasks` until it has ended)."""
         self._stop_watch.set()
         if self._watch is not None:
-            self._watch.cancel()
+            old = self._watch
+            old.cancel()
+            self._tasks.add(old)
+            old.add_done_callback(self._tasks.discard)
             self._watch = None
 
     async def stop(self) -> None:
@@ -794,10 +803,8 @@ class VaultSync:
         if self._soon is not None:
             self._soon.cancel()
             self._soon = None
+        self._cancel_watch()  # the watcher joins _tasks
         tasks: list[asyncio.Task[Any]] = list(self._tasks)
-        if self._watch is not None:
-            tasks.append(self._watch)
-        self._cancel_watch()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
