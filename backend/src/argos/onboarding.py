@@ -1,14 +1,24 @@
 """First-run setup (PLAN Phase 12): which agent tools are installed, and connecting them
 to Argos — the MCP server (through each tool's own CLI) and the `argos` skill that says
 how to use it. Nothing here runs on its own: connecting and removing are buttons the
-user presses, since they change the tool's own settings."""
+user presses, since they change the tool's own settings. The MCP entry and the skill can
+be added and removed separately; both together is the default.
 
+The Antigravity IDE has no CLI for this: Argos edits its `mcp_config.json` itself, touching
+only the `argos` entry, and writes it atomically (through a symlink, which many setups have
+pointing at the Antigravity CLI's own file)."""
+
+import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from argos.config import Settings
 
@@ -19,7 +29,7 @@ MARKER = ".installed-by-argos"  # only skill folders with this are ours to repla
 
 @dataclass
 class ToolStatus:
-    name: str  # claude | codex | hermes | antigravity | ollama
+    name: str  # claude | codex | hermes | antigravity | antigravity_ide | ollama
     label: str
     installed: bool
     path: str | None
@@ -27,9 +37,13 @@ class ToolStatus:
     connectable: bool  # Argos can register its MCP server and skill with it
     connected: bool  # the MCP server is registered with this Argos' address
     skill: bool  # the argos skill is installed
+    skill_supported: bool  # the tool reads skills, so the argos skill can be installed
     skill_path: str | None
     skill_conflict: bool  # an `argos` skill Argos did not install is in the way
     hint: str  # how to get the tool when it is missing
+    # Another tool whose MCP config file this one reads too (the IDE and the CLI often share
+    # one through a symlink): connecting either shows on both.
+    shared_with: str | None = None
 
 
 TOOLS = {
@@ -37,11 +51,19 @@ TOOLS = {
     "codex": ("Codex", "npm install -g @openai/codex 후 codex login"),
     "hermes": ("Hermes Agent", "Hermes Agent를 설치하고 API 서버를 켜세요 (docs/hermes-setup.md)"),
     "antigravity": ("Antigravity", "Antigravity CLI(agy)를 설치하고 agy로 로그인"),
+    "antigravity_ide": ("Antigravity IDE", "Antigravity 앱을 설치하고 한 번 열어 주세요"),
     "ollama": ("Ollama", "https://ollama.com/download 에서 설치 (인박스 분류용 로컬 모델)"),
 }
 
 
-CONNECTABLE = ("claude", "codex", "hermes", "antigravity")
+CONNECTABLE = ("claude", "codex", "hermes", "antigravity", "antigravity_ide")
+IDE = "antigravity_ide"
+
+
+def skill_supported(name: str) -> bool:
+    """Whether the tool reads skills, so Argos can install its `argos` skill there. Every
+    connectable tool does today; a new MCP-only tool would be left out here."""
+    return name in CONNECTABLE
 
 
 class ConnectError(Exception):
@@ -79,7 +101,10 @@ def _step(args: list[str]) -> None:
         raise ConnectError(lines[-1][:300] if lines else f"{args[1]} 실패")
 
 
-def mcp_url(settings: Settings, agent: str) -> str:
+def mcp_url(settings: Settings, name: str) -> str:
+    # The IDE is the same Antigravity agent to Argos. It also has to be the same address:
+    # with a shared config file, two would overwrite each other on every refresh.
+    agent = "antigravity" if name == IDE else name
     return f"{settings.mcp_url}?agent={agent}"
 
 
@@ -95,7 +120,11 @@ def _bundled(relative: str) -> Path:
 
 def _skill_home(name: str, settings: Settings) -> Path:
     """Claude Code, Codex and Antigravity read user skills from <home>/skills/<name>/SKILL.md."""
-    homes = {"claude": settings.claude_dir, "antigravity": settings.antigravity_dir}
+    homes = {
+        "claude": settings.claude_dir,
+        "antigravity": settings.antigravity_dir,
+        IDE: settings.antigravity_ide_dir,
+    }
     return homes.get(name, settings.codex_auth.parent) / "skills"
 
 
@@ -127,6 +156,85 @@ def _set_hermes_skill_dirs(binary: str, dirs: list[str]) -> None:
         _step([binary, "config", "unset", "skills.external_dirs"])
 
 
+# --- the Antigravity IDE's mcp_config.json --------------------------------------------------
+
+
+def ide_config(settings: Settings) -> Path:
+    return settings.antigravity_ide_dir / "mcp_config.json"
+
+
+def _cli_config(settings: Settings) -> Path:
+    """Where `agy mcp add` writes (the CLI's own config folder)."""
+    return settings.antigravity_dir / "mcp_config.json"
+
+
+def _read_config(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+        data: Any = json.loads(text) if text.strip() else {}
+    except (OSError, ValueError) as exc:
+        raise ConnectError(f"{path}을 읽지 못해 건드리지 않았어요: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConnectError(f"{path}의 형식이 예상과 달라 건드리지 않았어요")
+    config: dict[str, Any] = data  # pyright: ignore[reportUnknownVariableType]
+    if not isinstance(config.get("mcpServers", {}), dict):
+        raise ConnectError(f"{path}의 형식이 예상과 달라 건드리지 않았어요")
+    return config
+
+
+def _write_config(path: Path, data: dict[str, Any]) -> None:
+    """Atomic: a temp file next to the real one, then a rename. A symlink is followed, so
+    the link stays and the file it points at is replaced; the file keeps its permissions
+    (a new one is private, like the files Antigravity writes itself)."""
+    target = path.resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o600
+    fd, temp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=2, ensure_ascii=False)
+            file.write("\n")
+        os.chmod(temp, mode)
+        os.replace(temp, target)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+
+
+def _ide_entry(settings: Settings) -> dict[str, Any] | None:
+    servers: dict[str, Any] = _read_config(ide_config(settings)).get("mcpServers", {})
+    entry = servers.get(SKILL)
+    return entry if isinstance(entry, dict) else None  # pyright: ignore[reportUnknownVariableType]
+
+
+def _ide_register(settings: Settings, url: str) -> None:
+    path = ide_config(settings)
+    data = _read_config(path)
+    servers: dict[str, Any] = data.setdefault("mcpServers", {})
+    servers[SKILL] = {"serverUrl": url, "disabled": False}  # what `agy mcp add` writes
+    _write_config(path, data)
+
+
+def _ide_unregister(settings: Settings) -> None:
+    path = ide_config(settings)
+    data = _read_config(path)
+    servers: dict[str, Any] = data.get("mcpServers", {})
+    if SKILL in servers:
+        del servers[SKILL]
+        _write_config(path, data)
+
+
+def _ide_shared_with(settings: Settings) -> str | None:
+    """The CLI, when the IDE's config file is (a link to) the one `agy` writes."""
+    try:
+        same = ide_config(settings).resolve() == _cli_config(settings).resolve()
+    except OSError:
+        return None
+    return "antigravity" if same and ide_config(settings).exists() else None
+
+
 # --- status ----------------------------------------------------------------------------------
 
 
@@ -150,8 +258,14 @@ def _mcp_query(name: str, binary: str) -> list[str]:
     }[name]
 
 
-def _mcp_entry(name: str, binary: str) -> str | None:
+def _mcp_entry(settings: Settings, name: str, binary: str) -> str | None:
     """What the tool says about its `argos` MCP server, or None when it has none."""
+    if name == IDE:
+        try:
+            entry = _ide_entry(settings)
+        except ConnectError:
+            return None
+        return json.dumps(entry) if entry is not None else None
     try:
         done = _run(_mcp_query(name, binary))
     except (OSError, subprocess.TimeoutExpired):
@@ -165,30 +279,49 @@ def _mcp_entry(name: str, binary: str) -> str | None:
     return rows[0] if rows else None
 
 
-def _connected(name: str, binary: str, url: str) -> bool:
-    entry = _mcp_entry(name, binary)
+def _connected(settings: Settings, name: str, binary: str) -> bool:
+    url = mcp_url(settings, name)
+    if name == IDE:
+        try:
+            entry = _ide_entry(settings)
+        except ConnectError:
+            return False
+        return entry is not None and entry.get("serverUrl") == url and not entry.get("disabled")
+    entry = _mcp_entry(settings, name, binary)
     return entry is not None and url in entry
+
+
+def _locate(settings: Settings, name: str) -> str | None:
+    """The tool's binary, or for the IDE its settings folder; None when it is not here."""
+    if name == IDE:
+        folder = settings.antigravity_ide_dir
+        return str(folder) if folder.is_dir() else None
+    return shutil.which(_binary(name, settings))
 
 
 def tool_status(settings: Settings, name: str) -> ToolStatus:
     label, hint = TOOLS[name]
-    path = shutil.which(_binary(name, settings))
+    path = _locate(settings, name)
+    connectable = name in CONNECTABLE
     status = ToolStatus(
         name=name,
         label=label,
         installed=path is not None,
         path=path,
-        version=_version(path) if path else None,
-        connectable=name != "ollama",
+        version=_version(path) if path and name != IDE else None,
+        connectable=connectable,
         connected=False,
         skill=False,
+        skill_supported=skill_supported(name),
         skill_path=None,
         skill_conflict=False,
         hint=hint,
     )
     if path is None or not status.connectable:
         return status
-    status.connected = _connected(name, path, mcp_url(settings, name))
+    status.connected = _connected(settings, name, path)
+    if name == IDE:
+        status.shared_with = _ide_shared_with(settings)
     if name == "hermes":
         folder = hermes_skills_dir(settings)
         status.skill_path = str(folder / SKILL)
@@ -212,9 +345,9 @@ def statuses(settings: Settings) -> list[ToolStatus]:
 
 
 def _usable(settings: Settings, name: str) -> str:
-    if name not in TOOLS or name == "ollama":
+    if name not in CONNECTABLE:
         raise ConnectError(f"{name}은 연결할 수 없어요")
-    binary = shutil.which(_binary(name, settings))
+    binary = _locate(settings, name)
     if binary is None:
         raise ConnectError(f"{TOOLS[name][0]}이 설치되어 있지 않아요")
     return binary
@@ -229,8 +362,10 @@ def _restart_hermes(binary: str) -> None:
         pass
 
 
-def _register_mcp(binary: str, name: str, url: str) -> None:
-    if name == "claude":
+def _register_mcp(settings: Settings, binary: str, name: str, url: str) -> None:
+    if name == IDE:
+        _ide_register(settings, url)
+    elif name == "claude":
         _run([binary, "mcp", "remove", SKILL, "-s", "user"])  # absent is fine
         _step([binary, "mcp", "add", "--transport", "http", "--scope", "user", SKILL, url])
     elif name == "codex":
@@ -243,7 +378,7 @@ def _register_mcp(binary: str, name: str, url: str) -> None:
         _step([binary, "config", "set", "mcp_servers.argos.url", url])
 
 
-def _install_skill(settings: Settings, binary: str, name: str) -> None:
+def _install_skill(settings: Settings, binary: str, name: str, after_mcp: bool) -> None:
     if name == "hermes":
         folder = hermes_skills_dir(settings)
         if getattr(sys, "frozen", False):
@@ -254,18 +389,22 @@ def _install_skill(settings: Settings, binary: str, name: str) -> None:
         return
     target = _skill_home(name, settings) / SKILL
     if target.exists() and not (target / MARKER).exists():
-        raise ConnectError(f"MCP는 연결했지만 {target}에 다른 argos 스킬이 있어 덮어쓰지 않았어요")
+        done = "MCP는 연결했지만 " if after_mcp else ""
+        raise ConnectError(f"{done}{target}에 다른 argos 스킬이 있어 덮어쓰지 않았어요")
     shutil.copytree(_bundled(f"integrations/skills/{SKILL}"), target, dirs_exist_ok=True)
     (target / MARKER).write_text("Installed by the Argos app; removed from its settings.\n")
 
 
-def connect(settings: Settings, name: str) -> ToolStatus:
+def connect(settings: Settings, name: str, mcp: bool = True, skill: bool = True) -> ToolStatus:
     """Registers Argos' MCP server (replacing an older Argos entry that points elsewhere)
-    and installs the argos skill. Hermes then restarts its gateway to load both."""
+    and/or installs the argos skill. Hermes then restarts its gateway to load them."""
     binary = _usable(settings, name)
-    _register_mcp(binary, name, mcp_url(settings, name))
-    _install_skill(settings, binary, name)
-    if name == "hermes":
+    skill = skill and skill_supported(name)  # an MCP-only tool: nothing to install
+    if mcp:
+        _register_mcp(settings, binary, name, mcp_url(settings, name))
+    if skill:
+        _install_skill(settings, binary, name, after_mcp=mcp)
+    if name == "hermes" and (mcp or skill):
         _restart_hermes(binary)
     return tool_status(settings, name)
 
@@ -273,9 +412,9 @@ def connect(settings: Settings, name: str) -> ToolStatus:
 _ARGOS_URL = re.compile(r"https?://[^\s\"']+/mcp\?agent=[\w-]+")
 
 
-def _registered_url(name: str, binary: str) -> str | None:
+def _registered_url(settings: Settings, name: str, binary: str) -> str | None:
     """The Argos MCP address the tool has now, if it has one."""
-    entry = _mcp_entry(name, binary)
+    entry = _mcp_entry(settings, name, binary)
     found = _ARGOS_URL.search(entry) if entry is not None else None
     return found.group(0) if found else None
 
@@ -286,7 +425,7 @@ def refresh(settings: Settings) -> list[str]:
     old address. Nothing is added that the user did not connect or has removed."""
     changed: list[str] = []
     for name in CONNECTABLE:
-        binary = shutil.which(_binary(name, settings))
+        binary = _locate(settings, name)
         if binary is None:
             continue
         try:
@@ -306,9 +445,9 @@ def refresh(settings: Settings) -> list[str]:
                     shutil.copytree(source.parent, target, dirs_exist_ok=True)
                     changed.append(f"{name} skill")
             url = mcp_url(settings, name)
-            current = _registered_url(name, binary)
+            current = _registered_url(settings, name, binary)
             if current is not None and current != url:
-                _register_mcp(binary, name, url)
+                _register_mcp(settings, binary, name, url)
                 changed.append(f"{name} mcp")
                 if name == "hermes":
                     _restart_hermes(binary)
@@ -322,12 +461,14 @@ def disconnect(settings: Settings, name: str, mcp: bool, skill: bool) -> ToolSta
     Argos installed; Hermes just stops loading Argos' folder)."""
     binary = _usable(settings, name)
     if mcp:
-        if name == "claude":
+        if name == IDE:
+            _ide_unregister(settings)
+        elif name == "claude":
             _step([binary, "mcp", "remove", SKILL, "-s", "user"])
         elif name == "codex":
             _step([binary, "mcp", "remove", SKILL])
         elif name == "antigravity":
-            if _mcp_entry(name, binary) is not None:  # `agy mcp remove` fails when absent
+            if _mcp_entry(settings, name, binary) is not None:  # `agy mcp remove` fails when absent
                 _step([binary, "mcp", "remove", SKILL])
         else:
             _step([binary, "config", "unset", "mcp_servers.argos"])
@@ -341,7 +482,7 @@ def disconnect(settings: Settings, name: str, mcp: bool, skill: bool) -> ToolSta
             target = _skill_home(name, settings) / SKILL
             if (target / MARKER).exists():
                 shutil.rmtree(target)
-    if name == "hermes":
+    if name == "hermes" and (mcp or skill):
         _restart_hermes(binary)
     return tool_status(settings, name)
 
@@ -351,11 +492,11 @@ def remove_everywhere(settings: Settings) -> list[str]:
     old address) and the skill Argos installed. Returns what was removed or failed."""
     report: list[str] = []
     for name in CONNECTABLE:
-        binary = shutil.which(_binary(name, settings))
+        binary = _locate(settings, name)
         if binary is None:
             continue
         status = tool_status(settings, name)
-        mcp = status.connected or _registered_url(name, binary) is not None
+        mcp = status.connected or _registered_url(settings, name, binary) is not None
         if not (mcp or status.skill):
             continue
         try:

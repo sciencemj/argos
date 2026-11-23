@@ -1,6 +1,8 @@
 """Phase 12: first-run setup — tool detection, connecting the agent CLIs to Argos' MCP
 server with the argos skill, and removing both, with fake CLIs that record their calls."""
 
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -75,6 +77,7 @@ def config(settings: Settings, tmp_path: Path) -> Settings:
             "claude_dir": tmp_path / "home" / ".claude",
             "codex_auth": tmp_path / "home" / ".codex" / "auth.json",
             "antigravity_dir": tmp_path / "home" / ".gemini" / "config",
+            "antigravity_ide_dir": tmp_path / "home" / ".gemini" / "antigravity",
         }
     )
 
@@ -254,3 +257,228 @@ def test_antigravity_refresh_follows_a_new_address(config: Settings, tools: Path
     assert "name: argos" in skill.read_text()
     assert onboarding.tool_status(moved, "antigravity").connected
     assert onboarding.refresh(moved) == []
+
+
+# --- MCP and skill separately ------------------------------------------------------------
+
+
+def test_mcp_and_skill_connect_and_disconnect_separately(config: Settings, tools: Path) -> None:
+    skill = config.claude_dir / "skills" / "argos"
+    with TestClient(create_app(config)) as client:
+        by_name = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}
+        assert by_name["claude"]["skill_supported"] and not by_name["claude"]["mcp_connected"]
+        assert not by_name["ollama"]["skill_supported"]
+
+        mcp_only = client.post(
+            "/api/v1/setup/tools/claude/connect", json={"mcp": True, "skill": False}
+        ).json()
+        assert mcp_only["connected"] and mcp_only["mcp_connected"]
+        assert not mcp_only["skill"] and not mcp_only["skill_installed"] and not skill.exists()
+
+        skill_only = client.post(
+            "/api/v1/setup/tools/codex/connect", json={"mcp": False, "skill": True}
+        ).json()
+        assert skill_only["skill_installed"] and not skill_only["mcp_connected"]
+        assert not any(c.startswith("mcp add") and "codex" in c for c in calls(tools))
+
+        both = client.post("/api/v1/setup/tools/claude/connect", json={"skill": True}).json()
+        assert both["mcp_connected"] and both["skill_installed"] and skill.is_dir()
+        neither = client.post(
+            "/api/v1/setup/tools/claude/connect", json={"mcp": False, "skill": False}
+        )
+        assert neither.status_code == 422
+
+        only_mcp = client.post(
+            "/api/v1/setup/tools/claude/disconnect", json={"mcp": True, "skill": False}
+        ).json()
+        assert not only_mcp["mcp_connected"] and only_mcp["skill_installed"] and skill.is_dir()
+
+
+def test_skill_only_conflict_does_not_claim_mcp(config: Settings, tools: Path) -> None:
+    theirs = config.claude_dir / "skills" / "argos"
+    theirs.mkdir(parents=True)
+    (theirs / "SKILL.md").write_text("mine")
+    with pytest.raises(onboarding.ConnectError) as raised:
+        onboarding.connect(config, "claude", mcp=False, skill=True)
+    assert "MCP" not in str(raised.value) and "덮어쓰지 않았어요" in str(raised.value)
+    assert not onboarding.tool_status(config, "claude").connected
+
+
+def test_hermes_skill_only_does_not_touch_its_mcp(config: Settings, tools: Path) -> None:
+    status = onboarding.connect(config, "hermes", mcp=False, skill=True)
+    assert status.skill and not status.connected
+    assert not any(c.startswith("config set mcp_servers") for c in calls(tools))
+
+
+# --- Antigravity IDE (mcp_config.json) -----------------------------------------------------
+
+
+OTHERS = {
+    "notion": {"serverUrl": "https://mcp.notion.com/mcp", "disabled": False},
+    "blender": {"command": "uvx", "args": ["mcp-for-blender"]},
+}
+
+
+def _ide_file(config: Settings, servers: dict[str, object] | None = None, **extra: object) -> Path:
+    path = onboarding.ide_config(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"mcpServers": servers or dict(OTHERS), **extra}))
+    path.chmod(0o600)
+    return path
+
+
+def test_ide_is_missing_until_its_folder_exists(config: Settings) -> None:
+    status = onboarding.tool_status(config, "antigravity_ide")
+    assert not status.installed and status.connectable and status.skill_supported
+    with pytest.raises(onboarding.ConnectError, match="설치되어 있지 않아요"):
+        onboarding.connect(config, "antigravity_ide")
+    assert not onboarding.ide_config(config).exists()
+
+
+def test_ide_connect_keeps_every_other_entry_and_disconnect_removes_only_argos(
+    config: Settings, tools: Path
+) -> None:
+    path = _ide_file(config, theme="dark")
+    url = f"http://127.0.0.1:{config.port}/mcp?agent=antigravity"
+    skill = config.antigravity_ide_dir / "skills" / "argos"
+    with TestClient(create_app(config)) as client:
+        ide = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}["antigravity_ide"]
+        assert ide["label"] == "Antigravity IDE" and ide["installed"] and not ide["connected"]
+        assert ide["path"] == str(config.antigravity_ide_dir) and ide["shared_with"] is None
+
+        done = client.post("/api/v1/setup/tools/antigravity_ide/connect").json()
+        assert done["mcp_connected"] and done["skill_installed"]
+        data = json.loads(path.read_text())
+        assert data["theme"] == "dark"  # keys outside mcpServers stay
+        assert data["mcpServers"] == {**OTHERS, "argos": {"serverUrl": url, "disabled": False}}
+        assert oct(path.stat().st_mode & 0o777) == "0o600"  # permissions kept
+        assert "name: argos" in (skill / "SKILL.md").read_text()
+        assert not [p for p in path.parent.iterdir() if p.name.endswith(".tmp")]
+
+        mcp_off = client.post(
+            "/api/v1/setup/tools/antigravity_ide/disconnect", json={"mcp": True, "skill": False}
+        ).json()
+        assert not mcp_off["mcp_connected"] and mcp_off["skill_installed"]
+        assert json.loads(path.read_text()) == {"mcpServers": OTHERS, "theme": "dark"}
+        before = path.stat().st_mtime_ns
+        client.post("/api/v1/setup/tools/antigravity_ide/disconnect", json={})
+        assert path.stat().st_mtime_ns == before  # no argos entry: the file is not rewritten
+        assert not skill.exists()
+    assert not any("antigravity_ide" in c for c in calls(tools))  # no CLI was run for it
+
+
+def test_ide_without_a_config_file_gets_one(config: Settings) -> None:
+    config.antigravity_ide_dir.mkdir(parents=True)
+    status = onboarding.connect(config, "antigravity_ide", mcp=True, skill=False)
+    assert status.connected and not status.skill
+    data = json.loads(onboarding.ide_config(config).read_text())
+    assert list(data["mcpServers"]) == ["argos"]
+
+
+def test_ide_config_that_is_not_json_is_left_alone(config: Settings) -> None:
+    path = onboarding.ide_config(config)
+    path.parent.mkdir(parents=True)
+    path.write_text("{ not json")
+    assert not onboarding.tool_status(config, "antigravity_ide").connected
+    with pytest.raises(onboarding.ConnectError, match="건드리지 않았어요"):
+        onboarding.connect(config, "antigravity_ide")
+    with pytest.raises(onboarding.ConnectError, match="건드리지 않았어요"):
+        onboarding.disconnect(config, "antigravity_ide", mcp=True, skill=False)
+    path.write_text('{"mcpServers": []}')
+    with pytest.raises(onboarding.ConnectError, match="형식"):
+        onboarding.connect(config, "antigravity_ide")
+    assert path.read_text() == '{"mcpServers": []}'
+
+
+def test_ide_disabled_or_foreign_argos_entry_is_not_connected(config: Settings) -> None:
+    url = onboarding.mcp_url(config, "antigravity_ide")
+    _ide_file(config, {**OTHERS, "argos": {"serverUrl": url, "disabled": True}})
+    assert not onboarding.tool_status(config, "antigravity_ide").connected
+    assert onboarding.connect(config, "antigravity_ide", skill=False).connected
+    _ide_file(config, {"argos": {"serverUrl": "https://elsewhere.example/mcp"}})
+    assert not onboarding.tool_status(config, "antigravity_ide").connected
+
+
+def test_ide_shares_the_cli_config_through_symlinks(config: Settings, tools: Path) -> None:
+    """The common setup: ~/.gemini/antigravity/{mcp_config.json,skills} link into the CLI's
+    ~/.gemini/config. Writing follows the links; the links themselves stay."""
+    cli = config.antigravity_dir
+    (cli / "skills").mkdir(parents=True)
+    (cli / "mcp_config.json").write_text(json.dumps({"mcpServers": OTHERS}))
+    ide = config.antigravity_ide_dir
+    ide.mkdir(parents=True)
+    os.symlink(cli / "mcp_config.json", ide / "mcp_config.json")
+    os.symlink(cli / "skills", ide / "skills")
+
+    status = onboarding.connect(config, "antigravity_ide")
+    assert status.connected and status.skill and status.shared_with == "antigravity"
+    assert (ide / "mcp_config.json").is_symlink() and (ide / "skills").is_symlink()
+    servers = json.loads((cli / "mcp_config.json").read_text())["mcpServers"]
+    # The same address `agy mcp add` would write, so the two never fight over it.
+    assert servers["argos"]["serverUrl"] == onboarding.mcp_url(config, "antigravity")
+    assert set(servers) == {"notion", "blender", "argos"}
+    assert (cli / "skills" / "argos" / onboarding.MARKER).exists()
+    assert onboarding.tool_status(config, "antigravity").skill  # the CLI sees the same skill
+
+    onboarding.disconnect(config, "antigravity_ide", mcp=True, skill=True)
+    assert set(json.loads((cli / "mcp_config.json").read_text())["mcpServers"]) == {
+        "notion",
+        "blender",
+    }
+    assert (ide / "mcp_config.json").is_symlink()
+
+
+def test_ide_refresh_and_uninstall(config: Settings, tools: Path) -> None:
+    path = _ide_file(config)
+    onboarding.connect(config, "antigravity_ide")
+    moved = config.model_copy(update={"port": 8123})
+    assert "antigravity_ide mcp" in onboarding.refresh(moved)
+    assert onboarding.tool_status(moved, "antigravity_ide").connected
+    assert onboarding.refresh(moved) == []
+
+    removed = onboarding.remove_everywhere(moved)
+    assert removed == ["Antigravity IDE: MCP + 스킬 제거"]
+    assert json.loads(path.read_text())["mcpServers"] == OTHERS
+    assert not (config.antigravity_ide_dir / "skills" / "argos").exists()
+
+
+def test_new_ide_config_is_private_and_non_ascii_survives(config: Settings) -> None:
+    config.antigravity_ide_dir.mkdir(parents=True)
+    onboarding.connect(config, "antigravity_ide", skill=False)
+    path = onboarding.ide_config(config)
+    assert oct(path.stat().st_mode & 0o777) == "0o600"  # a new file is private
+
+    servers: dict[str, object] = {
+        **OTHERS,
+        "노션": {"serverUrl": "https://example.com/mcp", "note": "한글 ✓"},
+    }
+    _ide_file(config, servers)
+    onboarding.connect(config, "antigravity_ide", skill=False)
+    text = path.read_text(encoding="utf-8")
+    assert '"노션"' in text and "한글 ✓" in text  # written as is, not \\uXXXX escapes
+    assert json.loads(text)["mcpServers"]["노션"]["note"] == "한글 ✓"
+    onboarding.disconnect(config, "antigravity_ide", mcp=True, skill=False)
+    assert "한글 ✓" in path.read_text(encoding="utf-8")
+
+
+def test_a_tool_without_skills_connects_mcp_only(
+    config: Settings, tools: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_claude_skills(name: str) -> bool:
+        return name != "claude"
+
+    monkeypatch.setattr(onboarding, "skill_supported", no_claude_skills)
+    status = onboarding.connect(config, "claude")  # both asked: the skill is skipped
+    assert status.connected and not status.skill and not status.skill_supported
+    assert not (config.claude_dir / "skills" / "argos").exists()
+
+
+def test_disconnect_needs_mcp_or_skill(config: Settings, tools: Path) -> None:
+    with TestClient(create_app(config)) as client:
+        client.post("/api/v1/setup/tools/claude/connect")
+        neither = client.post(
+            "/api/v1/setup/tools/claude/disconnect", json={"mcp": False, "skill": False}
+        )
+        assert neither.status_code == 422
+        still = {t["name"]: t for t in client.get("/api/v1/setup").json()["tools"]}["claude"]
+        assert still["mcp_connected"] and still["skill_installed"]

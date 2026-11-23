@@ -1756,7 +1756,8 @@ export interface paths {
         put?: never;
         /**
          * Connect Tool
-         * @description Registers Argos' MCP server and installs the argos skill — the user pressed the button.
+         * @description Registers Argos' MCP server and/or installs the argos skill — the user pressed the
+         *     button. No body: both.
          */
         post: operations["connect_tool_api_v1_setup_tools__name__connect_post"];
         delete?: never;
@@ -2925,19 +2926,6 @@ export interface components {
         DigestStarted: {
             /** Message Id */
             message_id: string;
-        };
-        /** DisconnectIn */
-        DisconnectIn: {
-            /**
-             * Mcp
-             * @default true
-             */
-            mcp: boolean;
-            /**
-             * Skill
-             * @default true
-             */
-            skill: boolean;
         };
         /** DmSessionOut */
         DmSessionOut: {
@@ -4130,12 +4118,20 @@ export interface components {
             connected: boolean;
             /** Skill */
             skill: boolean;
+            /** Skill Supported */
+            skill_supported: boolean;
             /** Skill Path */
             skill_path: string | null;
             /** Skill Conflict */
             skill_conflict: boolean;
             /** Hint */
             hint: string;
+            /** Shared With */
+            shared_with?: string | null;
+            /** Mcp Connected */
+            readonly mcp_connected: boolean;
+            /** Skill Installed */
+            readonly skill_installed: boolean;
         };
         /** SkillOut */
         SkillOut: {
@@ -4284,6 +4280,22 @@ export interface components {
              * @default core
              */
             source: string;
+        };
+        /**
+         * ToolPartsIn
+         * @description Which parts to add or remove; both when the body is left out.
+         */
+        ToolPartsIn: {
+            /**
+             * Mcp
+             * @default true
+             */
+            mcp: boolean;
+            /**
+             * Skill
+             * @default true
+             */
+            skill: boolean;
         };
         /** UninstallOut */
         UninstallOut: {
@@ -7799,7 +7811,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ToolPartsIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -7830,9 +7846,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["DisconnectIn"];
+                "application/json": components["schemas"]["ToolPartsIn"] | null;
             };
         };
         responses: {

@@ -30,7 +30,14 @@ from fastapi import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException
@@ -3273,12 +3280,26 @@ class SetupToolOut(BaseModel):
     connectable: bool
     connected: bool  # MCP server registered
     skill: bool
+    skill_supported: bool  # the tool reads skills (MCP only when false)
     skill_path: str | None
     skill_conflict: bool
     hint: str
+    shared_with: str | None = None  # a tool whose MCP config file this one shares
+
+    @computed_field
+    @property
+    def mcp_connected(self) -> bool:
+        return self.connected
+
+    @computed_field
+    @property
+    def skill_installed(self) -> bool:
+        return self.skill
 
 
-class DisconnectIn(BaseModel):
+class ToolPartsIn(BaseModel):
+    """Which parts to add or remove; both when the body is left out."""
+
     mcp: bool = True
     skill: bool = True
 
@@ -3306,20 +3327,31 @@ async def get_setup(session: Session, config: Config) -> SetupOut:
 
 
 @router.post("/setup/tools/{name}/connect")
-async def connect_tool(name: str, config: Config) -> SetupToolOut:
-    """Registers Argos' MCP server and installs the argos skill — the user pressed the button."""
+async def connect_tool(name: str, config: Config, body: ToolPartsIn | None = None) -> SetupToolOut:
+    """Registers Argos' MCP server and/or installs the argos skill — the user pressed the
+    button. No body: both."""
+    parts = body or ToolPartsIn()
+    if not (parts.mcp or parts.skill):
+        raise services.InvalidError("MCP와 스킬 중 하나는 골라 주세요")
     try:
-        status = await asyncio.to_thread(onboarding.connect, config, name)
+        status = await asyncio.to_thread(onboarding.connect, config, name, parts.mcp, parts.skill)
     except onboarding.ConnectError as exc:
         raise services.InvalidError(str(exc)) from exc
     return SetupToolOut(**asdict(status))
 
 
 @router.post("/setup/tools/{name}/disconnect")
-async def disconnect_tool(name: str, config: Config, body: DisconnectIn) -> SetupToolOut:
+async def disconnect_tool(
+    name: str, config: Config, body: ToolPartsIn | None = None
+) -> SetupToolOut:
     """Removes Argos' MCP entry and/or skill from the tool (settings → 에이전트 도구)."""
+    parts = body or ToolPartsIn()
+    if not (parts.mcp or parts.skill):
+        raise services.InvalidError("MCP와 스킬 중 하나는 골라 주세요")
     try:
-        status = await asyncio.to_thread(onboarding.disconnect, config, name, body.mcp, body.skill)
+        status = await asyncio.to_thread(
+            onboarding.disconnect, config, name, parts.mcp, parts.skill
+        )
     except onboarding.ConnectError as exc:
         raise services.InvalidError(str(exc)) from exc
     return SetupToolOut(**asdict(status))

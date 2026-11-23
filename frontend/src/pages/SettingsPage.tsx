@@ -41,7 +41,7 @@ import {
 } from "./OpsSettings";
 import { ProviderSection } from "./ProviderSettings";
 import { RemoteSection } from "./RemoteSettings";
-import { ToolsSection } from "./Welcome";
+import { ToolsSection } from "./ToolIntegrations";
 
 const OFF = "";
 
@@ -79,6 +79,7 @@ const HASH_TAB: Record<string, SettingsTab> = {
   agents: "agents",
   capture: "agents",
   usage: "agents",
+  tools: "agents",
   links: "integrations",
   "calendar-conflicts": "integrations",
   work: "system",
@@ -193,6 +194,7 @@ export function SettingsPage() {
             <>
               <AgentsSection />
               <ChatModelSection />
+              <ToolsSection />
               <ProviderSection>
                 <ClassifierQuickPick />
               </ProviderSection>
@@ -207,13 +209,12 @@ export function SettingsPage() {
                   {tr("고급 설정", "Advanced")}
                   <span className="font-normal text-[12px] text-meta">
                     {tr(
-                      "CLI 도구 진단, 인박스 분류 세부, 사용량",
-                      "CLI tool check, inbox classifier details, usage",
+                      "인박스 분류 세부, 사용량",
+                      "Inbox classifier details, usage",
                     )}
                   </span>
                 </summary>
                 <div className="mt-3 flex flex-col gap-6">
-                  <ToolsSection />
                   <ClassifierSection />
                   <UsageSection />
                 </div>

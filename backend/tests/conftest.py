@@ -95,6 +95,8 @@ def settings(tmp_path: Path) -> Settings:
         auto_backup=False,
         backup_dir=tmp_path / "backups",
         claude_dir=tmp_path / "claude",
+        antigravity_dir=tmp_path / "gemini" / "config",  # never the developer's ~/.gemini
+        antigravity_ide_dir=tmp_path / "gemini" / "antigravity",
         hermes_home=tmp_path / "hermes",  # not the developer's Hermes key
         data_dir=tmp_path / "data",
     )
