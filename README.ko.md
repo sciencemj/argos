@@ -27,7 +27,7 @@
 
 https://github.com/user-attachments/assets/9ffcdd54-7323-4b26-95ae-ca2dd97151c5
 
-최신 소개 영상(81초): [한국어](docs/promo/argos-intro.ko.mp4) · [English](docs/promo/argos-intro.en.mp4)
+최신 소개 영상(83초): [한국어](docs/promo/argos-intro.ko.mp4) · [English](docs/promo/argos-intro.en.mp4)
 
 과목과 프로젝트마다 채널이 하나씩 생기고, 채널에는 채팅처럼 쓰는 피드와 칸반, 캘린더가 붙어 있어요.
 친구에게 메시지 보내듯 "금요일에 퀴즈", "회의 전에 API 초안 공유하기"라고 적으면 Argos가 할 일·일정·노트로

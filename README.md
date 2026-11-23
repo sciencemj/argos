@@ -25,7 +25,7 @@
 
 https://github.com/user-attachments/assets/e36ed35e-504d-4c7c-a37b-80cc5cc38346
 
-Latest intro video (81 s): [English](docs/promo/argos-intro.en.mp4) · [한국어](docs/promo/argos-intro.ko.mp4)
+Latest intro video (83 s): [English](docs/promo/argos-intro.en.mp4) · [한국어](docs/promo/argos-intro.ko.mp4)
 
 Argos gives every course and project its own channel with a chat-style feed, a kanban board and a
 calendar. Write things down the way you would text a friend — *"quiz on Friday"*, *"send the API draft
