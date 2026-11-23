@@ -48,6 +48,21 @@ def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
+async def begin_read(session: AsyncSession) -> None:
+    """Pins the reads that follow to one SQLite snapshot. The sqlite3 driver only opens a
+    transaction before a write, so each SELECT otherwise reads the newest WAL state: a
+    page built from several SELECTs could mix rows from before and after another
+    session's commit. Read-only endpoints call this first; the transaction is rolled
+    back when the session closes. Write sessions keep the driver's default (a
+    transaction from their first write), so they never hold a stale read snapshot."""
+    connection = await session.connection()
+    raw = await connection.get_raw_connection()
+    driver: Any = raw.driver_connection
+    if getattr(driver, "in_transaction", True):
+        return  # not SQLite, or a transaction is already open
+    await connection.exec_driver_sql("BEGIN")
+
+
 async def session_scope(
     sessionmaker: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
