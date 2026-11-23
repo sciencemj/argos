@@ -64,7 +64,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .cap h2 .ln{display:block;overflow:hidden;padding-bottom:4px}
 .cap h2 .ln>span{display:inline-block}
 .cap h2 em{font-style:normal;color:var(--s-acc)}
-.cap p{margin:26px 0 0;font-size:21px;line-height:1.62;color:var(--s-ink2);max-width:450px;opacity:0;text-wrap:pretty}
+.cap p{word-break:keep-all;margin:26px 0 0;font-size:21px;line-height:1.62;color:var(--s-ink2);max-width:450px;opacity:0;text-wrap:pretty}
 
 /* intro */
 #intro{display:flex;align-items:center;justify-content:center;gap:40px}
@@ -333,7 +333,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .ah{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px}
 .ah small{margin-left:auto;font-size:11px;color:var(--w-meta);font-weight:400;position:relative;height:16px;min-width:74px;text-align:right}
 .ah small span{position:absolute;right:0;top:0;white-space:nowrap}
-.atext{font-size:12.5px;line-height:1.7;min-height:128px;margin-top:8px;white-space:pre-wrap}
+.atext{font-size:12.5px;line-height:1.6;min-height:110px;margin-top:8px;white-space:pre-wrap}
 .atext code{font:11.5px var(--mono)}
 .comp{margin-top:10px;background:var(--w-card);border:1px solid var(--w-soft);border-radius:15px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 8px rgba(0,0,0,.03)}
 .cin{font-size:14px;min-height:22px;position:relative;white-space:nowrap}
@@ -430,6 +430,53 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
 .pk b{font-size:18px;font-weight:500}
 .pk b.red{color:var(--w-danger)}
 
+/* v0.2: model picker, tool steps, artifact, mascot, tool connections */
+.av.gm{background:#4285f4}
+.pmode{display:inline-flex;align-items:center;gap:5px;height:28px;border-radius:999px;padding:0 10px;font-size:11.5px;color:var(--w-text2);background:var(--w-inset);white-space:nowrap}
+.mpick{margin-left:auto;display:inline-flex;align-items:center;height:30px;border:1px solid var(--w-soft);border-radius:999px;padding:0 12px 0 6px;font-size:12px;color:var(--w-text);background:var(--w-card);position:relative;width:206px}
+.mpick .sw2{position:relative;flex:1;height:18px}
+.mpick .sw2>span{position:absolute;left:0;top:0;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.mpick small{color:var(--w-meta);font-size:11px}
+.mpick u{text-decoration:none;color:var(--w-meta);font-size:10px}
+.pv{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;color:#fff;font:700 8.5px var(--sans);font-style:normal;flex:none}
+.ring{width:20px;height:20px;border-radius:50%;flex:none;margin-left:8px;background:conic-gradient(var(--w-text) 0 18%,var(--w-soft) 18% 100%);-webkit-mask:radial-gradient(circle,transparent 5.5px,#000 6px);mask:radial-gradient(circle,transparent 5.5px,#000 6px)}
+.mmenu{position:absolute;right:50px;bottom:54px;width:320px;background:var(--w-card);border:1px solid var(--w-soft);border-radius:14px;padding:8px;box-shadow:0 24px 44px -16px rgba(24,24,37,.38);z-index:30;opacity:0;visibility:hidden;transform-origin:80% 100%}
+.msearch{display:flex;align-items:center;gap:6px;border:1px solid var(--w-soft);background:var(--w-inset);border-radius:9px;padding:0 10px;font-size:12.5px;margin-bottom:4px;position:relative;height:30px;color:var(--w-meta)}
+.msearch b{font-weight:500;color:var(--w-text)}
+.msearch .ph2{position:absolute;left:28px;top:6px}
+.mg{font-size:10.5px;color:var(--w-meta);padding:6px 8px 2px}
+.mo{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;font-size:12.5px;white-space:nowrap}
+.mo small{margin-left:auto;font-size:10.5px;color:var(--w-meta)}
+.mo.hl{background:var(--w-inset);font-weight:600}
+.meff{display:flex;align-items:center;gap:4px;border-top:1px solid var(--w-soft);margin-top:6px;padding:8px 6px 2px;font-size:11.5px;color:var(--w-meta)}
+.meff em{font-style:normal;margin-right:auto}
+.meff span{padding:2px 9px;border-radius:999px;color:var(--w-text2)}
+.meff span.on{background:var(--w-inset);color:var(--w-text);font-weight:600}
+.tstep{display:inline-flex;align-items:center;gap:7px;margin-top:6px;border:1px solid var(--w-soft);background:var(--w-inset);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--w-text2);white-space:nowrap}
+.tstep small{font:10.5px var(--mono);color:var(--w-meta)}
+.tstep code{font:11px var(--mono);color:var(--w-text)}
+.tstep .loading{width:56px;margin:0;height:8px}
+.tk{width:15px;height:15px;border-radius:50%;background:var(--w-text);color:var(--w-page);display:grid;place-items:center;font-size:9px;flex:none}
+.tdet{margin:6px 0 2px 8px;border-left:2px solid var(--w-soft);padding-left:10px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--w-text2)}
+.tdet div{display:flex;gap:8px;white-space:nowrap}
+.tdet code{font:11px var(--mono);color:var(--w-text);min-width:96px}
+.tcard{display:flex;align-items:center;gap:10px;max-width:420px;margin-top:8px;padding:9px 12px}
+.tcard b{font-size:13px;display:block;font-weight:600}
+.tcard small{font-size:11px;color:var(--w-meta)}
+.tcard .dd{margin-left:auto}
+.art{margin-top:8px;border:1px solid var(--w-soft);border-radius:12px;background:var(--w-inset);padding:7px 10px 4px}
+.arth{font-size:10.5px;color:var(--w-meta);margin-bottom:2px}
+.arth code{font:10.5px var(--mono);color:var(--w-text2)}
+.art svg{display:block;width:100%;height:58px}
+.mascot{position:relative;width:124px;height:98px;margin:-10px 8px -6px 0;flex:none}
+.mascot svg{width:124px;height:98px;overflow:visible}
+.mbub{position:absolute;right:122px;top:18px;background:var(--w-text);color:var(--w-page);font:600 11.5px var(--sans);border-radius:999px;padding:4px 10px;opacity:0;visibility:hidden;white-space:nowrap}
+.trow2{display:flex;align-items:center;gap:5px;padding:7px 0;border-bottom:1px solid var(--w-soft);font-size:12px}
+.trow2:last-child{border-bottom:0}
+.trow2 b{font-weight:600;margin-right:auto;white-space:nowrap}
+.tg2{font:600 10px var(--mono);border:1px solid var(--w-soft);border-radius:999px;padding:2px 7px;color:var(--w-meta);background:var(--w-card)}
+.tg2.on{background:var(--w-text);border-color:var(--w-text);color:var(--w-page)}
+
 /* outro */
 #pill{position:absolute;left:960px;top:540px;width:440px;height:128px;border-radius:64px;background:#000;display:grid;place-items:center;opacity:0;visibility:hidden;box-shadow:0 40px 80px -30px rgba(0,0,0,.5)}
 #pill svg{width:150px;height:150px;opacity:0}
@@ -466,25 +513,25 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <div class="layer" id="s1">
         <h2 class="l1"><span class="w">수업,</span> <span class="w">과제,</span> <span class="w">일정,</span> <span class="w">에이전트.</span></h2>
         <h2 class="l2"><span class="clip"><span>Argos가 <em>한 화면</em>에서 지켜봐요.</span></span></h2>
-        <div class="chip" style="left:250px;top:200px"><i style="background:#e2533f">31</i>iCloud 캘린더</div>
+        <div class="chip" style="left:250px;top:200px"><i style="background:#e2533f">31</i>Apple 캘린더</div>
         <div class="chip" style="left:1400px;top:170px"><i style="background:#7b5bd6">O</i>Obsidian 볼트</div>
-        <div class="chip" style="left:170px;top:720px"><i style="background:#2aa3de">T</i>텔레그램</div>
+        <div class="chip" style="left:170px;top:720px"><i style="background:#4285f4">G</i>Gemini</div>
         <div class="chip" style="left:1480px;top:760px"><i style="background:#a45d46">C</i>Claude</div>
         <div class="chip" style="left:760px;top:130px"><i style="background:#6e5fa8">H</i>Hermes</div>
         <div class="chip" style="left:1060px;top:860px"><i style="background:#3f6fa6">Cx</i>Codex</div>
-        <div class="chip" style="left:560px;top:880px"><i style="background:#181825">⌘</i>빠른 입력</div>
+        <div class="chip" style="left:560px;top:880px"><i style="background:#181825">29</i>내장 툴 29종</div>
         <div class="chip" style="left:90px;top:460px"><i style="background:#1f7a8c">LX</i>LearningX LMS</div>
-        <div class="chip" style="left:1580px;top:480px"><i style="background:#181825">Ts</i>폰 · Tailscale</div>
+        <div class="chip" style="left:1580px;top:480px"><i style="background:#3367d6">Ag</i>Antigravity</div>
       </div>
 
       <!-- captions -->
-      <div class="cap" id="cap1"><div class="eb">01 — 오늘</div><h2><span class="ln"><span>오늘 챙길 것을</span></span><span class="ln"><span><em>한눈에.</em></span></span></h2><p>이번 주 진행, 앞으로 7일의 일정과 마감, 인박스를 첫 화면에. 달력에서 날짜를 누르면 그날 할 일이 보여요.</p></div>
-      <div class="cap" id="cap2"><div class="eb">02 — 채팅으로 적기</div><h2><span class="ln"><span>그냥 쓰면</span></span><span class="ln"><span><em>알아서</em> 정리돼요.</span></span></h2><p>명령어 없이 쓴 말도 AI가 할 일·일정·노트로 나누고, 마감과 채널까지 채워요.</p></div>
-      <div class="cap" id="cap3"><div class="eb">03 — 에이전트</div><h2><span class="ln"><span>여러 에이전트에게</span></span><span class="ln"><span><em>한 번에</em> 물어봐요.</span></span></h2><p>Hermes, Claude, Codex, 로컬 모델. 슬라이드·스크린샷을 붙여 @멘션하면 답이 실시간으로 흘러와요.</p></div>
+      <div class="cap" id="cap1"><div class="eb">01 — 오늘</div><h2><span class="ln"><span>오늘 챙길 것을</span></span><span class="ln"><span><em>한눈에.</em></span></span></h2><p>이번 주 진행, 앞으로 7일의 일정과 마감, 캘린더까지 첫 화면에. 할 일을 끝내면 3D Argos 강아지가 같이 뛰어요.</p></div>
+      <div class="cap" id="cap2"><div class="eb">02 — 채팅</div><h2><span class="ln"><span>에이전트 없이도</span></span><span class="ln"><span><em>바로</em> 대화해요.</span></span></h2><p>모델 선택기에서 Anthropic·Gemini·OpenAI 호환·Ollama 모델과 추론 수준을 고르면 끝. 할 일·일정은 내장 툴로 바로 기록해요.</p></div>
+      <div class="cap" id="cap3"><div class="eb">03 — 에이전트</div><h2><span class="ln"><span>필요할 땐</span></span><span class="ln"><span><em>@멘션</em>으로 불러요.</span></span></h2><p>Claude, Codex, Hermes, 직접 만든 에이전트. 슬라이드를 붙여 부르면 각자 답하고, 그림은 render_artifact로 대화 안에 바로 그려요.</p></div>
       <div class="cap" id="cap4"><div class="eb">04 — 칸반과 잡</div><h2><span class="ln"><span>카드는 옮기고,</span></span><span class="ln"><span>일은 <em>맡겨요.</em></span></span></h2><p>/job 한 줄이면 에이전트가 작업 폴더에서 일하고, 카드가 진행 중에서 검토로 스스로 옮겨가요.</p></div>
-      <div class="cap" id="cap5"><div class="eb">05 — 학교 LMS</div><h2><span class="ln"><span>긴 공지는</span></span><span class="ln"><span><em>짧게</em> 읽어요.</span></span></h2><p>LearningX에서 과제·공지·자료를 가져와요. 과제는 마감과 함께 할 일이 되고, 긴 공지는 AI가 두세 줄로 요약해요.</p></div>
+      <div class="cap" id="cap5"><div class="eb">05 — LMS · 지식 검색</div><h2><span class="ln"><span>공지는 짧게,</span></span><span class="ln"><span>자료는 <em>바로</em> 찾아요.</span></span></h2><p>LearningX 과제·공지·자료를 가져와 요약해요. 채널에 올린 파일, 연결한 로컬 폴더, LMS 자료는 FTS5로 색인돼 search_knowledge가 바로 찾아요.</p></div>
       <div class="cap" id="cap6"><div class="eb">06 — 아침 요약</div><h2><span class="ln"><span>아침마다</span></span><span class="ln"><span><em>먼저</em> 알려줘요.</span></span></h2><p>고른 에이전트가 오늘 일정·마감·새 LMS 소식을 모아 #today에 브리핑을 쓰고, 같은 글을 메신저로 보내요. 답글을 달면 그대로 이어서 대화해요.</p></div>
-      <div class="cap" id="cap7"><div class="eb">07 — 연결</div><h2><span class="ln"><span>캘린더, 옵시디언,</span></span><span class="ln"><span>그리고 <em>폰까지.</em></span></span></h2><p>캘린더와 볼트를 읽고 쓰고, ⌘⇧Space로 어디서든 적어요. Tailscale로 폰에서 열고, 지우는 일은 항상 승인한 뒤에.</p></div>
+      <div class="cap" id="cap7"><div class="eb">07 — 연결</div><h2><span class="ln"><span>캘린더, 옵시디언,</span></span><span class="ln"><span><em>에이전트 도구</em>까지.</span></span></h2><p>애플 캘린더 일정에 채널을 덧씌우고 볼트를 읽고 써요. 에이전트 도구에는 MCP와 스킬을 따로 연결하고, Tailscale로 폰에서도 열어요.</p></div>
 
       <div class="persp">
         <div class="wwrap" id="wr-today"><div class="win tok" id="w-today"></div></div>
@@ -502,17 +549,18 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
       <div class="word" id="o-word"></div>
       <div id="o-sub">학기 전체를 지켜보는 개인 대시보드</div>
       <div id="o-chips">
-        <span><i style="background:#6e5fa8">H</i>Hermes</span>
         <span><i style="background:#a45d46">C</i>Claude</span>
+        <span><i style="background:#4285f4">G</i>Gemini</span>
         <span><i style="background:#3f6fa6">Cx</i>Codex</span>
-        <span><i style="background:#477a4a">L</i>로컬 모델</span>
-        <span><i style="background:#181825">M</i>MCP 서버</span>
+        <span><i style="background:#6e5fa8">H</i>Hermes</span>
+        <span><i style="background:#477a4a">O</i>Ollama</span>
+        <span><i style="background:#181825">M</i>MCP · 스킬</span>
       </div>
 
       <!-- chrome -->
       <div class="corner" id="brand"><span class="mini-logo"><svg><use href="#dog"/></svg></span>Argos</div>
-      <div class="corner" id="tagTR">개인 학업·프로젝트 대시보드</div>
-      <div class="corner" id="lbl"><span>01 / 07 · 오늘</span><span>02 / 07 · 채팅으로 적기</span><span>03 / 07 · 에이전트</span><span>04 / 07 · 칸반과 잡</span><span>05 / 07 · 학교 LMS</span><span>06 / 07 · 아침 요약</span><span>07 / 07 · 연결</span></div>
+      <div class="corner" id="tagTR">개인 학업·프로젝트 대시보드 · v0.2</div>
+      <div class="corner" id="lbl"><span>01 / 07 · 오늘</span><span>02 / 07 · 채팅</span><span>03 / 07 · 에이전트</span><span>04 / 07 · 칸반과 잡</span><span>05 / 07 · LMS · 지식 검색</span><span>06 / 07 · 아침 요약</span><span>07 / 07 · 연결</span></div>
       <div class="corner" id="tagBR">내 Mac에서 · tailnet 안에서만</div>
     </div>
   </div>
@@ -520,7 +568,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);-webkit-fon
     <button id="bPlay" type="button" aria-label="일시정지">❚❚</button>
     <button id="bRestart" type="button">처음부터</button>
     <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="재생 위치">
-    <span class="time" id="time">00:00 / 01:21</span>
+    <span class="time" id="time">00:00 / 01:23</span>
     <span class="hint">스페이스: 재생/일시정지 · ← →: 2초 이동 · 막대를 끌어 원하는 장면으로</span>
   </div>
 </div>
@@ -559,7 +607,7 @@ function shell(rail, sideActive, main, status = true) {
       <div class="sec">프로젝트</div>
       ${ch('p1', '캡스톤')}${ch('p2', 'argos')}
       <div class="sec">에이전트</div>
-      ${it('', '<span class="av h">H</span>Hermes', '<span class="n">기본</span>')}
+      ${it('', '<span class="av h">H</span>Hermes', '<span class="n">아침 요약</span>')}
       ${it('', '<span class="av c">C</span>Claude')}
       ${it('', '<span class="av x">Cx</span>Codex', '<span class="n">● 잡 실행 중</span>')}
       ${it('', '<span class="av t">튜</span>과목 튜터', '<span class="n">커스텀</span>')}
@@ -567,17 +615,36 @@ function shell(rail, sideActive, main, status = true) {
     </div>
     <div class="main">${main}</div>
   </div>
-  <div class="status"><span><span class="av h" style="display:inline-grid;width:14px;height:14px;font-size:7px;vertical-align:-3px">H</span> Hermes 기본</span><span class="sep"></span>
+  <div class="status"><span><span class="av gm" style="display:inline-grid;width:14px;height:14px;font-size:7px;vertical-align:-3px">G</span> 기본 채팅 · Gemini 3 Pro</span><span class="sep"></span>
     <span style="color:var(--w-claude)">Claude 5h<span class="bar"><b style="width:42%"></b></span>42% · 7d 15%</span><span class="sep"></span>
     <span style="color:var(--w-codex)">Codex 5h<span class="bar"><b style="width:71%"></b></span>71% · 7d 19%</span>
     <span style="margin-left:auto;color:var(--w-danger)">승인 대기 1</span><span class="sep"></span><span>✓ 동기화 1분 전</span></div>
   ${cursorHTML}`;
 }
-const chanHead = (tab, name = '컴퓨터구조', note = '볼트 강의/컴퓨터구조/ · 기본 에이전트 Hermes') => `<div class="chead"><h1><span class="h">#</span>${name}</h1>
+const chanHead = (tab, name = '컴퓨터구조', note = '워크스페이스 파일 12 · 로컬 폴더 1 · 권한 자동 편집') => `<div class="chead"><h1><span class="h">#</span>${name}</h1>
   <div class="avs"><span class="av h">H</span><span class="av c">C</span><span class="av x">Cx</span><span class="av t">튜</span></div></div>
-  <div class="subrow"><div class="tabs">${['피드', '칸반', '캘린더', '노트', '자료'].map(t => `<span class="tab${t === tab ? ' on' : ''}">${t}</span>`).join('')}</div>
+  <div class="subrow"><div class="tabs">${['채팅', '피드', '칸반', '캘린더', '노트', '자료'].map(t => `<span class="tab${t === tab ? ' on' : ''}">${t}</span>`).join('')}</div>
   <span>${note}</span></div>`;
 
+const mascot = (bubble) => `<div class="mascot" id="t-dog"><svg viewBox="0 0 124 98" aria-hidden="true">
+  <ellipse id="t-dogsh" cx="66" cy="92" rx="38" ry="5" fill="rgba(24,24,37,.14)"/>
+  <g id="t-dogb">
+    <g id="t-dogt"><path d="M93 62 q18 -4 17 -26" fill="none" stroke="#181825" stroke-width="8" stroke-linecap="round"/><path d="M93 62 q18 -4 17 -26" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></g>
+    <rect x="80" y="70" width="12" height="19" rx="6" fill="#f3f1ee" stroke="#181825" stroke-width="2.6"/>
+    <rect x="48" y="70" width="12" height="19" rx="6" fill="#f3f1ee" stroke="#181825" stroke-width="2.6"/>
+    <ellipse cx="72" cy="62" rx="29" ry="19" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <rect x="62" y="72" width="12" height="18" rx="6" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <rect x="88" y="72" width="12" height="18" rx="6" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+    <g id="t-dogh">
+      <ellipse cx="44" cy="38" rx="24" ry="21" fill="#fff" stroke="#181825" stroke-width="2.6"/>
+      <path d="M56 18 q15 -1 16 20 q-9 3 -15 -7z" fill="#181825"/>
+      <ellipse cx="33" cy="47" rx="10" ry="7.5" fill="#fff" stroke="#181825" stroke-width="2.2"/>
+      <ellipse cx="27" cy="44.5" rx="3.6" ry="2.7" fill="#181825"/>
+      <circle cx="37" cy="34" r="3" fill="#181825"/><circle cx="51" cy="34" r="3" fill="#181825"/>
+      <circle cx="38" cy="33" r=".9" fill="#fff"/><circle cx="52" cy="33" r=".9" fill="#fff"/>
+      <circle cx="55" cy="44" r="3.4" fill="#f69251" opacity=".45"/>
+    </g>
+  </g></svg><span class="mbub" id="t-bub">${bubble}</span></div>`;
 /* ---------- today ---------- */
 const ico = {
   done: '<svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg>',
@@ -600,7 +667,7 @@ for (let i = 0; i < 35; i++) {
 }
 $('#w-today').innerHTML = shell('홈', 'today', `
   <div class="thead"><div><div class="mono">MON · 2026.10.12 · 09:12</div><h1>오늘 챙길 것</h1>
-    <p>오늘 일정 2개, 마감 2개만 챙기면 돼요. 인박스에 정리할 입력이 2개 있어요.</p></div></div>
+    <p>오늘 일정 2개, 마감 2개만 챙기면 돼요. 인박스에 정리할 입력이 2개 있어요.</p></div>${mascot('완료 +1 · 신나요!')}</div>
   <div class="kpis">
     ${kpi(ico.done, '이번 주 완료', 4, 5, '지난주보다 +2', '지난주보다 +3', false, 't-kd')}
     ${kpi(ico.prog, '진행 중', 2, undefined, '검토 대기 1')}
@@ -639,29 +706,35 @@ $('#w-today').innerHTML = shell('홈', 'today', `
   <div class="toast" id="t-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>완료했어요 · <b>프로세스 스케줄링 과제</b></div>`);
 
 /* ---------- feed ---------- */
-$('#w-feed').innerHTML = shell('학', 'arch', chanHead('피드') + `
+$('#w-feed').innerHTML = shell('학', 'arch', chanHead('채팅') + `
   <div class="feed">
     <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">에이전트</span><small>08:40 · 텔레그램에서</small></div>
       <div class="txt">오늘 10:30 컴퓨터구조 강의 있어요. 지난주 노트 걸어둘게요. <span class="src">↳ 강의/컴퓨터구조/4주차.md</span></div></div></div>
     <div class="msg"><span class="av t">튜</span><div><div class="who">과목 튜터 <span class="badge">커스텀</span><small>08:41</small></div>
       <div class="txt">이번 주 범위는 파이프라인 해저드예요. 퀴즈 전에 forwarding 경로 한 번 그려보면 좋아요.</div></div></div>
     <div class="rev" id="f-m2"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:14</small></div><div class="txt">금요일 밤 12시까지 과제2 제출</div></div></div></div>
-    <div class="rev" id="f-sg"><div class="card sgc">
-      <div class="sgh">✦ Argos가 정리했어요<small style="position:relative;min-width:80px;height:14px"><span id="f-c1" style="position:absolute;right:0;top:0">분류 중…</span><span id="f-c2" style="position:absolute;right:0;top:0;opacity:0;visibility:hidden;white-space:nowrap">신뢰도 0.92</span></small></div>
-      <div class="rev" id="f-sgload" style="height:auto"><div class="loading"></div><div class="loading" style="width:45%"></div></div>
-      <div class="rev" id="f-sgfull"><dl class="rows"><dt>종류</dt><dd>할 일</dd><dt>제목</dt><dd><b>과제2 제출</b></dd><dt>마감</dt><dd>10월 16일 (금) 23:59 <span class="dd">D-4</span></dd><dt>채널</dt><dd># 컴퓨터구조 <span style="color:var(--w-meta);font-size:11px">· 채널 맥락으로 확정</span></dd></dl>
-        <div class="btns"><span class="btn cta" id="f-add">추가하기</span><span class="btn">고치기</span><span class="btn ghost">인박스에 두기</span></div></div>
-      <div class="rev" id="f-sgdone"><div class="sgdone"><span class="okdot">✓</span>할 일에 추가했어요 <small>· 칸반 › 할 일 · 원문은 인박스에 보관</small></div></div>
-    </div></div>
+    <div class="rev" id="f-sg"><div class="msg"><span class="av gm">G</span><div style="min-width:0">
+      <div class="who">Gemini 3 Pro <span class="badge">기본 채팅</span><small style="position:relative;min-width:90px;height:14px"><span id="f-c1" style="position:absolute;left:0;top:0;white-space:nowrap">도구 실행 중…</span><span id="f-c2" style="position:absolute;left:0;top:0;opacity:0;visibility:hidden;white-space:nowrap">완료 · 3초</span></small></div>
+      <div class="rev" id="f-sgload" style="height:auto"><span class="tstep"><span class="loading"></span>도구 2개 실행 중 <small>add_task</small></span></div>
+      <div class="rev" id="f-sgfull"><span class="tstep" id="f-add"><span class="tk">✓</span>도구 2개 실행<small>list_channels · add_task</small><span style="color:var(--w-meta)">▸</span></span>
+        <div class="rev" id="f-sgdone"><div class="tdet"><div><code>list_channels</code><span>과목 6 · 프로젝트 2</span></div><div><code>add_task</code><span>과제2 제출 · 10/16 23:59 · #컴퓨터구조</span></div></div></div>
+        <div class="txt">컴퓨터구조 할 일에 넣었어요. 금요일 23:59 마감이에요.</div>
+        <div class="card tcard"><span class="chk"></span><div><b>과제2 제출</b><small># 컴퓨터구조 · 10월 16일 (금) 23:59</small></div><span class="dd">D-4</span></div></div>
+    </div></div></div>
     <div class="rev" id="f-m3"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:16</small></div><div class="txt"><span class="men c">@Claude</span> <span class="men x">@Codex</span> 이 슬라이드에서 forwarding이랑 stall 차이, 각자 설명해줘</div><span class="fcard"><span class="fic">PDF</span>5주차_파이프라인.pdf<small>2.4 MB</small></span></div></div></div>
     <div class="rev" id="f-ans"><div class="ans">
-      <div class="card acard"><div class="ah"><span class="av c">C</span>Claude<small><span id="f-cs1">생각 중…</span><span id="f-cs2" style="opacity:0;visibility:hidden">완료 · 14초</span></small></div><div class="atext" id="f-ct"></div></div>
+      <div class="card acard"><div class="ah"><span class="av c">C</span>Claude<small><span id="f-cs1">생각 중…</span><span id="f-cs2" style="opacity:0;visibility:hidden">완료 · 14초</span></small></div><div class="atext" id="f-ct"></div><div class="rev" id="f-art"><div class="art"><div class="arth"><code>render_artifact</code> · SVG</div>
+        <svg viewBox="0 0 300 58" aria-hidden="true">
+          ${['IF', 'ID', 'EX', 'MEM', 'WB'].map((s, i) => `<rect x="${4 + i * 59}" y="20" width="46" height="24" rx="6" style="fill:var(--w-card);stroke:var(--w-line)"/><text x="${27 + i * 59}" y="36" text-anchor="middle" style="fill:var(--w-text);font:600 10px var(--mono)">${s}</text>`).join('')}
+          <path d="M${27 + 3 * 59} 18 C ${27 + 3 * 59} 2, ${27 + 2 * 59} 2, ${27 + 2 * 59} 16" fill="none" style="stroke:var(--w-cta)" stroke-width="2"/>
+          <path d="M${27 + 2 * 59 - 4} 12 l4 6 l4 -6" fill="none" style="stroke:var(--w-cta)" stroke-width="2"/>
+          <text x="${27 + 3 * 59 + 8}" y="9" text-anchor="start" style="fill:var(--w-cta);font:600 8.5px var(--mono)">forward</text>
+        </svg></div></div></div>
       <div class="card acard"><div class="ah"><span class="av x">Cx</span>Codex<small><span id="f-xs1">입력 중…</span><span id="f-xs2" style="opacity:0;visibility:hidden">완료 · 9초</span></small></div><div class="atext" id="f-xt"></div></div>
     </div></div>
   </div>
-  <div class="comp"><div class="drop" id="f-drop">여기에 놓아 첨부</div><div class="atrow" id="f-at"><span class="atch"><span class="fic">PDF</span><span>5주차_파이프라인.pdf<small>2.4 MB</small></span></span></div><div class="cin" id="f-cin"><span class="ph">#컴퓨터구조에 적기 — 그냥 쓰면 Argos가 알아서 정리해요</span><span id="f-typed"></span><span class="caret"></span></div>
-    <div class="crow"><span class="clip-btn"><svg viewBox="0 0 16 16"><path d="M13 7.5l-5 5a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3L6.6 11a1.1 1.1 0 01-1.5-1.5L10 4.6"/></svg></span><span class="slash">/task</span><span class="slash">/event</span><span class="slash">/note</span><span class="slash">/ask</span><span class="slash">/job</span><span class="slash">/debate</span>
-      <span class="to">받는 이 · <b>Hermes</b> (채널 기본)</span><span class="send" id="f-send"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4" stroke="#000" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+  <div class="comp"><div class="mmenu" id="f-menu"><div class="msearch">⌕ <b id="f-mq"></b><span class="ph2" id="f-mph">모델 찾기</span></div><div class="mg">Anthropic</div><div class="mo hl" id="f-mcl"><i class="pv" style="background:#a45d46">A</i>Claude Sonnet 5.5<small>기본 ✓</small></div><div class="mg">Google</div><div class="mo" id="f-mgem"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Pro</div><div class="mo"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Flash</div><div class="mg">OpenAI 호환 · Ollama</div><div class="mo"><i class="pv" style="background:#181825">O</i>gpt-oss-120b</div><div class="mo"><i class="pv" style="background:#477a4a">L</i>qwen3:14b<small>이 Mac</small></div><div class="meff"><em>추론</em><span>낮음</span><span class="on">보통</span><span>높음</span></div></div><div class="drop" id="f-drop">여기에 놓아 첨부</div><div class="atrow" id="f-at"><span class="atch"><span class="fic">PDF</span><span>5주차_파이프라인.pdf<small>2.4 MB</small></span></span></div><div class="cin" id="f-cin"><span class="ph">#컴퓨터구조에서 대화하기 — @로 에이전트 부르기</span><span id="f-typed"></span><span class="caret"></span></div>
+    <div class="crow"><span class="clip-btn"><svg viewBox="0 0 16 16"><path d="M13 7.5l-5 5a3.2 3.2 0 01-4.5-4.5l5.6-5.6a2.1 2.1 0 013 3L6.6 11a1.1 1.1 0 01-1.5-1.5L10 4.6"/></svg></span><span class="slash">/job</span><span class="pmode">✎ 자동 편집</span><span class="mpick" id="f-pick"><span class="sw2"><span id="f-pm1"><i class="pv" style="background:#a45d46">A</i>Claude Sonnet 5.5<small>· 보통</small></span><span id="f-pm2" style="opacity:0;visibility:hidden"><i class="pv" style="background:#4285f4">G</i>Gemini 3 Pro<small>· 보통</small></span></span><u>▾</u></span><span class="ring"></span><span class="send" id="f-send"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10M8 3l4 4-4 4" stroke="#000" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
   <div class="flyfile" id="f-fly"><span class="fic">PDF</span>5주차_파이프라인.pdf</div>
   <div class="toast" id="f-toast"><span class="okdot" style="background:var(--w-cta);color:#000">✓</span>할 일을 추가했어요 · <b>과제2 제출</b></div>`);
 
@@ -695,7 +768,7 @@ $('#w-kan').innerHTML = shell('학', 'arch', chanHead('칸반') + `
 
 /* ---------- LMS ---------- */
 const sysWho = (t) => `<div class="who">Argos <span class="badge">시스템</span><small>${t} · LearningX</small></div>`;
-$('#w-lms').innerHTML = shell('학', 'ai', chanHead('피드', '인공지능', 'LMS 과목 연결됨 · 기본 에이전트 Hermes') + `
+$('#w-lms').innerHTML = shell('학', 'ai', chanHead('피드', '인공지능', 'LMS 과목 연결됨 · 자료 24개 색인') + `
   <div class="feed">
     <div class="msg"><span class="av h">H</span><div><div class="who">Hermes <span class="badge">에이전트</span><small>08:40</small></div>
       <div class="txt">오늘 13:00 인공지능 강의 있어요. 지난주 퀴즈 오답 노트 걸어둘게요.</div></div></div>
@@ -715,6 +788,10 @@ $('#w-lms').innerHTML = shell('학', 'ai', chanHead('피드', '인공지능', 'L
     <div class="rev" id="l-m3"><div class="msg"><span class="av sys">A</span><div>${sysWho('09:13')}
       <div class="card ncard"><div class="nh"><span class="kind">자료</span><b>Lecture 06 - Constraint Satisfaction.pdf</b></div>
         <div class="nfoot"><span>자료 탭에 내려받았어요</span><span class="r">LMS에서 열기 ↗</span></div></div></div></div></div>
+    <div class="rev" id="l-m4"><div class="msg"><span class="av me">MJ</span><div><div class="who">minjun <small>09:20</small></div><div class="txt">중간고사 범위에 CSP 나와? 자료에서 찾아줘</div></div></div></div>
+    <div class="rev" id="l-m5"><div class="msg"><span class="av gm">G</span><div><div class="who">Gemini 3 Pro <span class="badge">기본 채팅</span><small>09:20</small></div>
+      <span class="tstep"><span class="tk">✓</span><code>search_knowledge</code><small>"constraint satisfaction" · 3건</small></span>
+      <div class="txt" style="max-width:600px">네, 범위(3–7장)에 들어가요. Lecture 06 자료 12쪽에 arc consistency 예제가 있어요. <span class="src">↳ LMS 자료 · Lecture 06 p.12</span> <span class="src">↳ uploads/중간 정리.md</span></div></div></div></div>
   </div>`);
 
 /* ---------- morning digest ---------- */
@@ -746,7 +823,7 @@ const days = [['월', '10/12', [cev('10:30', '컴퓨터구조 강의'), cev('13:
   ['일', '10/18', [cev('23:59 마감', '실습3 · ALU 설계', 'due')]]];
 $('#grp').innerHTML = `
   <div class="gcard" style="left:0;top:0;width:650px;height:440px">
-    <div class="gh"><b>캘린더</b>10월 3주<span class="src">↳ iCloud · 학교 캘린더와 동기화</span></div>
+    <div class="gh"><b>캘린더</b>10월 3주<span class="src">↳ Apple 캘린더 · 채널 덧씌움</span></div>
     <div class="week">${days.map(([d, n, evs, c]) => `<div class="day ${c || ''}"><h4>${d}<span>${n}</span></h4>${evs.join('')}</div>`).join('')}</div>
   </div>
   <div class="gcard" style="left:670px;top:0;width:440px;height:440px">
@@ -759,7 +836,7 @@ $('#grp').innerHTML = `
       <div>- forwarding: EX/MEM → ALU 입력</div><div>- load-use는 1사이클 stall</div></div>
     <div class="syncl"><span id="g-s1"><span class="dd">할 일</span>체크 상태 양방향 동기화 · 1분 전</span><span id="g-s2" style="opacity:0;visibility:hidden"><span class="okdot">✓</span>Argos 칸반에도 완료로 반영 · 방금</span></div>
   </div>
-  <div class="phone" style="left:1135px;top:10px;width:250px;height:520px"><div class="pscr">
+  <div class="phone" style="left:1135px;top:0;width:250px;height:436px"><div class="pscr">
     <div class="pnotch"></div><div class="ptop"><span>≡</span><b>${dog}Argos</b><span>⌕</span></div><h5>MON · 10.12</h5><h6>오늘 챙길 것</h6>
     <div class="pk"><div><small>이번 주 완료</small><b>5</b></div><div><small>마감 임박</small><b class="red">1</b></div></div>
     <div class="pit"><span class="t">10:30 · 컴퓨터구조</span>컴퓨터구조 강의</div>
@@ -780,6 +857,7 @@ $('#grp').innerHTML = `
       <div class="btns"><span class="btn danger" id="g-approve">승인하고 삭제</span><span class="btn">거절</span></div></div>
     <div class="rev" id="g-adone"><div class="aprh" style="color:var(--w-text)">✓ 승인했어요</div><div style="font-size:13px;color:var(--w-text2)">운영체제 보강 (Dashboard) 일정을 지웠어요. 기록은 발자국에 남아요.</div></div>
   </div>
+  <div class="gcard" style="left:1135px;top:456px;width:250px;height:254px;padding:16px 16px 10px"><div class="gh" style="margin-bottom:6px"><b>에이전트 도구</b><span style="margin-left:auto">MCP·스킬 따로</span></div><div class="trow2"><b>Antigravity</b><span class="tg2 on">MCP</span><span class="tg2" id="g-agsk">스킬</span></div><div class="trow2"><b>Antigravity IDE</b><span class="tg2 on">MCP</span><span class="tg2 on">스킬</span></div><div class="trow2"><b>Claude Code</b><span class="tg2 on">MCP</span><span class="tg2 on">스킬</span></div><div class="trow2"><b>Codex</b><span class="tg2 on">MCP</span><span class="tg2 on">스킬</span></div><div class="trow2"><b>Hermes</b><span class="tg2 on">MCP</span><span class="tg2 on">스킬</span></div></div>
   ${cursorHTML}`;
 
 /* ---------- stage scaling ---------- */
@@ -837,7 +915,7 @@ function build() {
   };
 
   const streakL = $('#streakL'), streakD = $('#streakD');
-  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-2000px 0px', duration: 81, ease: 'none' }, 0);
+  tl.fromTo([streakL, streakD], { backgroundPosition: '0px 0px' }, { backgroundPosition: '-2000px 0px', duration: 83, ease: 'none' }, 0);
   gsap.set('#wipe', { xPercent: -50, yPercent: -50, scale: 0 });
   gsap.set('#pill', { xPercent: -50, yPercent: -50 });
   gsap.set('.wwrap', { transformOrigin: '0% 50%' });
@@ -884,6 +962,16 @@ function build() {
   });
   tl.fromTo($$('.nowv', wT), { scaleY: 0 }, { scaleY: 1, duration: .6, stagger: .06, ease: 'power2.out' }, 10.2);
   tl.fromTo($$('.i7', wT), { autoAlpha: 0, x: -10 }, { autoAlpha: 1, x: 0, duration: .45, stagger: .06 }, 10.35);
+  tl.fromTo('#t-dogh', { rotation: 0, svgOrigin: '44 52' }, { rotation: 6, duration: 1.1, ease: 'sine.inOut', yoyo: true, repeat: 1, immediateRender: false }, 9.6);
+  tl.fromTo('#t-dogt', { rotation: 0, svgOrigin: '93 62' }, { rotation: 14, duration: .22, ease: 'sine.inOut', yoyo: true, repeat: 23, immediateRender: false }, 9.8);
+  tl.to('#t-dogh', { rotation: -12, duration: .7, ease: 'power2.inOut' }, 11.4);
+  tl.to('#t-dogb', { y: -18, duration: .22, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.42);
+  tl.to('#t-dogsh', { scale: .7, svgOrigin: '66 92', duration: .22, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.42);
+  tl.to('#t-dogb', { y: -10, duration: .18, yoyo: true, repeat: 1, ease: 'power2.out' }, 12.9);
+  tl.fromTo('#t-bub', { autoAlpha: 0, y: 8, scale: .8 }, { autoAlpha: 1, y: 0, scale: 1, duration: .3, ease: 'back.out(2)', immediateRender: false }, 12.5);
+  tl.to('#t-bub', { autoAlpha: 0, y: -6, duration: .3 }, 14.2);
+  tl.to('#t-dogh', { rotation: 10, duration: .7, ease: 'power2.inOut' }, 13.2);
+  tl.to('#t-dogh', { rotation: 0, duration: .6, ease: 'power2.inOut' }, 15.0);
   tl.to('#t-colon', { opacity: .15, duration: .5, repeat: 11, yoyo: true, ease: 'steps(1)' }, 9.6);
   tl.to(wrT, { scale: .96, x: -20, y: 20, duration: 1.4, ease: 'power2.inOut' }, 11.0);
   tl.fromTo(cT, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 11.1);
@@ -911,16 +999,27 @@ function build() {
   tl.fromTo(wrF, { autoAlpha: 0, x: 900, rotationY: 50, rotationX: 8, scale: .82 },
     { autoAlpha: 1, x: 0, rotationY: -10, rotationX: 6, scale: .9, duration: 1.5, ease: 'expo.out' }, 15.4);
   capIn('#cap2', 15.9);
-  tl.to(wrF, { scale: 1.06, rotationY: -4, rotationX: 3, x: 0, y: -60, duration: 1.5, ease: 'power2.inOut' }, 17.0);
-  tl.set(cF, { x: 900, y: 420 }, 17.19);
-  tl.fromTo(cF, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 17.2);
-  move(cF, wF, $('#f-cin'), 17.3, .85, -120, 2);
-  click(cF, null, 18.2);
-  tl.to(ph, { autoAlpha: 0, duration: .15 }, 18.3);
-  tl.to(caret, { opacity: 1, duration: .05 }, 18.3);
+  tl.to(wrF, { scale: .97, rotationY: -4, rotationX: 3, x: -30, y: -40, duration: 1.5, ease: 'power2.inOut' }, 16.9);
+  tl.set(cF, { x: 900, y: 420 }, 16.69);
+  tl.fromTo(cF, { autoAlpha: 0 }, { autoAlpha: 1, duration: .3, immediateRender: false }, 16.7);
+  move(cF, wF, $('#f-pick'), 16.8, .7, -30, 2);
+  click(cF, $('#f-pick'), 17.55);
+  tl.fromTo('#f-menu', { autoAlpha: 0, y: 10, scale: .97 }, { autoAlpha: 1, y: 0, scale: 1, duration: .25, immediateRender: false }, 17.6);
+  tl.to('#f-mph', { autoAlpha: 0, duration: .1 }, 17.85);
+  text($('#f-mq'), 'gem', 0, 3, 17.9, .3);
+  tl.set('#f-mcl', { className: 'mo' }, 18.2);
+  tl.set('#f-mgem', { className: 'mo hl' }, 18.2);
+  move(cF, wF, $('#f-mgem'), 18.0, .45, -40, 2);
+  click(cF, $('#f-mgem'), 18.55);
+  tl.to('#f-menu', { autoAlpha: 0, y: 8, duration: .2 }, 18.7);
+  swap('#f-pm1', '#f-pm2', 18.7);
+  move(cF, wF, $('#f-cin'), 18.8, .5, -120, 2);
+  click(cF, null, 19.35);
+  tl.to(ph, { autoAlpha: 0, duration: .15 }, 19.4);
+  tl.to(caret, { opacity: 1, duration: .05 }, 19.4);
   const s1 = '금요일 밤 12시까지 과제2 제출';
-  text(typed, s1, 0, s1.length, 18.45, 1.25);
-  move(cF, wF, $('#f-send'), 19.85, .6);
+  text(typed, s1, 0, s1.length, 19.5, .85);
+  move(cF, wF, $('#f-send'), 19.95, .5);
   click(cF, $('#f-send'), 20.5);
   text(typed, s1, s1.length, 0, 20.6, .05);
   tl.to(caret, { opacity: 0, duration: .05 }, 20.6);
@@ -928,15 +1027,14 @@ function build() {
   reveal('#f-m2', 20.65, .45);
   tl.fromTo('#f-m2 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 20.7);
   reveal('#f-sg', 21.15, .5);
-  tl.fromTo('#f-sg .card', { y: 18, autoAlpha: 0, scale: .98 }, { y: 0, autoAlpha: 1, scale: 1, duration: .5, immediateRender: false }, 21.2);
+  tl.fromTo('#f-sg .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .5, immediateRender: false }, 21.2);
   tl.fromTo('#f-sgload .loading', { backgroundPosition: '0 0' }, { backgroundPosition: '200px 0', duration: .9, ease: 'none', immediateRender: false }, 21.2);
   collapse('#f-sgload', 22.05, .3);
   reveal('#f-sgfull', 22.1, .5);
   swap('#f-c1', '#f-c2', 22.1);
   move(cF, wF, $('#f-add'), 22.5, .85);
   click(cF, $('#f-add'), 23.45);
-  collapse('#f-sgfull', 23.6, .4);
-  reveal('#f-sgdone', 23.65, .4);
+  reveal('#f-sgdone', 23.6, .4);
   tl.fromTo('#f-toast', { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .4, immediateRender: false }, 23.75);
   tl.to('#f-toast', { autoAlpha: 0, y: 10, duration: .3 }, 25.1);
   tl.to(wrF, { scale: .92, rotationY: -8, rotationX: 5, x: 0, y: 0, duration: 1.3, ease: 'power2.inOut' }, 24.5);
@@ -992,6 +1090,8 @@ function build() {
   const xText = '14쪽 표처럼 hazard unit이 ID/EX.rs == EX/MEM.rd 를 검사해서 mux 선택 신호를 바꾸는 게 forwarding이고, load 바로 뒤에서 그 값을 쓰면 PC와 IF/ID 쓰기를 막는 게 stall이에요.';
   text($('#f-ct'), cText, 0, cText.length, 33.2, 3.1);
   text($('#f-xt'), xText, 0, xText.length, 33.6, 3.0);
+  reveal('#f-art', 34.8, .5);
+  tl.fromTo('#f-art .art', { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: .45, immediateRender: false }, 34.9);
   swap('#f-cs1', '#f-cs2', 36.35);
   swap('#f-xs1', '#f-xs2', 36.65);
   capOut('#cap3', 36.8);
@@ -1084,11 +1184,16 @@ function build() {
   reveal('#l-m3', 55.7, .45);
   tl.fromTo('#l-m3 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 55.75);
   tl.to(cL, { x: '+=180', y: '+=120', autoAlpha: 0, duration: .8, ease: 'power2.in' }, 56.2);
-  capOut('#cap5', 57.3);
-  tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 57.3);
+  reveal('#l-m4', 56.4, .45);
+  tl.fromTo('#l-m4 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 56.45);
+  reveal('#l-m5', 57.0, .5);
+  tl.fromTo('#l-m5 .msg', { y: 18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .45, immediateRender: false }, 57.05);
+  tl.fromTo('#l-m5 .txt', { autoAlpha: 0 }, { autoAlpha: 1, duration: .4, immediateRender: false }, 57.5);
+  capOut('#cap5', 58.8);
+  tl.to(wrL, { rotationY: 50, rotationX: 10, x: 1100, autoAlpha: 0, duration: 1, ease: 'power3.in' }, 58.8);
 
-  /* ===== s5c morning digest 58.2 – 67.2 (main time) ===== */
-  scene(0);
+  /* ===== s5c morning digest 59.7 – 68.7 (main time) ===== */
+  scene(1.5);
   const wrD = $('#wr-dig'), wD = $('#w-dig');
   label(5, 58.5);
   tl.fromTo(wrD, { autoAlpha: 0, y: 560, rotationX: 50, rotationZ: 10, rotationY: 0, scale: .8 },
@@ -1108,9 +1213,9 @@ function build() {
   capOut('#cap6', 66.2);
   tl.to(wrD, { autoAlpha: 0, scale: .6, rotationX: 40, rotationZ: 12, y: 280, duration: .9, ease: 'power3.in' }, 66.3);
 
-  scene(21.0);
+  scene(22.5);
 
-  /* ===== s6 connect 46.1 – 52.6 (+21) ===== */
+  /* ===== s6 connect 46.1 – 52.6 (+22.5) ===== */
   const grp = $('#grp'), cG = grp.querySelector('.cursor'), gcards = $$('#grp > .gcard, #grp > .phone');
   label(6, 46.2);
   tl.fromTo(grp, { autoAlpha: 0, rotationX: 58, rotationZ: -22, scale: .62, y: 320 },
@@ -1127,6 +1232,8 @@ function build() {
   reveal('#g-newev', 49.4, .45);
   tl.fromTo('#g-newev .cev', { scale: .8, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: .45, ease: 'back.out(2)', immediateRender: false }, 49.45);
   reveal('#g-pnew', 49.6, .45);
+  tl.set('#g-agsk', { className: 'tg2 on' }, 49.2);
+  tl.fromTo('#g-agsk', { scale: .7 }, { scale: 1, duration: .35, ease: 'back.out(2.5)', immediateRender: false }, 49.2);
   tl.to('#g-box b', { opacity: 1, duration: .2 }, 50.0);
   tl.fromTo('#g-strike', { '--sw': '0%' }, { '--sw': '100%', duration: .4, ease: 'power2.inOut', immediateRender: false }, 50.05);
   tl.to('#g-strike', { opacity: .55, duration: .3 }, 50.1);
@@ -1145,7 +1252,7 @@ function build() {
   tl.to(streakL, { autoAlpha: 0, duration: .8 }, 52.3);
   label(-1, 52.3);
 
-  /* ===== s7 outro 52.8 – 60 (+21) ===== */
+  /* ===== s7 outro 52.8 – 60 (+22.5) ===== */
   tl.fromTo('#pill', { autoAlpha: 0, scale: .15 }, { autoAlpha: 1, scale: 1, duration: .6, ease: 'back.out(1.6)', immediateRender: false }, 52.8);
   tl.to('#pill', { width: 196, height: 196, borderRadius: 46, duration: .75, ease: 'expo.inOut' }, 53.6);
   tl.to('#pill svg', { opacity: 1, duration: .5 }, 54.1);
