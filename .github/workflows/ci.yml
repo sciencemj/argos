@@ -80,7 +80,24 @@ jobs:
           git diff --exit-code frontend/src/api-types.ts \
             || { echo "::error::api-types.ts is stale: run 'make api-types' and commit"; exit 1; }
 
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            desktop:
+              - 'desktop/**'
+              - '.github/workflows/ci.yml'
+
   desktop:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     defaults:
